@@ -4,13 +4,27 @@ class Shop {
   final String category;
   final double rating;
   final bool isOpen;
+  final double? lat;
+  final double? lng;
   const Shop({
     required this.id,
     required this.name,
     required this.category,
     required this.rating,
     required this.isOpen,
+    this.lat,
+    this.lng,
   });
+
+  factory Shop.fromJson(Map<String, dynamic> j) => Shop(
+        id: '${j['id']}',
+        name: '${j['name']}',
+        category: '${j['category'] ?? ''}',
+        rating: (j['rating'] as num?)?.toDouble() ?? 0,
+        isOpen: j['isOpen'] != false,
+        lat: (j['lat'] as num?)?.toDouble(),
+        lng: (j['lng'] as num?)?.toDouble(),
+      );
 }
 
 class CatalogItem {
@@ -28,4 +42,13 @@ class CatalogItem {
     required this.price,
     this.isAvailable = true,
   });
+
+  factory CatalogItem.fromJson(Map<String, dynamic> j) => CatalogItem(
+        id: '${j['id']}',
+        shopId: '${j['shopId']}',
+        name: '${j['name']}',
+        category: '${j['category'] ?? ''}',
+        price: (j['price'] as num?)?.toDouble() ?? 0,
+        isAvailable: j['isAvailable'] != false,
+      );
 }

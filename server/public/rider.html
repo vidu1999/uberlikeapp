@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SwiftDrop · Rider</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>:root { --accent: #2979ff; } .logo { background: #2979ff; color: #fff; } .emoji { background: #eff6ff; }</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">R</div>
+        <div>
+          <h1>Rider</h1>
+          <p>Kamal Perera · Online</p>
+        </div>
+      </div>
+      <span class="pill">GPS live</span>
+    </header>
+    <main class="view" id="view"></main>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/maps.js"></script>
+  <script>
+    const view = document.getElementById('view');
+    const gps = {};
+    let mapHandle = null;
+    let activeId = null;
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function startGps(order) {
+      const shop = API.shopOf(order.shopId);
+      if (gps[order.id]) clearInterval(gps[order.id].timer);
+      let lat = order.riderLat ?? shop.lat;
+      let lng = order.riderLng ?? shop.lng;
+      const tick = async () => {
+        lat += (order.deliveryLat - lat) * 0.16;
+        lng += (order.deliveryLng - lng) * 0.16;
+        await API.patch(order.id, { riderLat: lat, riderLng: lng, status: 'on_the_way', riderId: 'RIDER_77', riderName: 'Kamal Perera' });
+        if (Math.abs(lat - order.deliveryLat) < 0.0004 && Math.abs(lng - order.deliveryLng) < 0.0004) {
+          clearInterval(gps[order.id].timer);
+        }
+      };
+      gps[order.id] = { timer: setInterval(tick, 2000) };
+      API.patch(order.id, { status: 'on_the_way', riderId: 'RIDER_77', riderName: 'Kamal Perera', riderLat: lat, riderLng: lng });
+    }
+
+    function render(force) {
+      const jobs = API.orders.filter((o) => ['ready', 'on_the_way'].includes(o.status));
+      const active = jobs.find((o) => o.id === activeId) || jobs.find((o) => o.status === 'on_the_way');
+      const key = jobs.map((o) => o.id + ':' + o.status).join('|');
+      if (!force && view.dataset.key === key && mapHandle && active) {
+        mapHandle.update(active);
+        return;
+      }
+      view.dataset.key = key;
+      view.innerHTML = `
+        <h2>Deliveries</h2>
+        <div class="sub">Jobs appear when a shop taps Mark ready.</div>
+        ${active ? `<div id="map" class="map"></div>` : ''}
+        ${jobs.map((o) => `
+          <div class="card">
+            <div class="row">
+              <div class="grow">
+                <b>${esc(o.shopName)} → ${esc(o.customerName)}</b>
+                <div class="muted">${esc(o.id)} · ${esc(o.items.map((i) => i.name).join(', '))}</div>
+              </div>
+              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <div class="price grow">${API.rs(o.totalAmount)}</div>
+              ${o.status === 'ready' ? `<button class="btn" data-pick="${esc(o.id)}">Pick up</button>` : ''}
+              ${o.status === 'on_the_way' ? `<button class="btn dark" data-drop="${esc(o.id)}">Mark delivered</button>` : ''}
+            </div>
+          </div>
+        `).join('') || '<div class="card">No jobs yet. In the Shop app, accept an order and mark it ready.</div>'}`;
+
+      view.querySelectorAll('[data-pick]').forEach((b) => {
+        b.onclick = () => {
+          const o = API.orders.find((x) => x.id === b.dataset.pick);
+          activeId = o.id;
+          startGps(o);
+          render(true);
+        };
+      });
+      view.querySelectorAll('[data-drop]').forEach((b) => {
+        b.onclick = () => {
+          const id = b.dataset.drop;
+          if (gps[id]) clearInterval(gps[id].timer);
+          API.patch(id, { status: 'delivered' });
+        };
+      });
+
+      const el = document.getElementById('map');
+      if (mapHandle) {
+        try { mapHandle.destroy(); } catch (_) {}
+        mapHandle = null;
+      }
+      if (el && active) mapHandle = mountTrackingMap(el, active);
+    }
+    API.on(render);
+  </script>
+</body>
+</html>

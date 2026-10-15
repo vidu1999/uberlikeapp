@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SwiftDrop · Shop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>:root { --accent: #ff6d00; } .logo { background: #ff6d00; color: #3b1400; } .emoji { background: #fff7ed; }</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div>
+          <h1>Shop kitchen</h1>
+          <p>Accept · prepare · hand to rider</p>
+        </div>
+      </div>
+      <span class="pill">Vendor</span>
+    </header>
+    <main class="view" id="view"></main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script>
+    const view = document.getElementById('view');
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function render() {
+      const orders = API.orders;
+      const pending = orders.filter((o) => o.status === 'pending').length;
+      const preparing = orders.filter((o) => o.status === 'preparing').length;
+      const ready = orders.filter((o) => o.status === 'ready').length;
+      view.innerHTML = `
+        <h2>Incoming orders</h2>
+        <div class="sub">When a customer taps Order, it lands here instantly.</div>
+        <div class="stats">
+          <div class="stat"><b>${pending}</b><span>Pending</span></div>
+          <div class="stat"><b>${preparing}</b><span>Preparing</span></div>
+          <div class="stat"><b>${ready}</b><span>Ready</span></div>
+        </div>
+        ${orders.map((o) => `
+          <div class="card">
+            <div class="row">
+              <div class="grow">
+                <b>${esc(o.shopName)}</b>
+                <div class="muted">${esc(o.id)} · ${esc(o.customerName)}</div>
+              </div>
+              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+            </div>
+            <div style="margin:10px 0">${o.items.map((i) => `<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
+            <div class="row">
+              <div class="price grow">${API.rs(o.totalAmount)}</div>
+              ${o.status === 'pending' ? `<button class="btn" data-act="preparing" data-id="${esc(o.id)}">Accept & prepare</button>` : ''}
+              ${o.status === 'preparing' ? `<button class="btn dark" data-act="ready" data-id="${esc(o.id)}">Mark ready</button>` : ''}
+              ${o.status === 'ready' ? `<span class="muted">Waiting for rider…</span>` : ''}
+              ${o.status === 'on_the_way' || o.status === 'delivered' ? `<span class="muted">${esc(o.riderName || 'Rider')} · ${API.statusLabel(o.status)}</span>` : ''}
+            </div>
+          </div>
+        `).join('') || '<div class="card">Kitchen is quiet. Place an order in the User app.</div>'}`;
+      view.querySelectorAll('[data-act]').forEach((b) => {
+        b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act });
+      });
+    }
+    API.on(render);
+  </script>
+</body>
+</html>

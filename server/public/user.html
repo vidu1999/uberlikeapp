@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SwiftDrop · User</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>:root { --accent: #00c853; }</style>
+</head>
+<body>
+  <div class="app" data-role="user">
+    <header class="top">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div>
+          <h1>SwiftDrop</h1>
+          <p>Colombo · User app</p>
+        </div>
+      </div>
+      <span class="pill">Sahan</span>
+    </header>
+    <main class="view" id="view"></main>
+    <nav class="nav">
+      <button data-tab="home" class="active">Home</button>
+      <button data-tab="search">Search</button>
+      <button data-tab="orders">Orders</button>
+    </nav>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/maps.js"></script>
+  <script>
+    const view = document.getElementById('view');
+    let tab = 'home';
+    let query = '';
+    let category = 'All';
+    let trackId = null;
+    let mapHandle = null;
+    let placing = false;
+
+    document.querySelectorAll('.nav button').forEach((b) => {
+      b.onclick = () => {
+        tab = b.dataset.tab;
+        trackId = null;
+        document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x === b));
+        render();
+      };
+    });
+
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function steps(status) {
+      const list = ['pending', 'preparing', 'ready', 'on_the_way', 'delivered'];
+      const idx = Math.max(0, list.indexOf(status));
+      const labels = ['Order placed', 'Preparing', 'Ready for pickup', 'Out for delivery', 'Delivered'];
+      return `<div class="steps">${labels.map((l, i) => `
+        <div class="step ${i <= idx ? 'done' : ''}">
+          ${i ? '<div class="bar"></div>' : ''}
+          <div class="dot"></div>
+          <div>${l}</div>
+        </div>`).join('')}</div>`;
+    }
+
+    function renderHome() {
+      const shops = API.shops;
+      view.innerHTML = `
+        <h2>Hello, Sahan 👋</h2>
+        <div class="sub">Hungry? Shops around Colombo are live.</div>
+        <div class="search"><span>🔎</span><input id="q" placeholder="Search cake, kottu, coffee…" value="${esc(query)}" /></div>
+        <div class="chips" id="cats"></div>
+        ${shops.map((s) => `
+          <div class="card row">
+            <div class="emoji">${s.emoji || '🏪'}</div>
+            <div class="grow">
+              <b>${esc(s.name)}</b>
+              <div class="muted">${esc(s.category)} · ${s.rating} ★ · ${s.isOpen ? 'Open' : 'Closed'}</div>
+            </div>
+            <button class="btn ghost" data-open="${s.id}">Menu</button>
+          </div>
+        `).join('')}`;
+      bindSearch();
+    }
+
+    function filteredItems() {
+      const q = query.toLowerCase();
+      return API.items.filter((it) => {
+        const shop = API.shopOf(it.shopId);
+        const matchQ = !q || it.name.toLowerCase().includes(q) || shop.name.toLowerCase().includes(q);
+        const matchC = category === 'All' || it.category === category;
+        return matchQ && matchC && it.isAvailable;
+      });
+    }
+
+    function renderSearch() {
+      const cats = ['All', ...new Set(API.items.map((i) => i.category))];
+      const list = filteredItems();
+      view.innerHTML = `
+        <h2>Search</h2>
+        <div class="sub">Filter by shop or item. Tap Order to send it to the shop app.</div>
+        <div class="search"><span>🔎</span><input id="q" placeholder="cake, burger, kottu…" value="${esc(query)}" /></div>
+        <div class="chips">${cats.map((c) => `<button class="chip ${c === category ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+        ${list.map((it) => {
+          const shop = API.shopOf(it.shopId);
+          return `<div class="card row">
+            <div class="emoji">${shop.emoji || '🍽️'}</div>
+            <div class="grow">
+              <b>${esc(it.name)}</b>
+              <div class="muted">${esc(shop.name)} · ${esc(it.category)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="price">${API.rs(it.price)}</div>
+              <button class="btn" data-order="${it.id}" ${placing ? 'disabled' : ''}>Order</button>
+            </div>
+          </div>`;
+        }).join('') || '<div class="card">No items match.</div>'}`;
+      bindSearch();
+    }
+
+    function renderOrders() {
+      const list = API.orders;
+      view.innerHTML = `
+        <h2>My orders</h2>
+        <div class="sub">Live status from the shop and rider apps.</div>
+        ${list.map((o) => `
+          <div class="card" data-track="${esc(o.id)}" style="cursor:pointer">
+            <div class="row">
+              <div class="grow"><b>${esc(o.shopName)}</b><div class="muted">${esc(o.items.map((i) => i.name).join(', '))}</div></div>
+              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+            </div>
+            <div class="muted" style="margin-top:8px">${API.rs(o.totalAmount)} · ${esc(o.id)}</div>
+          </div>
+        `).join('') || '<div class="card">No orders yet. Place one from Search.</div>'}`;
+    }
+
+    function renderTrack() {
+      const o = API.orders.find((x) => x.id === trackId);
+      if (!o) {
+        view.innerHTML = '<div class="card">Order not found.</div>';
+        return;
+      }
+      const live = view.querySelector('[data-track-root="' + o.id + '"]');
+      if (live && mapHandle) {
+        mapHandle.update(o);
+        const st = live.querySelector('.status');
+        if (st) { st.className = 'status ' + o.status; st.textContent = API.statusLabel(o.status); }
+        const eta = live.querySelector('[data-eta]');
+        if (eta) eta.textContent = o.status === 'delivered' ? 'Delivered' : '12–15 min';
+        const rider = live.querySelector('[data-rider]');
+        if (rider) rider.textContent = o.riderName || 'Assigning rider…';
+        const stepBox = live.querySelector('[data-steps]');
+        if (stepBox) stepBox.innerHTML = steps(o.status);
+        return;
+      }
+      if (mapHandle) {
+        try { mapHandle.destroy(); } catch (_) {}
+        mapHandle = null;
+      }
+      view.innerHTML = `
+        <div data-track-root="${esc(o.id)}">
+          <div id="map" class="map"></div>
+          <div class="card">
+            <div class="row">
+              <div class="grow">
+                <div class="muted">Estimated arrival</div>
+                <h2 style="margin:0" data-eta>${o.status === 'delivered' ? 'Delivered' : '12–15 min'}</h2>
+              </div>
+              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+            </div>
+            <div data-steps>${steps(o.status)}</div>
+            <div class="driver">
+              <div class="avatar">🛵</div>
+              <div class="grow">
+                <b data-rider>${esc(o.riderName || 'Assigning rider…')}</b>
+                <div class="muted">Delivery partner · 4.9 ★</div>
+              </div>
+              <button class="btn ghost">Call</button>
+            </div>
+          </div>
+          <div class="card">
+            <b>${esc(o.shopName)}</b>
+            <div class="muted">${esc(o.items.map((i) => i.name + ' ×' + i.qty).join(', '))}</div>
+            <div class="price" style="margin-top:8px">${API.rs(o.totalAmount)}</div>
+          </div>
+        </div>`;
+      mapHandle = mountTrackingMap(document.getElementById('map'), o);
+    }
+
+    function bindSearch() {
+      const input = document.getElementById('q');
+      if (input) input.oninput = (e) => { query = e.target.value; render(); input.focus(); const v = input; v.selectionStart = v.selectionEnd = query.length; };
+      view.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { category = b.dataset.cat; tab = 'search'; render(); });
+      view.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { query = API.shopOf(b.dataset.open).name; tab = 'search'; document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'search')); render(); });
+      view.querySelectorAll('[data-order]').forEach((b) => b.onclick = async () => {
+        const item = API.items.find((i) => i.id === b.dataset.order);
+        if (!item || placing) return;
+        placing = true; b.disabled = true; b.textContent = '…';
+        try {
+          const order = await API.placeOrder(item);
+          trackId = order.id; tab = 'orders';
+          document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'orders'));
+          renderTrack();
+        } finally { placing = false; }
+      });
+    }
+
+    function render() {
+      if (trackId) return renderTrack();
+      if (tab === 'search') return renderSearch();
+      if (tab === 'orders') return renderOrders();
+      return renderHome();
+    }
+
+    view.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-track]');
+      if (t) { trackId = t.dataset.track; renderTrack(); }
+    });
+
+    API.on(() => render());
+  </script>
+</body>
+</html>

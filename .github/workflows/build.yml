@@ -9,38 +9,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          ref: arena/72bd113d-uberlikeapp
+          distribution: temurin
+          java-version: "17"
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: "3.24.5"
           channel: stable
-      - name: Generate android platform files
-        run: |
-          flutter create --platforms=android --project-name uberlikeapp bootstrap_tmp
-          cp -r bootstrap_tmp/android .
-          rm -rf bootstrap_tmp
+          cache: true
+      - name: Create Android platform
+        run: flutter create --platforms=android --org com.uberlike --project-name uberlikeapp .
+      - name: Snapshot android folder
+        run: cp -a android android.bak
       - name: Pub get
         run: flutter pub get
       - name: Analyze
         run: flutter analyze || true
       - name: Build user APK
         run: |
+          python3 .github/scripts/patch_android.py user
           flutter build apk --release --target=lib/main_user.dart
-          mkdir -p build && cp build/app/outputs/flutter-apk/app-release.apk build/user.apk
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/user.apk
       - name: Build shop APK
         run: |
+          python3 .github/scripts/patch_android.py shop
           flutter build apk --release --target=lib/main_shop.dart
-          cp build/app/outputs/flutter-apk/app-release.apk build/shop.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/shop.apk
       - name: Build rider APK
         run: |
+          python3 .github/scripts/patch_android.py rider
           flutter build apk --release --target=lib/main_rider.dart
-          cp build/app/outputs/flutter-apk/app-release.apk build/rider.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/rider.apk
+          ls -lh dist
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: uberlikeapp-apks
-          path: |
-            build/user.apk
-            build/shop.apk
-            build/rider.apk
+          name: swiftdrop-apks
+          path: dist/*.apk

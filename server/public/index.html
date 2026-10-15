@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SwiftDrop · 3 live apps</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="studio-body">
+  <div class="studio">
+    <div class="studio-head">
+      <div>
+        <p style="color:#86efac;font-weight:800;letter-spacing:.12em;font-size:12px;margin:0 0 8px">LIVE MULTI-APP STUDIO</p>
+        <h1>SwiftDrop — User, Shop & Rider</h1>
+        <p>Three apps, one backend. Place an order on the left, accept it in the kitchen, pick it up as the rider. The customer map follows the bike in real time.</p>
+      </div>
+      <div>
+        <button class="btn dark" id="reset">Reset demo</button>
+        <a class="btn" href="/user" target="_blank" style="text-decoration:none;display:inline-block;margin-left:8px">Open User</a>
+      </div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label"><span>🟢 User app</span><a href="/user" target="_blank" style="color:#86efac">Open ↗</a></div>
+        <div class="phone"><iframe src="/user" title="User app"></iframe></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label"><span>🟠 Shop app</span><a href="/shop" target="_blank" style="color:#fdba74">Open ↗</a></div>
+        <div class="phone"><iframe src="/shop" title="Shop app"></iframe></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label"><span>🔵 Rider app</span><a href="/rider" target="_blank" style="color:#93c5fd">Open ↗</a></div>
+        <div class="phone"><iframe src="/rider" title="Rider app"></iframe></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>How they combine</h3>
+      <p class="muted" style="margin-top:0">1. User searches and taps <b>Order</b> → 2. Shop taps <b>Accept & prepare</b> then <b>Mark ready</b> → 3. Rider taps <b>Pick up</b> (GPS streams) → 4. User tracking map moves → 5. Rider taps <b>Mark delivered</b>.</p>
+      <div class="urlbox" style="margin:14px 0">
+        <code id="apiUrl"></code>
+        <button class="btn" id="copy">Copy server URL</button>
+      </div>
+      <p class="muted">Paste this URL into each Android APK (cloud icon) so the three APKs share the same live orders as this studio.</p>
+      <h3 style="margin-top:18px">Live activity</h3>
+      <div class="feed" id="feed"><div>Waiting for orders…</div></div>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script>
+    const apiUrl = location.origin;
+    document.getElementById('apiUrl').textContent = apiUrl;
+    document.getElementById('copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(apiUrl); document.getElementById('copy').textContent = 'Copied'; }
+      catch (_) { prompt('Copy this URL', apiUrl); }
+    };
+    document.getElementById('reset').onclick = () => API.reset();
+    const feed = document.getElementById('feed');
+    API.on(() => {
+      if (!API.orders.length) { feed.innerHTML = '<div>Waiting for orders…</div>'; return; }
+      feed.innerHTML = API.orders.slice(0, 8).map((o) =>
+        `<div><b>${o.id}</b> · ${o.shopName} → ${o.customerName} · ${API.statusLabel(o.status)} · ${API.rs(o.totalAmount)}</div>`
+      ).join('');
+    });
+  </script>
+</body>
+</html>

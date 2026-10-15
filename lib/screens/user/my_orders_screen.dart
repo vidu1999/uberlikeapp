@@ -24,8 +24,13 @@ class MyOrdersScreen extends StatelessWidget {
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
                   title: Text(o.shopName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${o.items.map((e) => e.name).join(', ')} • Rs. ${o.totalAmount.toStringAsFixed(0)}'),
-                  trailing: Chip(label: Text(o.status.label), backgroundColor: o.status.color.withOpacity(0.15)),
+                  subtitle: Text(
+                    '${o.items.map((e) => e.name).join(', ')} • Rs. ${o.totalAmount.toStringAsFixed(0)}',
+                  ),
+                  trailing: Chip(
+                    label: Text(o.status.label),
+                    backgroundColor: o.status.color.withOpacity(0.15),
+                  ),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: o.id)),

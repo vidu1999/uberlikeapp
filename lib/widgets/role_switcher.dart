@@ -10,26 +10,28 @@ class RoleSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<UserRole>(
       icon: const Icon(Icons.swap_horiz),
-      tooltip: 'Switch role (demo)',
+      tooltip: 'Preview other roles',
       onSelected: onSwitchRole,
       itemBuilder: (_) => UserRole.values
-          .map((r) => PopupMenuItem<UserRole>(
-                value: r,
-                child: Row(
-                  children: [
-                    Icon(
-                      r == UserRole.customer
-                          ? Icons.person
-                          : r == UserRole.shop
-                              ? Icons.store
-                              : Icons.delivery_dining,
-                      color: r == currentRole ? Colors.blue : null,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(r.name.toUpperCase()),
-                  ],
-                ),
-              ))
+          .map(
+            (r) => PopupMenuItem<UserRole>(
+              value: r,
+              child: Row(
+                children: [
+                  Icon(
+                    r == UserRole.customer
+                        ? Icons.person
+                        : r == UserRole.shop
+                            ? Icons.store
+                            : Icons.delivery_dining,
+                    color: r == currentRole ? Theme.of(context).colorScheme.primary : null,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(r.name.toUpperCase()),
+                ],
+              ),
+            ),
+          )
           .toList(),
     );
   }

@@ -4,6 +4,8 @@ import '../../app.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../widgets/role_switcher.dart';
+import '../../widgets/settings_button.dart';
+import '../../widgets/tracking_map.dart';
 
 class RiderHome extends StatefulWidget {
   final UserRole currentRole;
@@ -16,12 +18,10 @@ class RiderHome extends StatefulWidget {
 
 class _RiderHomeState extends State<RiderHome> {
   Timer? _timer;
-  String? _activeOrderId;
 
-  void _pickUp(Order o) {
-    OrderRepository.instance.assignRider(o.id, 'RIDER_77');
-    OrderRepository.instance.updateStatus(o.id, OrderStatus.onTheWay);
-    _activeOrderId = o.id;
+  Future<void> _pickUp(Order o) async {
+    await OrderRepository.instance.assignRider(o.id, 'RIDER_77', riderName: 'Kamal Perera');
+    await OrderRepository.instance.updateStatus(o.id, OrderStatus.onTheWay);
     _startLocationStream(o.id);
   }
 
@@ -34,10 +34,10 @@ class _RiderHomeState extends State<RiderHome> {
     final destLat = order.deliveryLat;
     final destLng = order.deliveryLng;
     _timer = Timer.periodic(const Duration(seconds: 2), (t) {
-      lat += (destLat - lat) * 0.15;
-      lng += (destLng - lng) * 0.15;
+      lat += (destLat - lat) * 0.18;
+      lng += (destLng - lng) * 0.18;
       OrderRepository.instance.updateRiderLocation(orderId, lat, lng);
-      if ((lat - destLat).abs() < 0.0005 && (lng - destLng).abs() < 0.0005) {
+      if ((lat - destLat).abs() < 0.0004 && (lng - destLng).abs() < 0.0004) {
         t.cancel();
       }
     });
@@ -54,58 +54,85 @@ class _RiderHomeState extends State<RiderHome> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Rider Dashboard'),
-        actions: [RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole)],
+        actions: [
+          const SettingsButton(),
+          RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole),
+        ],
       ),
-      body: ValueListenableBuilder<List<Order>>(
-        valueListenable: OrderRepository.instance.ordersNotifier,
-        builder: (context, orders, _) {
-          final available = orders.where((o) => o.status == OrderStatus.ready || o.status == OrderStatus.onTheWay).toList();
-          if (available.isEmpty) {
-            return const Center(child: Text('No deliveries available'));
-          }
-          return ListView.builder(
-            itemCount: available.length,
-            itemBuilder: (context, i) {
-              final o = available[i];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(o.id, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          Chip(label: Text(o.status.label), backgroundColor: o.status.color.withOpacity(0.15)),
-                        ],
-                      ),
-                      Text('${o.shopName} → ${o.customerName}'),
-                      Text('Rs. ${o.totalAmount.toStringAsFixed(0)}'),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          if (o.status == OrderStatus.ready)
-                            ElevatedButton(
-                              onPressed: () => _pickUp(o),
-                              child: const Text('Pick Up Order'),
+      body: Column(
+        children: [
+          const ConnectionBanner(),
+          Expanded(
+            child: ValueListenableBuilder<List<Order>>(
+              valueListenable: OrderRepository.instance.ordersNotifier,
+              builder: (context, orders, _) {
+                final available =
+                    orders.where((o) => o.status == OrderStatus.ready || o.status == OrderStatus.onTheWay).toList();
+                if (available.isEmpty) {
+                  return const Center(child: Text('No deliveries yet — wait for a shop to mark Ready'));
+                }
+                return ListView.builder(
+                  itemCount: available.length,
+                  itemBuilder: (context, i) {
+                    final o = available[i];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(o.id, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Chip(
+                                  label: Text(o.status.label),
+                                  backgroundColor: o.status.color.withOpacity(0.15),
+                                ),
+                              ],
                             ),
-                          if (o.status == OrderStatus.onTheWay)
-                            ElevatedButton(
-                              onPressed: () => OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered),
-                              child: const Text('Mark Delivered'),
+                            Text('${o.shopName} → ${o.customerName}'),
+                            Text('Rs. ${o.totalAmount.toStringAsFixed(0)}'),
+                            if (o.status == OrderStatus.onTheWay)
+                              SizedBox(
+                                height: 160,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  child: TrackingMap(
+                                    destLat: o.deliveryLat,
+                                    destLng: o.deliveryLng,
+                                    riderLat: o.riderLat,
+                                    riderLng: o.riderLng,
+                                  ),
+                                ),
+                              ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                if (o.status == OrderStatus.ready)
+                                  ElevatedButton(
+                                    onPressed: () => _pickUp(o),
+                                    child: const Text('Pick Up Order'),
+                                  ),
+                                if (o.status == OrderStatus.onTheWay)
+                                  ElevatedButton(
+                                    onPressed: () =>
+                                        OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered),
+                                    child: const Text('Mark Delivered'),
+                                  ),
+                              ],
                             ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

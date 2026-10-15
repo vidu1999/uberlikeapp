@@ -13,11 +13,20 @@ class LiveTrackingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OrderRepository.instance.seed();
+    final seed = switch (defaultRole) {
+      UserRole.customer => const Color(0xFF00C853),
+      UserRole.shop => const Color(0xFFFF6D00),
+      UserRole.rider => const Color(0xFF2979FF),
+    };
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Live Tracking Delivery',
+      title: switch (defaultRole) {
+        UserRole.customer => 'SwiftDrop User',
+        UserRole.shop => 'SwiftDrop Shop',
+        UserRole.rider => 'SwiftDrop Rider',
+      },
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/repository.dart';
+import '../../models/order.dart';
 import '../../models/shop.dart';
 import 'order_tracking_screen.dart';
 
@@ -13,12 +14,16 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   String searchQuery = '';
   String selectedCategory = 'All';
+  bool placing = false;
 
   @override
   Widget build(BuildContext context) {
-    final categories = ['All', 'Bakery', 'Fast Food', 'Pizza', 'Beverages'];
+    final categories = <String>{'All', ...Catalog.items.map((e) => e.category)}.toList();
     final filtered = Catalog.items.where((item) {
-      final shop = Catalog.shops.firstWhere((s) => s.id == item.shopId);
+      final shop = Catalog.shops.firstWhere(
+        (s) => s.id == item.shopId,
+        orElse: () => Shop(id: item.shopId, name: 'Shop', category: '', rating: 0, isOpen: true),
+      );
       final matchesSearch = item.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
           shop.name.toLowerCase().contains(searchQuery.toLowerCase());
       final matchesCategory = selectedCategory == 'All' || item.category == selectedCategory;
@@ -61,14 +66,17 @@ class _SearchScreenState extends State<SearchScreen> {
               itemCount: filtered.length,
               itemBuilder: (context, i) {
                 final item = filtered[i];
-                final shop = Catalog.shops.firstWhere((s) => s.id == item.shopId);
+                final shop = Catalog.shops.firstWhere(
+                  (s) => s.id == item.shopId,
+                  orElse: () => Shop(id: item.shopId, name: 'Shop', category: '', rating: 0, isOpen: true),
+                );
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   child: ListTile(
                     title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text('${shop.name} • Rs. ${item.price.toStringAsFixed(0)}'),
                     trailing: ElevatedButton(
-                      onPressed: () => _placeOrder(context, item, shop),
+                      onPressed: placing ? null : () => _placeOrder(item, shop),
                       child: const Text('Order'),
                     ),
                   ),
@@ -81,8 +89,9 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  void _placeOrder(BuildContext context, CatalogItem item, Shop shop) {
-    final order = Order(
+  Future<void> _placeOrder(CatalogItem item, Shop shop) async {
+    setState(() => placing = true);
+    final draft = Order(
       id: 'ORD_${DateTime.now().millisecondsSinceEpoch}',
       userId: 'USER_1',
       shopId: shop.id,
@@ -95,10 +104,12 @@ class _SearchScreenState extends State<SearchScreen> {
       shopName: shop.name,
       customerName: 'Sahan Perera',
     );
-    OrderRepository.instance.addOrder(order);
+    final created = await OrderRepository.instance.addOrder(draft);
+    if (!mounted) return;
+    setState(() => placing = false);
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id)),
+      MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: created.id)),
     );
   }
 }

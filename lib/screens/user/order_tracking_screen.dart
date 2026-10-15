@@ -17,97 +17,76 @@ class OrderTrackingScreen extends StatelessWidget {
         builder: (context, snapshot) {
           final order = snapshot.data;
           if (order == null) {
-            return const Center(child: Text('Order not found'));
+            return const Center(child: Text('Waiting for order…'));
           }
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 260,
-                  child: TrackingMap(
-                    destLat: order.deliveryLat,
-                    destLng: order.deliveryLng,
-                    riderLat: order.riderLat,
-                    riderLng: order.riderLng,
-                  ),
+          return Column(
+            children: [
+              SizedBox(
+                height: 260,
+                child: TrackingMap(
+                  destLat: order.deliveryLat,
+                  destLng: order.deliveryLng,
+                  riderLat: order.riderLat,
+                  riderLng: order.riderLng,
                 ),
-                Padding(
+              ),
+              Expanded(
+                child: ListView(
                   padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Estimated Arrival', style: TextStyle(color: Colors.grey)),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: order.status.color.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(10),
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Estimated Arrival', style: TextStyle(color: Colors.grey)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: order.status.color.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            order.status.label,
+                            style: TextStyle(color: order.status.color, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      order.status == OrderStatus.delivered ? 'Delivered' : '12 – 15 minutes',
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    const Divider(height: 30),
+                    StepTracker(currentStatus: order.status),
+                    const Divider(height: 30),
+                    Row(
+                      children: [
+                        const CircleAvatar(
+                          radius: 25,
+                          backgroundColor: Colors.blueAccent,
+                          child: Icon(Icons.person, color: Colors.white),
+                        ),
+                        const SizedBox(width: 15),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              order.riderName ?? order.riderId ?? 'Assigning rider…',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                            child: Text(order.status.label,
-                                style: TextStyle(color: order.status.color, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        order.status == OrderStatus.delivered ? 'Delivered' : '12 - 15 Minutes',
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      const Divider(height: 30),
-                      StepTracker(currentStatus: order.status),
-                      const Divider(height: 30),
-                      Row(
-                        children: [
-                          const CircleAvatar(radius: 25, backgroundColor: Colors.blueAccent, child: Icon(Icons.person, color: Colors.white)),
-                          const SizedBox(width: 15),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(order.riderId ?? 'Assigning rider...', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              const Text('Delivery Partner • 4.9 ★', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                          const Spacer(),
-                          IconButton(onPressed: () {}, icon: const Icon(Icons.phone, color: Colors.green)),
-                          IconButton(onPressed: () {}, icon: const Icon(Icons.chat, color: Colors.blue)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Demo role actions
-                      const Text('Role Actions (Backend Simulator):', style: TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          ElevatedButton(
-                            onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.preparing),
-                            child: const Text('Shop: Preparing'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.ready),
-                            child: const Text('Shop: Ready'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () {
-                              OrderRepository.instance.assignRider(order.id, 'RIDER_77');
-                              OrderRepository.instance.updateStatus(order.id, OrderStatus.onTheWay);
-                            },
-                            child: const Text('Rider: Collect'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.delivered),
-                            child: const Text('Rider: Delivered'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                            const Text('Delivery Partner • 4.9 ★',
+                                style: TextStyle(color: Colors.grey, fontSize: 12)),
+                          ],
+                        ),
+                        const Spacer(),
+                        IconButton(onPressed: () {}, icon: const Icon(Icons.phone, color: Colors.green)),
+                        IconButton(onPressed: () {}, icon: const Icon(Icons.chat, color: Colors.blue)),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           );
         },
       ),
