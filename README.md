@@ -26,7 +26,7 @@ GitHub Actions builds three **different** APKs (they can be installed on the sam
 | `shop.apk` | `com.uberlike.shop` | `lib/main_shop.dart` |
 | `rider.apk` | `com.uberlike.rider` | `lib/main_rider.dart` |
 
-Download them from the **Actions → Build APKs → swiftdrop-apks** artifact.
+Download them from the GitHub Release **[swiftdrop-1.0.0](https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0)** or from **Actions → Build APKs → swiftdrop-apks**.
 
 On first launch tap the **cloud icon** and paste the studio server URL so every APK talks to the same orders.
 
