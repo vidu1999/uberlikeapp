@@ -27,7 +27,7 @@ class Shop {
         name: '${j['name']}',
         category: '${j['category'] ?? ''}',
         rating: (j['rating'] as num?)?.toDouble() ?? 0,
-        isOpen: j['isOpen'] != false,
+        isOpen: j['isOpen'] != false && j['is_open'] != false,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
         image: j['image']?.toString(),
@@ -58,12 +58,12 @@ class CatalogItem {
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) => CatalogItem(
         id: '${j['id']}',
-        shopId: '${j['shopId']}',
+        shopId: '${j['shopId'] ?? j['shop_id']}',
         name: '${j['name']}',
         category: '${j['category'] ?? ''}',
         price: (j['price'] as num?)?.toDouble() ?? 0,
-        isAvailable: j['isAvailable'] != false,
-        desc: '${j['desc'] ?? ''}',
+        isAvailable: j['isAvailable'] != false && j['is_available'] != false,
+        desc: '${j['desc'] ?? j['description'] ?? ''}',
         image: j['image']?.toString(),
       );
 }

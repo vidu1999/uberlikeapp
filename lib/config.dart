@@ -1,8 +1,17 @@
 class AppConfig {
-  /// Shared backend. Paste the live server URL (from the web studio) so the
-  /// User, Shop, and Rider APKs all talk to the same orders.
+  /// Shared Node API (OTP, writes). Paste the live server URL in the APK.
   static String baseUrl = const String.fromEnvironment(
     'API_URL',
+    defaultValue: '',
+  );
+
+  /// Optional direct Supabase REST. If empty, loaded from `/api/config`.
+  static String supabaseUrl = const String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: '',
+  );
+  static String supabaseAnon = const String.fromEnvironment(
+    'SUPABASE_ANON',
     defaultValue: '',
   );
 

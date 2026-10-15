@@ -67,27 +67,32 @@ Release: [swiftdrop-1.0.0](https://github.com/vidu1999/uberlikeapp/releases/tag/
 
 Paste the studio URL into each APK (cloud icon) so they share orders.
 
-## Database (Supabase or Firebase)
+## Database — all apps fetch from Supabase
 
-Shops, menu items, accounts, orders, and WhatsApp OTP users persist locally by default (`server/data.json`). Connect a **free** cloud database with `.env`:
+Customer, Shop, and Rider (web + APK) **read shops, menus, accounts, orders, and chat from Supabase tables** (`shops`, `menu_items`, `accounts`, `orders`, `messages`). Writes (new order, status, sold-out, chat) are saved back to those tables.
 
 ```bash
 cp .env.example .env
 ```
 
-**Supabase (Postgres, recommended)**  
-1. Create a free project at [supabase.com](https://supabase.com)  
+1. Create a free project at [supabase.com](https://supabase.com)
 2. SQL Editor → paste `server/schema.sql` → Run  
-   That file **creates tables and inserts demo data**: 11 shops (Kandy Bakers, Burger King, Pizza Hut, Ceylon Tea House, …), 33 menu items, 4 demo accounts, and orders `ORD-1001`–`ORD-1004`.  
-3. Settings → API → set `SUPABASE_URL` and `SUPABASE_KEY` (service_role)  
-4. Table Editor should show `shops`, `menu_items`, `accounts`, `orders`, `messages`
+   Creates tables **and demo rows**: 11 shops, 33 dishes, 4 accounts, orders `ORD-1001`–`ORD-1004`.
+3. Settings → API → copy **Project URL** + **anon key** into `.env`:
 
-**Firebase Realtime Database**  
-1. Create a project at [Firebase Console](https://console.firebase.google.com)  
-2. Realtime Database → Create  
-3. Set `FIREBASE_DB_URL` and `FIREBASE_SECRET`
+```
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_KEY=eyJ...anon or service_role
+SUPABASE_ANON_KEY=eyJ...anon
+```
 
-Restart `node server/index.js`. `/api/health` and the `/apps` studio show which database is live.
+4. Optional: `node server/push-seed.js` to upsert demo rows without re-running SQL.
+5. Restart the server. `/api/health` must show `"db":"supabase"` and `"cloud":true`. `/api/config` exposes the URL so the three apps query `/rest/v1/shops` directly.
+
+Also add `SUPABASE_URL` and `SUPABASE_KEY` as GitHub Actions secrets (and on Render) so deploys keep using the same database.
+
+**Firebase Realtime Database** (fallback)  
+Set `FIREBASE_DB_URL` and `FIREBASE_SECRET` instead.
 
 ## Flutter
 

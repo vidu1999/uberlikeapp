@@ -69,10 +69,10 @@
     fetch('/api/health').then((r) => r.json()).then((h) => {
       const el = document.getElementById('dbStatus');
       if (!el) return;
-      const name = h.db === 'supabase' ? 'Supabase' : h.db === 'firebase' ? 'Firebase' : 'Local JSON';
+      const name = h.db === 'supabase' ? 'Supabase tables' : h.db === 'firebase' ? 'Firebase' : 'Local JSON';
       el.textContent = h.cloud
-        ? name + ' · connected · ' + (h.shops || 0) + ' shops · ' + (h.orders || 0) + ' orders'
-        : name + (h.error ? ' · ' + h.error : ' · add .env keys, then run server/schema.sql in Supabase (includes demo data)');
+        ? name + ' · live · ' + (h.shops || 0) + ' shops · ' + (h.items || 0) + ' dishes · ' + (h.orders || 0) + ' orders'
+        : name + (h.error ? ' · ' + h.error : ' · set SUPABASE_URL + SUPABASE_KEY, run server/schema.sql');
     }).catch(() => {});
     const feed = document.getElementById('feed');
     API.on(() => {

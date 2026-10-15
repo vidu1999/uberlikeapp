@@ -4,7 +4,8 @@
   "private": true,
   "description": "Live-linked User, Shop, and Rider delivery apps",
   "scripts": {
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "seed": "node server/push-seed.js"
   },
   "engines": {
     "node": ">=18"

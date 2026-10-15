@@ -77,6 +77,13 @@ class _CustomerHomeState extends State<CustomerHome> {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: Catalog.version,
+      builder: (context, _, __) => _buildHome(context),
+    );
+  }
+
+  Widget _buildHome(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: IndexedStack(
@@ -258,6 +265,11 @@ class _CustomerHomeState extends State<CustomerHome> {
               ],
             ),
           ),
+          if (_shops.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Loading shops from the database…', style: TextStyle(color: Brand.muted)),
+            ),
           ..._shops.map((s) {
             final liked = favs.contains(s.id);
             final km = s.km ?? 2.5;

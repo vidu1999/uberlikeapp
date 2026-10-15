@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const seed = require('./seed');
 
 function loadDotEnv() {
   const file = path.join(__dirname, '..', '.env');
@@ -25,10 +26,32 @@ function loadDotEnv() {
 loadDotEnv();
 
 function supabaseUrl() {
-  return String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
+  return String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 }
 function supabaseKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || '';
+  return (
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ''
+  );
+}
+function jwtRole(key) {
+  try {
+    const part = String(key).split('.')[1] || '';
+    const json = Buffer.from(part, 'base64').toString('utf8');
+    return JSON.parse(json).role || '';
+  } catch (_) {
+    return '';
+  }
+}
+function anonKey() {
+  const explicit = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  if (explicit) return explicit;
+  const k = supabaseKey();
+  if (k && jwtRole(k) !== 'service_role') return k;
+  return '';
 }
 function firebaseUrl() {
   return String(process.env.FIREBASE_DB_URL || process.env.FIREBASE_DATABASE_URL || '').replace(/\/$/, '');
@@ -46,7 +69,7 @@ function name() {
 
 async function timedFetch(url, opts, ms) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms || 12000);
+  const t = setTimeout(() => ctrl.abort(), ms || 15000);
   try {
     return await fetch(url, { ...opts, signal: ctrl.signal });
   } finally {
@@ -70,7 +93,7 @@ async function rest(path, opts) {
     headers: sbHeaders(opts && opts.headers),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error('Supabase ' + path.split('?')[0] + ' ' + res.status + ' ' + text.slice(0, 180));
+  if (!res.ok) throw new Error('Supabase ' + path.split('?')[0] + ' ' + res.status + ' ' + text.slice(0, 220));
   if (!text) return null;
   try {
     return JSON.parse(text);
@@ -106,7 +129,7 @@ function shopFrom(r) {
     category: r.category,
     rating: Number(r.rating || 0),
     reviews: Number(r.reviews || 0),
-    isOpen: r.is_open !== false,
+    isOpen: r.is_open !== false && r.isOpen !== false,
     lat: r.lat != null ? Number(r.lat) : undefined,
     lng: r.lng != null ? Number(r.lng) : undefined,
     km: r.km != null ? Number(r.km) : undefined,
@@ -134,12 +157,12 @@ function itemRow(i) {
 function itemFrom(r) {
   return {
     id: r.id,
-    shopId: r.shop_id,
+    shopId: r.shop_id || r.shopId,
     name: r.name,
     category: r.category,
     price: Number(r.price || 0),
-    isAvailable: r.is_available !== false,
-    desc: r.description || '',
+    isAvailable: r.is_available !== false && r.isAvailable !== false,
+    desc: r.description || r.desc || '',
     image: r.image,
   };
 }
@@ -167,7 +190,7 @@ function accountFrom(r) {
     role: r.role,
     address: r.address,
   };
-  if (r.shop_id) a.shopId = r.shop_id;
+  if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
   if (r.vehicle) a.vehicle = r.vehicle;
   if (r.rating != null) a.rating = Number(r.rating);
   return a;
@@ -184,94 +207,144 @@ function orderRow(o) {
     status: o.status || null,
     total_amount: o.totalAmount,
     data: o,
+    updated_at: o.updatedAt || new Date().toISOString(),
   };
 }
-
-async function supabaseLoad() {
-  const rows = await rest('app_state?id=eq.main&select=payload');
-  const payload = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
-  if (payload && Array.isArray(payload.shops) && payload.shops.length) return payload;
-
-  let shops = [];
-  let items = [];
-  let accounts = [];
-  let orders = [];
-  const messages = {};
-  try {
-    shops = ((await rest('shops?select=*')) || []).map(shopFrom);
-    items = ((await rest('menu_items?select=*')) || []).map(itemFrom);
-    accounts = ((await rest('accounts?select=*')) || []).map(accountFrom);
-    const orderRows = (await rest('orders?select=*')) || [];
-    orders = orderRows.map((r) => r.data || r);
-    const msgs = (await rest('messages?select=*')) || [];
-    for (const m of msgs) {
-      const list = messages[m.order_id] || (messages[m.order_id] = []);
-      list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts });
-    }
-  } catch (_) {}
-
-  if (shops.length || orders.length) {
-    return {
-      shops,
-      items,
-      accounts,
-      orders,
-      messages,
-      seq: payload && payload.seq ? payload.seq : 1004,
-    };
-  }
-  return payload || null;
+function orderFrom(r) {
+  if (r && r.data && typeof r.data === 'object' && r.data.id) return r.data;
+  return {
+    id: r.id,
+    userId: r.user_id,
+    shopId: r.shop_id,
+    shopName: r.shop_name,
+    customerName: r.customer_name,
+    customerPhone: r.customer_phone,
+    address: r.address,
+    status: r.status,
+    totalAmount: Number(r.total_amount || 0),
+    items: [],
+  };
 }
 
 async function upsert(table, rows) {
   if (!rows || !rows.length) return;
-  await rest(table, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify(rows),
-  });
+  const chunk = 80;
+  for (let i = 0; i < rows.length; i += chunk) {
+    await rest(table, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(rows.slice(i, i + chunk)),
+    });
+  }
+}
+
+async function loadTables() {
+  const [shopRows, itemRows, accountRows, orderRows, msgRows] = await Promise.all([
+    rest('shops?select=*&order=id.asc'),
+    rest('menu_items?select=*&order=id.asc'),
+    rest('accounts?select=*'),
+    rest('orders?select=*&order=id.asc'),
+    rest('messages?select=*'),
+  ]);
+  const shops = (shopRows || []).map(shopFrom);
+  const items = (itemRows || []).map(itemFrom);
+  const accounts = (accountRows || []).map(accountFrom);
+  const orders = (orderRows || []).map(orderFrom);
+  const messages = {};
+  for (const m of msgRows || []) {
+    const list = messages[m.order_id] || (messages[m.order_id] = []);
+    list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts });
+  }
+  let seq = 1000;
+  for (const o of orders) {
+    const n = Number(String(o.id || '').replace(/\D/g, ''));
+    if (n > seq) seq = n;
+  }
+  return { shops, items, accounts, orders, messages, seq };
+}
+
+async function ensureSeed(force) {
+  if (name() !== 'supabase') return { seeded: false };
+  const existing = await rest('shops?select=id');
+  const empty = !existing || !existing.length;
+  if (!empty && !force) return { seeded: false, shops: existing.length };
+  await upsert('shops', seed.shops.map(shopRow));
+  await upsert('menu_items', seed.items.map(itemRow));
+  await upsert('accounts', seed.accounts.map(accountRow));
+  const orderRows = await rest('orders?select=id');
+  if (force || !orderRows || !orderRows.length) {
+    const demo = seed.demoOrders();
+    await upsert('orders', demo.map(orderRow));
+    const msgs = [];
+    for (const o of demo) {
+      msgs.push({
+        id: 'm0',
+        order_id: o.id,
+        sender: 'QuickBite',
+        role: 'system',
+        body: 'Demo order loaded from Supabase.',
+        ts: Date.now(),
+      });
+    }
+    if (msgs.length) await upsert('messages', msgs);
+  }
+  return { seeded: true };
+}
+
+async function supabaseLoad() {
+  const tables = await loadTables();
+  if (tables.shops.length) return tables;
+  try {
+    await ensureSeed(false);
+    return await loadTables();
+  } catch (err) {
+    console.error('Supabase seed failed:', err.message);
+  }
+  const rows = await rest('app_state?id=eq.main&select=payload');
+  const payload = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
+  return payload || tables;
 }
 
 async function supabaseSave(payload) {
-  await rest('app_state', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({
-      id: 'main',
-      payload,
-      updated_at: new Date().toISOString(),
-    }),
-  });
-  try {
-    if (Array.isArray(payload.shops)) await upsert('shops', payload.shops.map(shopRow));
-    if (Array.isArray(payload.items)) await upsert('menu_items', payload.items.map(itemRow));
-    if (Array.isArray(payload.accounts)) await upsert('accounts', payload.accounts.map(accountRow));
-    if (Array.isArray(payload.orders)) await upsert('orders', payload.orders.map(orderRow));
-    const msgs = [];
-    if (payload.messages && typeof payload.messages === 'object') {
-      for (const [orderId, list] of Object.entries(payload.messages)) {
-        for (const m of list || []) {
-          msgs.push({
-            id: m.id,
-            order_id: orderId,
-            sender: m.from || m.sender || null,
-            role: m.role || null,
-            body: m.text || m.body || '',
-            ts: m.ts || Date.now(),
-          });
-        }
+  const jobs = [];
+  if (Array.isArray(payload.shops)) jobs.push(upsert('shops', payload.shops.map(shopRow)));
+  if (Array.isArray(payload.items)) jobs.push(upsert('menu_items', payload.items.map(itemRow)));
+  if (Array.isArray(payload.accounts)) jobs.push(upsert('accounts', payload.accounts.map(accountRow)));
+  if (Array.isArray(payload.orders)) jobs.push(upsert('orders', payload.orders.map(orderRow)));
+  const msgs = [];
+  if (payload.messages && typeof payload.messages === 'object') {
+    for (const [orderId, list] of Object.entries(payload.messages)) {
+      for (const m of list || []) {
+        msgs.push({
+          id: m.id,
+          order_id: orderId,
+          sender: m.from || m.sender || null,
+          role: m.role || null,
+          body: m.text || m.body || '',
+          ts: m.ts || Date.now(),
+        });
       }
     }
-    if (msgs.length) await upsert('messages', msgs);
-  } catch (err) {
-    console.error('Supabase table sync skipped:', err.message);
   }
+  if (msgs.length) jobs.push(upsert('messages', msgs));
+  await Promise.all(jobs);
+  try {
+    await rest('app_state', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        id: 'main',
+        payload,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch (_) {}
 }
 
 async function firebaseLoad() {
@@ -314,7 +387,20 @@ function info() {
     db: kind,
     supabase: Boolean(supabaseUrl() && supabaseKey()),
     firebase: Boolean(firebaseUrl()),
+    supabaseUrl: supabaseUrl(),
+    supabaseAnon: anonKey(),
   };
 }
 
-module.exports = { name, load, save, info };
+module.exports = {
+  name,
+  load,
+  save,
+  info,
+  ensureSeed,
+  supabaseUrl,
+  anonKey,
+  shopFrom,
+  itemFrom,
+  orderFrom,
+};

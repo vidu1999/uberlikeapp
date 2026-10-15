@@ -14,9 +14,9 @@ class ChatMessage {
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
         id: '${j['id']}',
-        from: '${j['from'] ?? ''}',
+        from: '${j['from'] ?? j['sender'] ?? ''}',
         role: '${j['role'] ?? ''}',
-        text: '${j['text'] ?? ''}',
+        text: '${j['text'] ?? j['body'] ?? ''}',
         ts: (j['ts'] as num?)?.toInt() ?? 0,
       );
 }

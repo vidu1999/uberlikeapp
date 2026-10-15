@@ -9,6 +9,9 @@ class ShopMenuScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: Catalog.version,
+      builder: (context, _, __) {
     final items = Catalog.items.where((i) => i.shopId == shop.id).toList();
     return Scaffold(
       appBar: AppBar(title: Text(shop.name)),
@@ -58,6 +61,8 @@ class ShopMenuScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

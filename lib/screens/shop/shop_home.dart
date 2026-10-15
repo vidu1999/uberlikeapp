@@ -28,7 +28,9 @@ class _ShopHomeState extends State<ShopHome> {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
+    return ValueListenableBuilder<int>(
+      valueListenable: Catalog.version,
+      builder: (context, _, __) => Theme(
       data: Brand.dark(),
       child: Scaffold(
         backgroundColor: Brand.navy,
@@ -55,6 +57,7 @@ class _ShopHomeState extends State<ShopHome> {
           ],
         ),
       ),
+    ),
     );
   }
 

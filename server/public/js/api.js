@@ -26,6 +26,74 @@
     return (API.base || '') + path;
   }
 
+  function sbConfigured() {
+    return Boolean(window.QB_SUPABASE_URL && window.QB_SUPABASE_ANON);
+  }
+
+  function mapShop(r) {
+    return {
+      id: r.id,
+      name: r.name,
+      category: r.category,
+      rating: Number(r.rating || 0),
+      reviews: Number(r.reviews || 0),
+      isOpen: r.is_open !== false && r.isOpen !== false,
+      lat: r.lat != null ? Number(r.lat) : undefined,
+      lng: r.lng != null ? Number(r.lng) : undefined,
+      km: r.km != null ? Number(r.km) : undefined,
+      emoji: r.emoji,
+      eta: r.eta,
+      fee: r.fee != null ? Number(r.fee) : 0,
+      hours: r.hours,
+      address: r.address,
+      image: r.image,
+      promo: r.promo,
+    };
+  }
+  function mapItem(r) {
+    return {
+      id: r.id,
+      shopId: r.shop_id || r.shopId,
+      name: r.name,
+      category: r.category,
+      price: Number(r.price || 0),
+      isAvailable: r.is_available !== false && r.isAvailable !== false,
+      desc: r.description || r.desc || '',
+      image: r.image,
+    };
+  }
+
+  async function sbGet(table) {
+    const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
+    const res = await fetch(base + '/rest/v1/' + table, {
+      headers: {
+        apikey: window.QB_SUPABASE_ANON,
+        Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
+      },
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error('Supabase ' + table.split('?')[0] + ' ' + res.status);
+    return text ? JSON.parse(text) : [];
+  }
+
+  async function pullSupabase() {
+    const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
+      sbGet('shops?select=*&order=id.asc'),
+      sbGet('menu_items?select=*&order=id.asc'),
+      sbGet('orders?select=*'),
+      sbGet('messages?select=*'),
+    ]);
+    API.shops = (shopRows || []).map(mapShop);
+    API.items = (itemRows || []).map(mapItem);
+    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r));
+    API.messages = {};
+    for (const m of msgRows || []) {
+      const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
+      list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts });
+    }
+    notify();
+  }
+
   async function getJSON(path, opts) {
     const res = await fetch(url(path), opts);
     const text = await res.text();
@@ -41,6 +109,17 @@
   };
 
   API.refresh = async function () {
+    if (!window.QB_SUPABASE_URL) {
+      try {
+        const cfg = await getJSON('/api/config');
+        if (cfg.supabaseUrl) window.QB_SUPABASE_URL = cfg.supabaseUrl;
+        if (cfg.supabaseAnon) window.QB_SUPABASE_ANON = cfg.supabaseAnon;
+      } catch (_) {}
+    }
+    if (sbConfigured()) {
+      await pullSupabase();
+      return;
+    }
     const data = await getJSON('/api/state');
     API.shops = data.shops;
     API.items = data.items;
@@ -164,6 +243,10 @@
   try {
     const es = new EventSource(url('/api/stream'));
     es.onmessage = (ev) => {
+      if (sbConfigured()) {
+        API.refresh().catch(() => {});
+        return;
+      }
       const data = JSON.parse(ev.data);
       if (data.type === 'state') {
         API.shops = data.shops;
@@ -177,5 +260,8 @@
 
   API.restore();
   API.refresh().catch(() => {});
+  setInterval(() => {
+    if (sbConfigured()) API.refresh().catch(() => {});
+  }, 2500);
   global.API = API;
 })(window);

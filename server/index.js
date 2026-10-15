@@ -42,21 +42,8 @@ function applySnapshot(d) {
   if (d.messages && typeof d.messages === 'object') messages = d.messages;
   if (d.seq) seq = Number(d.seq) || seq;
   if (Array.isArray(d.shops) && d.shops.length) shops = d.shops;
-  if (Array.isArray(d.items) && d.items.length) {
-    const byId = new Map(seed.items.map((i) => [i.id, { ...i }]));
-    for (const i of d.items) {
-      if (!i || !i.id) continue;
-      byId.set(i.id, { ...(byId.get(i.id) || {}), ...i });
-    }
-    items = [...byId.values()];
-  }
-  if (Array.isArray(d.accounts) && d.accounts.length) {
-    const byId = new Map(accounts.map((a) => [a.id, a]));
-    for (const a of d.accounts) {
-      if (a && a.id) byId.set(a.id, a);
-    }
-    accounts = [...byId.values()];
-  }
+  if (Array.isArray(d.items) && d.items.length) items = d.items;
+  if (Array.isArray(d.accounts) && d.accounts.length) accounts = d.accounts;
 }
 
 function seedDemoIfEmpty() {
@@ -86,17 +73,56 @@ function load() {
   if (seedDemoIfEmpty()) save();
 }
 
-function save() {
+let lastHydrate = 0;
+
+async function hydrateFromCloud(opts) {
+  const force = opts && opts.force;
+  if (db.name() === 'local') return false;
+  if (!force && Date.now() - lastHydrate < 800) return dbReady.cloud;
+  lastHydrate = Date.now();
+  try {
+    if (opts && opts.seedIfEmpty) {
+      await db.ensureSeed(false);
+    }
+    const cloud = await db.load();
+    if (cloud && ((cloud.shops && cloud.shops.length) || (cloud.orders && cloud.orders.length))) {
+      applySnapshot(cloud);
+      dbReady.cloud = true;
+      dbReady.error = null;
+      try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(snapshot(), null, 2));
+      } catch (_) {}
+      return true;
+    }
+  } catch (err) {
+    dbReady.cloud = false;
+    dbReady.error = err.message;
+    console.error('Supabase pull failed:', err.message);
+  }
+  return false;
+}
+
+async function persist() {
   const snap = snapshot();
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(snap, null, 2));
   } catch (err) {
     console.error('save failed', err.message);
   }
-  db.save(snap).catch((err) => {
+  if (db.name() === 'local') return;
+  try {
+    await db.save(snap);
+    dbReady.cloud = true;
+    dbReady.error = null;
+    lastHydrate = 0;
+  } catch (err) {
     dbReady.error = err.message;
     console.error('cloud save failed', err.message);
-  });
+  }
+}
+
+function save() {
+  persist().catch(() => {});
 }
 
 function shopById(id) {
@@ -241,7 +267,20 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (pathname === '/api/config' && req.method === 'GET') {
+    const inf = db.info();
+    json(res, 200, {
+      db: inf.db,
+      cloud: dbReady.cloud,
+      supabaseUrl: inf.supabaseUrl || '',
+      supabaseAnon: inf.supabaseAnon || '',
+      tables: ['shops', 'menu_items', 'accounts', 'orders', 'messages'],
+    });
+    return;
+  }
+
   if (pathname === '/api/health') {
+    await hydrateFromCloud();
     json(res, 200, {
       ok: true,
       orders: orders.length,
@@ -292,7 +331,7 @@ async function handleApi(req, res, url) {
         if (pending.email) user.email = pending.email;
         if (pending.pin) user.pin = pending.pin;
         pendingReg.delete(checked.phone);
-        save();
+        await persist();
       }
       const tok = token();
       sessions[tok] = user.id;
@@ -320,16 +359,19 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/accounts' && req.method === 'GET') {
+    await hydrateFromCloud();
     json(res, 200, accounts.map(publicUser));
     return;
   }
 
   if (pathname === '/api/shops' && req.method === 'GET') {
+    await hydrateFromCloud();
     json(res, 200, shops);
     return;
   }
 
   if (pathname === '/api/items' && req.method === 'GET') {
+    await hydrateFromCloud();
     json(res, 200, items);
     return;
   }
@@ -344,19 +386,21 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     if (typeof body.isAvailable === 'boolean') item.isAvailable = body.isAvailable;
     if (body.price != null) item.price = Number(body.price);
-    save();
+    await persist();
     broadcast();
     json(res, 200, item);
     return;
   }
 
   if (pathname === '/api/orders' && req.method === 'GET') {
+    await hydrateFromCloud();
     json(res, 200, orders);
     return;
   }
 
   if (pathname === '/api/state' && req.method === 'GET') {
-    json(res, 200, { orders, shops, items, messages });
+    await hydrateFromCloud();
+    json(res, 200, { orders, shops, items, messages, db: dbReady.db, cloud: dbReady.cloud });
     return;
   }
 
@@ -368,7 +412,7 @@ async function handleApi(req, res, url) {
     messages = {};
     seq = 1000;
     seedDemoIfEmpty();
-    save();
+    await persist();
     broadcast();
     json(res, 200, { ok: true });
     return;
@@ -407,7 +451,7 @@ async function handleApi(req, res, url) {
       if (email) user.email = email;
       user.pin = pin;
     }
-    save();
+    await persist();
     if (role === 'shop' || role === 'rider') {
       json(res, 200, {
         ok: true,
@@ -483,7 +527,7 @@ async function handleApi(req, res, url) {
         ts: Date.now(),
       },
     ];
-    save();
+    await persist();
     broadcast();
     json(res, 201, order);
     return;
@@ -514,7 +558,7 @@ async function handleApi(req, res, url) {
       return;
     }
     list.push(msg);
-    save();
+    await persist();
     broadcast();
     json(res, 201, msg);
     return;
@@ -557,7 +601,7 @@ async function handleApi(req, res, url) {
         ts: Date.now(),
       });
     }
-    save();
+    await persist();
     broadcast();
     json(res, 200, order);
     return;
@@ -583,6 +627,20 @@ async function handleApi(req, res, url) {
 
 function handleStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
+  if (p === '/js/live.js') {
+    const inf = db.info();
+    const body =
+      'window.QB_API = ' +
+      JSON.stringify(process.env.PUBLIC_API_URL || '') +
+      ';\nwindow.QB_SUPABASE_URL = ' +
+      JSON.stringify(inf.supabaseUrl || '') +
+      ';\nwindow.QB_SUPABASE_ANON = ' +
+      JSON.stringify(inf.supabaseAnon || '') +
+      ';\n';
+    res.writeHead(200, cors(res, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' }));
+    res.end(body);
+    return;
+  }
   if (p === '/') p = '/index.html';
   if (p === '/user' || p === '/user/') p = '/user.html';
   if (p === '/shop' || p === '/shop/') p = '/shop.html';
@@ -632,18 +690,14 @@ async function boot() {
   load();
   dbReady.db = db.name();
   try {
-    const cloud = await db.load();
-    if (cloud) {
-      applySnapshot(cloud);
-      dbReady.cloud = true;
-      if (seedDemoIfEmpty()) save();
-      console.log('Database: ' + dbReady.db + ' (cloud loaded)');
+    const ok = await hydrateFromCloud({ force: true, seedIfEmpty: true });
+    if (ok) {
+      console.log('Database: supabase tables (' + shops.length + ' shops, ' + items.length + ' items, ' + orders.length + ' orders)');
     } else if (dbReady.db !== 'local') {
-      dbReady.cloud = false;
-      console.log('Database: ' + dbReady.db + ' configured, empty — using local until first save');
-      save();
+      console.log('Database: ' + dbReady.db + ' configured but empty — pushing demo seed');
+      await persist();
     } else {
-      console.log('Database: local JSON (set SUPABASE_URL or FIREBASE_DB_URL in .env)');
+      console.log('Database: local JSON (set SUPABASE_URL + SUPABASE_KEY in .env)');
     }
   } catch (err) {
     dbReady.cloud = false;

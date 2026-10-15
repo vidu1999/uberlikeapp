@@ -30,7 +30,9 @@ class _SearchScreenState extends State<SearchScreen> {
       return matchesSearch && matchesCategory && item.isAvailable;
     }).toList();
 
-    return Scaffold(
+    return ValueListenableBuilder<int>(
+      valueListenable: Catalog.version,
+      builder: (context, _, __) => Scaffold(
       appBar: AppBar(title: const Text('Search Shops & Items')),
       body: Column(
         children: [
@@ -86,6 +88,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

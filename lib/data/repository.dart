@@ -128,7 +128,85 @@ class OrderRepository {
     token = null;
   }
 
+  Future<void> _loadSupabaseConfig() async {
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) return;
+    final uri = _uri('/api/config');
+    if (uri == null) return;
+    try {
+      final res = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final u = '${data['supabaseUrl'] ?? ''}';
+        final k = '${data['supabaseAnon'] ?? ''}';
+        if (u.isNotEmpty) AppConfig.supabaseUrl = u;
+        if (k.isNotEmpty) AppConfig.supabaseAnon = k;
+      }
+    } catch (_) {}
+  }
+
+  Uri? _sb(String table) {
+    final base = AppConfig.normalize(AppConfig.supabaseUrl);
+    if (base.isEmpty || AppConfig.supabaseAnon.isEmpty) return null;
+    return Uri.parse('$base/rest/v1/$table');
+  }
+
+  Future<List<dynamic>> _sbGet(String table) async {
+    final uri = _sb(table);
+    if (uri == null) return const [];
+    final res = await http
+        .get(uri, headers: {
+          'apikey': AppConfig.supabaseAnon,
+          'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+        })
+        .timeout(const Duration(seconds: 8));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Supabase $table ${res.statusCode}');
+    }
+    final data = jsonDecode(res.body);
+    return data is List ? data : const [];
+  }
+
+  Future<bool> _refreshFromSupabase() async {
+    try {
+      final shopRows = await _sbGet('shops?select=*&order=id.asc');
+      final itemRows = await _sbGet('menu_items?select=*&order=id.asc');
+      final orderRows = await _sbGet('orders?select=*');
+      final msgRows = await _sbGet('messages?select=*');
+      Catalog.set(
+        shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+      );
+      ordersNotifier.value = orderRows
+          .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+      messages.clear();
+      for (final raw in msgRows) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final oid = '${m['order_id'] ?? ''}';
+        if (oid.isEmpty) continue;
+        (messages[oid] ??= <ChatMessage>[]).add(
+          ChatMessage(
+            id: '${m['id']}',
+            from: '${m['sender'] ?? m['from'] ?? ''}',
+            role: '${m['role'] ?? ''}',
+            text: '${m['body'] ?? m['text'] ?? ''}',
+            ts: (m['ts'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      }
+      connectedNotifier.value = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> refresh() async {
+    await _loadSupabaseConfig();
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) {
+      final ok = await _refreshFromSupabase();
+      if (ok) return;
+    }
     final uri = _uri('/api/state');
     if (uri == null) {
       connectedNotifier.value = false;
@@ -143,9 +221,11 @@ class OrderRepository {
             .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList();
         final rawShops = (data['shops'] as List?) ?? const [];
-        Catalog.shops = rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))).toList();
         final rawItems = (data['items'] as List?) ?? const [];
-        Catalog.items = rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+        Catalog.set(
+          rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+          rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+        );
         messages.clear();
         final rawMsg = data['messages'];
         if (rawMsg is Map) {
@@ -313,22 +393,13 @@ class OrderRepository {
 }
 
 class Catalog {
-  static List<Shop> shops = List<Shop>.from(_defaultShops);
-  static List<CatalogItem> items = List<CatalogItem>.from(_defaultItems);
+  static List<Shop> shops = <Shop>[];
+  static List<CatalogItem> items = <CatalogItem>[];
+  static final ValueNotifier<int> version = ValueNotifier<int>(0);
+
+  static void set(List<Shop> nextShops, List<CatalogItem> nextItems) {
+    shops = nextShops;
+    items = nextItems;
+    version.value++;
+  }
 }
-
-const _defaultShops = <Shop>[
-  Shop(id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, isOpen: true, km: 2.5, reviews: 120, image: '/img/shop-bakery.jpg'),
-  Shop(id: 'SHOP_2', name: 'Burger King', category: 'Fast Food', rating: 4.6, isOpen: true, km: 3.2, reviews: 98, image: '/img/shop-burger.jpg'),
-  Shop(id: 'SHOP_3', name: 'Pizza Hut', category: 'Pizza', rating: 4.5, isOpen: true, km: 4.1, reviews: 76, image: '/img/shop-pizza.jpg'),
-  Shop(id: 'SHOP_4', name: 'Coffee Lab', category: 'Beverages', rating: 4.7, isOpen: true),
-  Shop(id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, isOpen: true),
-];
-
-const _defaultItems = <CatalogItem>[
-  CatalogItem(id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500),
-  CatalogItem(id: 'I2', shopId: 'SHOP_1', name: 'Butter Cake Slice', category: 'Bakery', price: 350),
-  CatalogItem(id: 'I3', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200),
-  CatalogItem(id: 'I5', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400),
-  CatalogItem(id: 'I13', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950),
-];

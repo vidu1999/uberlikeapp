@@ -182,24 +182,27 @@ class Order {
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
+    if (j['data'] is Map) {
+      j = Map<String, dynamic>.from(j['data'] as Map);
+    }
     final itemsRaw = (j['items'] as List?) ?? const [];
     return Order(
       id: '${j['id']}',
-      userId: '${j['userId'] ?? 'USER_1'}',
-      shopId: '${j['shopId']}',
-      riderId: j['riderId']?.toString(),
+      userId: '${j['userId'] ?? j['user_id'] ?? 'USER_1'}',
+      shopId: '${j['shopId'] ?? j['shop_id']}',
+      riderId: (j['riderId'] ?? j['rider_id'])?.toString(),
       status: OrderStatusX.fromApi(j['status']?.toString()),
       items: itemsRaw
           .map((e) => DeliveryItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
-      totalAmount: (j['totalAmount'] as num?)?.toDouble() ?? 0,
+      totalAmount: ((j['totalAmount'] ?? j['total_amount']) as num?)?.toDouble() ?? 0,
       deliveryLat: (j['deliveryLat'] as num?)?.toDouble() ?? 6.9271,
       deliveryLng: (j['deliveryLng'] as num?)?.toDouble() ?? 79.8612,
       riderLat: (j['riderLat'] as num?)?.toDouble(),
       riderLng: (j['riderLng'] as num?)?.toDouble(),
-      timestamp: DateTime.tryParse('${j['timestamp'] ?? ''}') ?? DateTime.now(),
-      shopName: '${j['shopName'] ?? ''}',
-      customerName: '${j['customerName'] ?? ''}',
+      timestamp: DateTime.tryParse('${j['timestamp'] ?? j['updated_at'] ?? ''}') ?? DateTime.now(),
+      shopName: '${j['shopName'] ?? j['shop_name'] ?? ''}',
+      customerName: '${j['customerName'] ?? j['customer_name'] ?? ''}',
       riderName: j['riderName']?.toString(),
       riderPhone: j['riderPhone']?.toString(),
     );
