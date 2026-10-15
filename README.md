@@ -1,38 +1,40 @@
-# SwiftDrop — 3 linked delivery apps
+# SwiftDrop — User + Shop + Rider
 
-Uber-style **User**, **Shop**, and **Rider** apps that share one live backend.
+A complete Uber-style delivery product: **three apps, one live backend**.
 
 ```
-User searches & orders  →  Shop accepts / prepares / marks ready  →  Rider picks up (live GPS)  →  User map tracks the bike  →  Delivered
+User carts & pays COD  →  Shop accepts / cooks / marks ready  →  Rider GPS  →  User map + chat  →  Delivered
 ```
 
-## Try it now (web studio)
-
-Run the shared server:
+## Live studio
 
 ```bash
 node server/index.js
 ```
 
-Open the studio at `http://localhost:3000`. You will see all three apps side by side. They update each other over Server-Sent Events — no Firebase key required.
+Open `http://localhost:3000` — three phones side by side, already logged in.
 
-## Three Android APKs
-
-GitHub Actions builds three **different** APKs (they can be installed on the same phone together):
-
-| APK | Application ID | Entry |
+| Role | Phone | PIN |
 | --- | --- | --- |
-| `user.apk` | `com.uberlike.customer` | `lib/main_user.dart` |
-| `shop.apk` | `com.uberlike.shop` | `lib/main_shop.dart` |
-| `rider.apk` | `com.uberlike.rider` | `lib/main_rider.dart` |
+| Customer (Sahan) | 0771234567 | 1234 |
+| Shop (Nadeesha) | 0772223333 | 1234 |
+| Rider (Kamal) | 0775556666 | 1234 |
 
-Download them from the GitHub Release **[swiftdrop-1.0.0](https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0)** or from **Actions → Build APKs → swiftdrop-apks**.
+Included: search, shop menus, cart, checkout, kitchen board, menu sold-out toggles, rider jobs, live OSM map, in-order chat, cash on delivery, ratings, earnings.
 
-On first launch tap the **cloud icon** and paste the studio server URL so every APK talks to the same orders.
+## Android APKs
 
-Release APKs allow cleartext HTTP so a laptop LAN address such as `http://192.168.1.8:3000` works on a real device.
+Different package names — install all three on one phone.
 
-## Flutter (local)
+- [user.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/user.apk) `com.uberlike.customer`
+- [shop.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk) `com.uberlike.shop`
+- [rider.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk) `com.uberlike.rider`
+
+Release: [swiftdrop-1.0.0](https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0)
+
+Paste the studio URL into each APK (cloud icon) so they share orders.
+
+## Flutter
 
 ```bash
 flutter pub get
@@ -40,13 +42,3 @@ flutter run -t lib/main_user.dart
 flutter run -t lib/main_shop.dart
 flutter run -t lib/main_rider.dart
 ```
-
-## API
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/state` | shops + items + orders |
-| POST | `/api/orders` | customer places order |
-| PATCH | `/api/orders/:id` | shop/rider status + GPS |
-| GET | `/api/stream` | live SSE |
-| POST | `/api/reset` | clear demo orders |

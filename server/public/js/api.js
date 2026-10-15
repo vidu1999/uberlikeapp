@@ -3,21 +3,30 @@
     shops: [],
     items: [],
     orders: [],
+    messages: {},
     listeners: [],
+    user: null,
+    token: null,
+    roleHint: document.documentElement.getAttribute('data-role') || '',
   };
 
   function shopOf(id) {
-    return API.shops.find((s) => s.id === id) || { name: 'Shop', emoji: '🏪', lat: 6.93, lng: 79.85 };
+    return API.shops.find((s) => s.id === id) || { name: 'Shop', emoji: '🏪', lat: 6.93, lng: 79.85, eta: '20 min' };
   }
 
   function notify() {
-    API.listeners.forEach((fn) => fn(API));
+    API.listeners.forEach((fn) => {
+      try { fn(API); } catch (e) { console.error(e); }
+    });
   }
 
   async function getJSON(path, opts) {
     const res = await fetch(path, opts);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const text = await res.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { error: text }; }
+    if (!res.ok) throw new Error(data.error || text || res.status);
+    return data;
   }
 
   API.on = function (fn) {
@@ -30,26 +39,38 @@
     API.shops = data.shops;
     API.items = data.items;
     API.orders = data.orders;
+    API.messages = data.messages || {};
     notify();
   };
 
-  API.placeOrder = async function (item) {
-    const shop = shopOf(item.shopId);
-    return getJSON('/api/orders', {
+  API.login = async function (role, phone, pin) {
+    const data = await getJSON('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        shopId: item.shopId,
-        customerName: 'Sahan Perera',
-        userId: 'USER_1',
-        deliveryLat: 6.9271,
-        deliveryLng: 79.8612,
-        items: [{ name: item.name, qty: 1, price: item.price }],
-      }),
-    }).then(async (order) => {
-      await API.refresh();
-      return order;
+      body: JSON.stringify({ role, phone, pin: pin || '1234' }),
     });
+    API.user = data.user;
+    API.token = data.token;
+    try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
+    notify();
+    return data.user;
+  };
+
+  API.restore = function () {
+    try {
+      const raw = sessionStorage.getItem('sd_user_' + (API.roleHint || 'customer'));
+      if (raw) API.user = JSON.parse(raw);
+    } catch (_) {}
+  };
+
+  API.placeOrder = async function (payload) {
+    const order = await getJSON('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await API.refresh();
+    return order;
   };
 
   API.patch = async function (id, body) {
@@ -60,6 +81,22 @@
     });
     await API.refresh();
     return order;
+  };
+
+  API.toggleItem = function (id, isAvailable) {
+    return getJSON('/api/items/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isAvailable }),
+    }).then(() => API.refresh());
+  };
+
+  API.sendMessage = function (orderId, from, role, text) {
+    return getJSON('/api/orders/' + encodeURIComponent(orderId) + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, role, text }),
+    }).then(() => API.refresh());
   };
 
   API.reset = function () {
@@ -93,11 +130,13 @@
         API.shops = data.shops;
         API.items = data.items;
         API.orders = data.orders;
+        API.messages = data.messages || {};
         notify();
       }
     };
   } catch (_) {}
 
+  API.restore();
   API.refresh().catch(() => {});
   global.API = API;
 })(window);

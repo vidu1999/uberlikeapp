@@ -5,6 +5,8 @@ import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
 import 'search_screen.dart';
 import 'my_orders_screen.dart';
+import 'shop_menu_screen.dart';
+import 'cart_screen.dart';
 
 class CustomerHome extends StatelessWidget {
   final UserRole currentRole;
@@ -17,6 +19,10 @@ class CustomerHome extends StatelessWidget {
       appBar: AppBar(
         title: const Text('SwiftDrop'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.shopping_bag_outlined),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
+          ),
           const SettingsButton(),
           RoleSwitcher(currentRole: currentRole, onSwitchRole: onSwitchRole),
         ],
@@ -65,7 +71,7 @@ class CustomerHome extends StatelessWidget {
                                 : const Text('Closed', style: TextStyle(color: Colors.red)),
                             onTap: () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const SearchScreen()),
+                              MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s)),
                             ),
                           ),
                         );

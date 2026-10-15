@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'data/repository.dart';
+import 'models/message.dart';
+import 'screens/login_screen.dart';
 import 'screens/user/customer_home.dart';
 import 'screens/shop/shop_home.dart';
 import 'screens/rider/rider_home.dart';
@@ -30,7 +32,23 @@ class LiveTrackingApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFF5F7FA),
       ),
-      home: MainShell(initialRole: defaultRole),
+      home: AuthGate(role: defaultRole),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  final UserRole role;
+  const AuthGate({super.key, required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<SessionUser?>(
+      valueListenable: OrderRepository.instance.userNotifier,
+      builder: (context, user, _) {
+        if (user == null) return LoginScreen(role: role);
+        return MainShell(initialRole: role);
+      },
     );
   }
 }

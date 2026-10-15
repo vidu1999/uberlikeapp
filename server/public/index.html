@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SwiftDrop · 3 live apps</title>
+  <title>SwiftDrop · User + Shop + Rider</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/app.css" />
@@ -12,37 +12,47 @@
   <div class="studio">
     <div class="studio-head">
       <div>
-        <p style="color:#86efac;font-weight:800;letter-spacing:.12em;font-size:12px;margin:0 0 8px">LIVE MULTI-APP STUDIO</p>
-        <h1>SwiftDrop — User, Shop & Rider</h1>
-        <p>Three apps, one backend. Place an order on the left, accept it in the kitchen, pick it up as the rider. The customer map follows the bike in real time.</p>
+        <p style="color:#86efac;font-weight:800;letter-spacing:.12em;font-size:12px;margin:0 0 8px">100% LIVE MULTI-APP PRODUCT</p>
+        <h1>SwiftDrop — three apps, one city.</h1>
+        <p>Customer, kitchen, and rider share one backend. Place an order on the left, cook it in the middle, deliver it on the right. The map, chat, and status update in real time.</p>
       </div>
       <div>
         <button class="btn dark" id="reset">Reset demo</button>
-        <a class="btn" href="/user" target="_blank" style="text-decoration:none;display:inline-block;margin-left:8px">Open User</a>
+        <a class="btn" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
       </div>
+    </div>
+    <div class="howto">
+      <div><b>1. User</b>Open a shop, add to cart, checkout</div>
+      <div><b>2. Shop</b>Accept & cook, then mark ready</div>
+      <div><b>3. Rider</b>Pick up — GPS starts streaming</div>
+      <div><b>4. Track</b>User map + chat follow the bike</div>
+      <div><b>5. Done</b>Rider taps Delivered. Rate the drop.</div>
     </div>
     <div class="phones">
       <div class="phone-wrap">
-        <div class="phone-label"><span>🟢 User app</span><a href="/user" target="_blank" style="color:#86efac">Open ↗</a></div>
-        <div class="phone"><iframe src="/user" title="User app"></iframe></div>
+        <div class="phone-label"><span>🟢 User</span><a href="/user?demo=1" target="_blank" style="color:#86efac">Open ↗</a></div>
+        <div class="phone"><iframe src="/user?demo=1" title="User app"></iframe></div>
       </div>
       <div class="phone-wrap">
-        <div class="phone-label"><span>🟠 Shop app</span><a href="/shop" target="_blank" style="color:#fdba74">Open ↗</a></div>
-        <div class="phone"><iframe src="/shop" title="Shop app"></iframe></div>
+        <div class="phone-label"><span>🟠 Shop</span><a href="/shop?demo=1" target="_blank" style="color:#fdba74">Open ↗</a></div>
+        <div class="phone"><iframe src="/shop?demo=1" title="Shop app"></iframe></div>
       </div>
       <div class="phone-wrap">
-        <div class="phone-label"><span>🔵 Rider app</span><a href="/rider" target="_blank" style="color:#93c5fd">Open ↗</a></div>
-        <div class="phone"><iframe src="/rider" title="Rider app"></iframe></div>
+        <div class="phone-label"><span>🔵 Rider</span><a href="/rider?demo=1" target="_blank" style="color:#93c5fd">Open ↗</a></div>
+        <div class="phone"><iframe src="/rider?demo=1" title="Rider app"></iframe></div>
       </div>
     </div>
     <div class="panel">
-      <h3>How they combine</h3>
-      <p class="muted" style="margin-top:0">1. User searches and taps <b>Order</b> → 2. Shop taps <b>Accept & prepare</b> then <b>Mark ready</b> → 3. Rider taps <b>Pick up</b> (GPS streams) → 4. User tracking map moves → 5. Rider taps <b>Mark delivered</b>.</p>
+      <h3>Connect the Android APKs</h3>
+      <p class="muted" style="margin-top:0">Install all three APKs on one phone (different package names). Paste this URL into each app’s cloud icon.</p>
       <div class="urlbox" style="margin:14px 0">
         <code id="apiUrl"></code>
         <button class="btn" id="copy">Copy server URL</button>
       </div>
-      <p class="muted">Paste this URL into each Android APK (cloud icon) so the three APKs share the same live orders as this studio.</p>
+      <p class="muted">Demo PIN for every role is <b>1234</b> · User 0771234567 · Shop 0772223333 · Rider 0775556666</p>
+      <p class="muted"><a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/user.apk" style="color:#86efac">user.apk</a> ·
+        <a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk" style="color:#fdba74">shop.apk</a> ·
+        <a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk" style="color:#93c5fd">rider.apk</a></p>
       <h3 style="margin-top:18px">Live activity</h3>
       <div class="feed" id="feed"><div>Waiting for orders…</div></div>
     </div>
@@ -59,7 +69,7 @@
     const feed = document.getElementById('feed');
     API.on(() => {
       if (!API.orders.length) { feed.innerHTML = '<div>Waiting for orders…</div>'; return; }
-      feed.innerHTML = API.orders.slice(0, 8).map((o) =>
+      feed.innerHTML = API.orders.slice(0, 10).map((o) =>
         `<div><b>${o.id}</b> · ${o.shopName} → ${o.customerName} · ${API.statusLabel(o.status)} · ${API.rs(o.totalAmount)}</div>`
       ).join('');
     });

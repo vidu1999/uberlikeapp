@@ -115,6 +115,7 @@ class Order {
   final String shopName;
   final String customerName;
   final String? riderName;
+  final String? riderPhone;
 
   const Order({
     required this.id,
@@ -132,6 +133,7 @@ class Order {
     required this.shopName,
     required this.customerName,
     this.riderName,
+    this.riderPhone,
   });
 
   Order copyWith({
@@ -157,6 +159,7 @@ class Order {
       shopName: shopName,
       customerName: customerName,
       riderName: riderName ?? this.riderName,
+      riderPhone: this.riderPhone,
     );
   }
 
@@ -198,6 +201,7 @@ class Order {
       shopName: '${j['shopName'] ?? ''}',
       customerName: '${j['customerName'] ?? ''}',
       riderName: j['riderName']?.toString(),
+      riderPhone: j['riderPhone']?.toString(),
     );
   }
 }

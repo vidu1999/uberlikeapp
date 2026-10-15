@@ -34,6 +34,7 @@ class CatalogItem {
   final String category;
   final double price;
   final bool isAvailable;
+  final String desc;
   const CatalogItem({
     required this.id,
     required this.shopId,
@@ -41,6 +42,7 @@ class CatalogItem {
     required this.category,
     required this.price,
     this.isAvailable = true,
+    this.desc = '',
   });
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) => CatalogItem(
@@ -50,5 +52,6 @@ class CatalogItem {
         category: '${j['category'] ?? ''}',
         price: (j['price'] as num?)?.toDouble() ?? 0,
         isAvailable: j['isAvailable'] != false,
+        desc: '${j['desc'] ?? ''}',
       );
 }

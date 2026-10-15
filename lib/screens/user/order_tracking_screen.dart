@@ -3,6 +3,7 @@ import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../widgets/step_tracker.dart';
 import '../../widgets/tracking_map.dart';
+import '../chat_screen.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
@@ -87,8 +88,21 @@ class OrderTrackingScreen extends StatelessWidget {
                           ],
                         ),
                         const Spacer(),
-                        IconButton(onPressed: () {}, icon: const Icon(Icons.phone, color: Colors.green)),
-                        IconButton(onPressed: () {}, icon: const Icon(Icons.chat, color: Colors.blue)),
+                        IconButton(
+                          onPressed: current.riderPhone == null
+                              ? null
+                              : () {},
+                          icon: const Icon(Icons.phone, color: Colors.green),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
+                            ),
+                          ),
+                          icon: const Icon(Icons.chat, color: Colors.blue),
+                        ),
                       ],
                     ),
                   ],

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-role="shop">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -7,65 +7,167 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/app.css" />
-  <style>:root { --accent: #ff6d00; } .logo { background: #ff6d00; color: #3b1400; } .emoji { background: #fff7ed; }</style>
+  <style>:root { --accent: #ff6d00; --accent-2: #3b1400; } .logo { background:#ff6d00; color:#3b1400; } .emoji { background:#fff7ed; }</style>
 </head>
 <body>
-  <div class="app">
-    <header class="top">
-      <div class="brand">
-        <div class="logo">S</div>
-        <div>
-          <h1>Shop kitchen</h1>
-          <p>Accept · prepare · hand to rider</p>
-        </div>
-      </div>
-      <span class="pill">Vendor</span>
-    </header>
-    <main class="view" id="view"></main>
-  </div>
+  <div class="app" id="root"></div>
   <script src="/js/api.js"></script>
   <script>
-    const view = document.getElementById('view');
+    const demo = new URLSearchParams(location.search).has('demo');
+    const state = { tab: 'orders', filter: 'new' };
+
     function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
-    function render() {
+
+    function loginView() {
+      return `
+        <div class="login">
+          <div class="logo" style="width:52px;height:52px">S</div>
+          <h1>Kitchen board</h1>
+          <p class="sub" style="color:#94a3b8">Accept orders · cook · hand to rider</p>
+          <div class="card">
+            <div class="field"><label>Phone</label><input id="phone" value="0772223333" /></div>
+            <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
+            <button class="btn full dark" id="loginBtn">Enter kitchen</button>
+          </div>
+        </div>`;
+    }
+
+    function ordersView() {
       const orders = API.orders;
       const pending = orders.filter((o) => o.status === 'pending').length;
       const preparing = orders.filter((o) => o.status === 'preparing').length;
       const ready = orders.filter((o) => o.status === 'ready').length;
-      view.innerHTML = `
-        <h2>Incoming orders</h2>
-        <div class="sub">When a customer taps Order, it lands here instantly.</div>
-        <div class="stats">
-          <div class="stat"><b>${pending}</b><span>Pending</span></div>
-          <div class="stat"><b>${preparing}</b><span>Preparing</span></div>
-          <div class="stat"><b>${ready}</b><span>Ready</span></div>
-        </div>
-        ${orders.map((o) => `
-          <div class="card">
-            <div class="row">
-              <div class="grow">
-                <b>${esc(o.shopName)}</b>
-                <div class="muted">${esc(o.id)} · ${esc(o.customerName)}</div>
-              </div>
-              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
-            </div>
-            <div style="margin:10px 0">${o.items.map((i) => `<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
-            <div class="row">
-              <div class="price grow">${API.rs(o.totalAmount)}</div>
-              ${o.status === 'pending' ? `<button class="btn" data-act="preparing" data-id="${esc(o.id)}">Accept & prepare</button>` : ''}
-              ${o.status === 'preparing' ? `<button class="btn dark" data-act="ready" data-id="${esc(o.id)}">Mark ready</button>` : ''}
-              ${o.status === 'ready' ? `<span class="muted">Waiting for rider…</span>` : ''}
-              ${o.status === 'on_the_way' || o.status === 'delivered' ? `<span class="muted">${esc(o.riderName || 'Rider')} · ${API.statusLabel(o.status)}</span>` : ''}
-            </div>
-          </div>
-        `).join('') || '<div class="card">Kitchen is quiet. Place an order in the User app.</div>'}`;
-      view.querySelectorAll('[data-act]').forEach((b) => {
-        b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act });
+      const filter = state.filter;
+      const list = orders.filter((o) => {
+        if (filter === 'new') return o.status === 'pending';
+        if (filter === 'prep') return o.status === 'preparing';
+        if (filter === 'ready') return o.status === 'ready';
+        return true;
       });
+      return `
+        <header class="top">
+          <div class="brand"><div class="logo">S</div><div><h1>Kitchen</h1><p>${esc(API.user?.name)}</p></div></div>
+          <span class="pill">${pending} new</span>
+        </header>
+        <main class="view">
+          <div class="stats">
+            <div class="stat"><b>${pending}</b><span>New</span></div>
+            <div class="stat"><b>${preparing}</b><span>Cooking</span></div>
+            <div class="stat"><b>${ready}</b><span>Ready</span></div>
+          </div>
+          <div class="chips">
+            <button class="chip ${filter==='new'?'active':''}" data-filter="new">New</button>
+            <button class="chip ${filter==='prep'?'active':''}" data-filter="prep">Preparing</button>
+            <button class="chip ${filter==='ready'?'active':''}" data-filter="ready">Ready</button>
+            <button class="chip ${filter==='all'?'active':''}" data-filter="all">All</button>
+          </div>
+          ${list.map((o) => `
+            <div class="card">
+              <div class="row">
+                <div class="grow">
+                  <b>${esc(o.shopName)} · ${esc(o.id)}</b>
+                  <div class="muted">${esc(o.customerName)} · ${esc(o.customerPhone || '')}</div>
+                </div>
+                <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+              </div>
+              <div style="margin:10px 0">${o.items.map((i)=>`<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
+              ${o.note ? `<div class="muted">Note: ${esc(o.note)}</div>` : ''}
+              <div class="row" style="margin-top:8px">
+                <div class="price grow">${API.rs(o.totalAmount)}</div>
+                ${o.status==='pending' ? `<button class="btn sm" data-act="preparing" data-id="${esc(o.id)}">Accept & cook</button>
+                  <button class="btn sm red" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
+                ${o.status==='preparing' ? `<button class="btn sm dark" data-act="ready" data-id="${esc(o.id)}">Mark ready</button>` : ''}
+                ${o.status==='ready' ? `<span class="muted">Waiting for rider…</span>` : ''}
+                ${o.status==='on_the_way' || o.status==='delivered' ? `<span class="muted">${esc(o.riderName || 'Rider')} · ${API.statusLabel(o.status)}</span>` : ''}
+              </div>
+            </div>`).join('') || '<div class="card">No orders in this tab. Place one in the User app.</div>'}
+        </main>
+        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
+          <button data-tab="orders" class="${state.tab==='orders'?'active':''}">🧾<span>Orders</span></button>
+          <button data-tab="menu" class="${state.tab==='menu'?'active':''}">🍽️<span>Menu</span></button>
+          <button data-tab="account" class="${state.tab==='account'?'active':''}">👤<span>Account</span></button>
+        </nav>`;
     }
-    API.on(render);
+
+    function menuView() {
+      return `
+        <header class="top">
+          <div class="brand"><div class="logo">S</div><div><h1>Menu</h1><p>Toggle sold-out items</p></div></div>
+        </header>
+        <main class="view">
+          ${API.items.map((it) => {
+            const shop = API.shopOf(it.shopId);
+            return `<div class="card row">
+              <div class="grow">
+                <b>${esc(it.name)}</b>
+                <div class="muted">${esc(shop.name)} · ${API.rs(it.price)}</div>
+              </div>
+              <button class="btn sm ${it.isAvailable?'dark':'warn'}" data-toggle="${it.id}" data-on="${it.isAvailable?0:1}">
+                ${it.isAvailable ? 'Available' : 'Sold out'}
+              </button>
+            </div>`;
+          }).join('')}
+        </main>
+        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
+          <button data-tab="orders" class="${state.tab==='orders'?'active':''}">🧾<span>Orders</span></button>
+          <button data-tab="menu" class="active">🍽️<span>Menu</span></button>
+          <button data-tab="account">👤<span>Account</span></button>
+        </nav>`;
+    }
+
+    function accountView() {
+      const today = API.orders.filter((o) => o.status !== 'cancelled');
+      const sales = today.reduce((s, o) => s + o.totalAmount, 0);
+      return `
+        <header class="top">
+          <div class="brand"><div class="logo">S</div><div><h1>Shop account</h1><p>${esc(API.user?.name)}</p></div></div>
+        </header>
+        <main class="view">
+          <div class="stats">
+            <div class="stat"><b>${today.length}</b><span>Orders</span></div>
+            <div class="stat"><b>${API.rs(sales)}</b><span>Volume</span></div>
+            <div class="stat"><b>Open</b><span>Kitchen</span></div>
+          </div>
+          <div class="card"><div class="muted">Staff</div><b>${esc(API.user?.name)}</b><div class="muted">${esc(API.user?.phone)}</div></div>
+          <button class="btn full ghost" id="logout">Log out</button>
+        </main>
+        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
+          <button data-tab="orders">🧾<span>Orders</span></button>
+          <button data-tab="menu">🍽️<span>Menu</span></button>
+          <button data-tab="account" class="active">👤<span>Account</span></button>
+        </nav>`;
+    }
+
+    function render() {
+      const root = document.getElementById('root');
+      if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (state.tab === 'menu') root.innerHTML = menuView();
+      else if (state.tab === 'account') root.innerHTML = accountView();
+      else root.innerHTML = ordersView();
+      bind();
+    }
+
+    function bind() {
+      const root = document.getElementById('root');
+      const loginBtn = document.getElementById('loginBtn');
+      if (loginBtn) loginBtn.onclick = async () => {
+        try { await API.login('shop', document.getElementById('phone').value, document.getElementById('pin').value); render(); }
+        catch (e) { alert(e.message); }
+      };
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; render(); });
+      root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
+      root.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act }));
+      root.querySelectorAll('[data-toggle]').forEach((b) => b.onclick = () => API.toggleItem(b.dataset.toggle, b.dataset.on === '1'));
+      const logout = document.getElementById('logout');
+      if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
+    }
+
+    API.on(() => {
+      if (demo && !API.user && API.shops.length) { API.login('shop', '0772223333', '1234'); return; }
+      render();
+    });
   </script>
 </body>
 </html>

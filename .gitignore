@@ -9,4 +9,5 @@ build/
 *.iml
 .DS_Store
 node_modules/
+server/data.json
 android/.gradle/

@@ -8,45 +8,91 @@ const path = require('path');
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = path.join(__dirname, 'public');
+const DATA_FILE = path.join(__dirname, 'data.json');
 
 const shops = [
-  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, isOpen: true, lat: 6.9278, lng: 79.8502, emoji: '🎂' },
-  { id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, isOpen: true, lat: 6.9210, lng: 79.8601, emoji: '🍔' },
-  { id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, isOpen: true, lat: 6.9340, lng: 79.8475, emoji: '🍕' },
-  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Beverages', rating: 4.7, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕' },
-  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛' },
+  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 312, isOpen: true, lat: 6.9278, lng: 79.8502, emoji: '🎂', eta: '20 min', address: 'Galle Road, Colombo 03' },
+  { id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, reviews: 890, isOpen: true, lat: 6.9210, lng: 79.8601, emoji: '🍔', eta: '25 min', address: 'Bambalapitiya' },
+  { id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, reviews: 540, isOpen: true, lat: 6.9340, lng: 79.8475, emoji: '🍕', eta: '30 min', address: 'Kollupitiya' },
+  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Beverages', rating: 4.7, reviews: 210, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕', eta: '15 min', address: 'Wellawatte' },
+  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛', eta: '22 min', address: 'Pettah' },
+  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 6.9155, lng: 79.8490, emoji: '🧁', eta: '18 min', address: 'Dehiwala' },
 ];
 
-const items = [
-  { id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500, isAvailable: true },
-  { id: 'I2', shopId: 'SHOP_1', name: 'Butter Cake Slice', category: 'Bakery', price: 350, isAvailable: true },
-  { id: 'I3', shopId: 'SHOP_1', name: 'Fish Bun', category: 'Bakery', price: 180, isAvailable: true },
-  { id: 'I4', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200, isAvailable: true },
-  { id: 'I5', shopId: 'SHOP_2', name: 'Cheese Fries', category: 'Fast Food', price: 700, isAvailable: true },
-  { id: 'I6', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400, isAvailable: true },
-  { id: 'I7', shopId: 'SHOP_3', name: 'Devilled Chicken Pizza', category: 'Pizza', price: 2800, isAvailable: true },
-  { id: 'I8', shopId: 'SHOP_4', name: 'Iced Coffee', category: 'Beverages', price: 600, isAvailable: true },
-  { id: 'I9', shopId: 'SHOP_4', name: 'Cappuccino', category: 'Beverages', price: 550, isAvailable: true },
-  { id: 'I10', shopId: 'SHOP_5', name: 'Chicken Rice & Curry', category: 'Sri Lankan', price: 850, isAvailable: true },
-  { id: 'I11', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950, isAvailable: true },
-  { id: 'I12', shopId: 'SHOP_5', name: 'Hoppers (3)', category: 'Sri Lankan', price: 400, isAvailable: true },
+let items = [
+  { id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500, isAvailable: true, desc: 'Rich ganache, serves 8' },
+  { id: 'I2', shopId: 'SHOP_1', name: 'Butter Cake Slice', category: 'Bakery', price: 350, isAvailable: true, desc: 'Warm vanilla butter cake' },
+  { id: 'I3', shopId: 'SHOP_1', name: 'Fish Bun', category: 'Bakery', price: 180, isAvailable: true, desc: 'Spicy fish filling' },
+  { id: 'I4', shopId: 'SHOP_1', name: 'Egg Roll', category: 'Bakery', price: 220, isAvailable: true, desc: 'Crispy pastry roll' },
+  { id: 'I5', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200, isAvailable: true, desc: 'Crispy fillet, cheese, slaw' },
+  { id: 'I6', shopId: 'SHOP_2', name: 'Cheese Fries', category: 'Fast Food', price: 700, isAvailable: true, desc: 'Loaded cheddar fries' },
+  { id: 'I7', shopId: 'SHOP_2', name: 'Beef Burger', category: 'Fast Food', price: 1450, isAvailable: true, desc: 'Double patty, BBQ sauce' },
+  { id: 'I8', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400, isAvailable: true, desc: '12" mozzarella classic' },
+  { id: 'I9', shopId: 'SHOP_3', name: 'Devilled Chicken Pizza', category: 'Pizza', price: 2800, isAvailable: true, desc: 'Sri Lankan spicy chicken' },
+  { id: 'I10', shopId: 'SHOP_4', name: 'Iced Coffee', category: 'Beverages', price: 600, isAvailable: true, desc: 'Cold brew, milk, ice' },
+  { id: 'I11', shopId: 'SHOP_4', name: 'Cappuccino', category: 'Beverages', price: 550, isAvailable: true, desc: 'Double shot, foam art' },
+  { id: 'I12', shopId: 'SHOP_5', name: 'Chicken Rice & Curry', category: 'Sri Lankan', price: 850, isAvailable: true, desc: '4 curries + papadam' },
+  { id: 'I13', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950, isAvailable: true, desc: 'Chicken kottu, egg' },
+  { id: 'I14', shopId: 'SHOP_5', name: 'Hoppers (3)', category: 'Sri Lankan', price: 400, isAvailable: true, desc: 'Plain hoppers, lunu miris' },
+  { id: 'I15', shopId: 'SHOP_5', name: 'Pol Sambol Rice', category: 'Sri Lankan', price: 650, isAvailable: true, desc: 'Coconut sambol + dhal' },
+  { id: 'I16', shopId: 'SHOP_6', name: 'Watalappan', category: 'Dessert', price: 450, isAvailable: true, desc: 'Jaggery coconut pudding' },
+  { id: 'I17', shopId: 'SHOP_6', name: 'Chocolate Mousse', category: 'Dessert', price: 520, isAvailable: true, desc: 'Dark chocolate cup' },
+];
+
+const accounts = [
+  { id: 'USER_1', name: 'Sahan Perera', phone: '0771234567', pin: '1234', role: 'customer', address: '45 Galle Road, Colombo 03' },
+  { id: 'USER_2', name: 'Nimal Silva', phone: '0771112222', pin: '1234', role: 'customer', address: '12 Duplication Road, Colombo 04' },
+  { id: 'SHOP_STAFF', name: 'Nadeesha Fernando', phone: '0772223333', pin: '1234', role: 'shop', shopId: 'ALL' },
+  { id: 'RIDER_77', name: 'Kamal Perera', phone: '0775556666', pin: '1234', role: 'rider', vehicle: 'Honda Dio · WP CAB-4521', rating: 4.9 },
 ];
 
 let seq = 1000;
 let orders = [];
+let messages = {}; // orderId -> [{id, from, role, text, ts}]
+let sessions = {};
 const sseClients = new Set();
+
+function load() {
+  try {
+    const raw = fs.readFileSync(DATA_FILE, 'utf8');
+    const d = JSON.parse(raw);
+    orders = d.orders || [];
+    messages = d.messages || {};
+    seq = d.seq || 1000;
+    if (Array.isArray(d.items)) {
+      const avail = new Map(d.items.map((i) => [i.id, i.isAvailable]));
+      items = items.map((i) => ({ ...i, isAvailable: avail.has(i.id) ? avail.get(i.id) : i.isAvailable }));
+    }
+  } catch (_) {}
+}
+
+function save() {
+  try {
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify(
+        { orders, messages, seq, items: items.map((i) => ({ id: i.id, isAvailable: i.isAvailable })) },
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    console.error('save failed', err.message);
+  }
+}
+
+load();
 
 function shopById(id) {
   return shops.find((s) => s.id === id);
 }
 
-function makeId() {
-  seq += 1;
-  return `ORD_${seq}`;
+function token() {
+  return 'tok_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 function broadcast() {
-  const payload = `data: ${JSON.stringify({ type: 'state', orders, shops, items })}\n\n`;
+  const payload = `data: ${JSON.stringify({ type: 'state', orders, shops, items, messages })}\n\n`;
   for (const res of sseClients) {
     try {
       res.write(payload);
@@ -56,15 +102,22 @@ function broadcast() {
   }
 }
 
+function cors(res, extra) {
+  const headers = Object.assign(
+    {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Cache-Control': 'no-store',
+    },
+    extra || {},
+  );
+  return headers;
+}
+
 function json(res, code, body) {
   const data = JSON.stringify(body);
-  res.writeHead(code, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Cache-Control': 'no-store',
-  });
+  res.writeHead(code, cors(res, { 'Content-Type': 'application/json; charset=utf-8' }));
   res.end(data);
 }
 
@@ -107,11 +160,7 @@ function serveFile(res, file) {
       res.end('Not found');
       return;
     }
-    res.writeHead(200, {
-      'Content-Type': mime(file),
-      'Cache-Control': 'no-cache',
-      'Access-Control-Allow-Origin': '*',
-    });
+    res.writeHead(200, cors(res, { 'Content-Type': mime(file), 'Cache-Control': 'no-cache' }));
     res.end(data);
   });
 }
@@ -120,34 +169,60 @@ function patchOrder(order, body) {
   if (body.status) order.status = body.status;
   if (body.riderId !== undefined) order.riderId = body.riderId;
   if (body.riderName !== undefined) order.riderName = body.riderName;
+  if (body.riderPhone !== undefined) order.riderPhone = body.riderPhone;
   if (body.riderLat !== undefined) order.riderLat = Number(body.riderLat);
   if (body.riderLng !== undefined) order.riderLng = Number(body.riderLng);
+  if (body.rating !== undefined) order.rating = Number(body.rating);
   if (body.status === 'on_the_way' && (order.riderLat == null || order.riderLng == null)) {
     const shop = shopById(order.shopId);
     order.riderLat = shop ? shop.lat : 6.93;
     order.riderLng = shop ? shop.lng : 79.855;
     order.riderId = order.riderId || 'RIDER_77';
     order.riderName = order.riderName || 'Kamal Perera';
+    order.riderPhone = order.riderPhone || '0775556666';
   }
+  if (body.status === 'delivered') order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
   return order;
+}
+
+function publicUser(u) {
+  const { pin, ...rest } = u;
+  return rest;
 }
 
 async function handleApi(req, res, url) {
   const { pathname } = url;
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    });
+    res.writeHead(204, cors(res));
     res.end();
     return;
   }
 
   if (pathname === '/api/health') {
     json(res, 200, { ok: true, orders: orders.length, clients: sseClients.size });
+    return;
+  }
+
+  if (pathname === '/api/login' && req.method === 'POST') {
+    const body = await readBody(req);
+    const role = body.role || 'customer';
+    const pin = String(body.pin || '1234');
+    let user = accounts.find((a) => a.role === role && a.pin === pin && (!body.phone || a.phone === body.phone));
+    if (!user) user = accounts.find((a) => a.role === role && a.pin === pin);
+    if (!user) {
+      json(res, 401, { error: 'Invalid login. Demo PIN is 1234.' });
+      return;
+    }
+    const tok = token();
+    sessions[tok] = user.id;
+    json(res, 200, { token: tok, user: publicUser(user) });
+    return;
+  }
+
+  if (pathname === '/api/accounts' && req.method === 'GET') {
+    json(res, 200, accounts.map(publicUser));
     return;
   }
 
@@ -161,19 +236,38 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  const itemMatch = pathname.match(/^\/api\/items\/([^/]+)$/);
+  if (itemMatch && req.method === 'PATCH') {
+    const item = items.find((i) => i.id === itemMatch[1]);
+    if (!item) {
+      json(res, 404, { error: 'Item not found' });
+      return;
+    }
+    const body = await readBody(req);
+    if (typeof body.isAvailable === 'boolean') item.isAvailable = body.isAvailable;
+    if (body.price != null) item.price = Number(body.price);
+    save();
+    broadcast();
+    json(res, 200, item);
+    return;
+  }
+
   if (pathname === '/api/orders' && req.method === 'GET') {
     json(res, 200, orders);
     return;
   }
 
   if (pathname === '/api/state' && req.method === 'GET') {
-    json(res, 200, { orders, shops, items });
+    json(res, 200, { orders, shops, items, messages });
     return;
   }
 
   if (pathname === '/api/reset' && req.method === 'POST') {
     orders = [];
+    messages = {};
     seq = 1000;
+    items = items.map((i) => ({ ...i, isAvailable: true }));
+    save();
     broadcast();
     json(res, 200, { ok: true });
     return;
@@ -188,33 +282,85 @@ async function handleApi(req, res, url) {
     }
     const lineItems = Array.isArray(body.items) && body.items.length
       ? body.items.map((it) => ({
+          id: it.id || null,
           name: String(it.name || 'Item'),
           qty: Number(it.qty || 1),
           price: Number(it.price || 0),
         }))
       : [{ name: 'Custom order', qty: 1, price: Number(body.totalAmount || 0) }];
-    const total = lineItems.reduce((s, it) => s + it.price * it.qty, 0);
+    const subtotal = lineItems.reduce((s, it) => s + it.price * it.qty, 0);
+    const deliveryFee = subtotal > 2000 ? 0 : 250;
     const order = {
-      id: makeId(),
+      id: `ORD_${++seq}`,
       userId: body.userId || 'USER_1',
       shopId: shop.id,
       shopName: shop.name,
+      shopEmoji: shop.emoji,
       customerName: body.customerName || 'Sahan Perera',
+      customerPhone: body.customerPhone || '0771234567',
+      address: body.address || '45 Galle Road, Colombo 03',
+      note: body.note || '',
+      paymentMethod: body.paymentMethod || 'Cash on delivery',
       riderId: null,
       riderName: null,
+      riderPhone: null,
       status: 'pending',
       items: lineItems,
-      totalAmount: total,
+      subtotal,
+      deliveryFee,
+      totalAmount: subtotal + deliveryFee,
       deliveryLat: Number(body.deliveryLat ?? 6.9271),
       deliveryLng: Number(body.deliveryLng ?? 79.8612),
       riderLat: null,
       riderLng: null,
+      rating: null,
       timestamp: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
     orders.unshift(order);
+    messages[order.id] = [
+      {
+        id: 'm0',
+        from: 'SwiftDrop',
+        role: 'system',
+        text: `Order placed at ${shop.name}. We’ll update you live.`,
+        ts: Date.now(),
+      },
+    ];
+    save();
     broadcast();
     json(res, 201, order);
+    return;
+  }
+
+  const msgMatch = pathname.match(/^\/api\/orders\/([^/]+)\/messages$/);
+  if (msgMatch && req.method === 'GET') {
+    json(res, 200, messages[msgMatch[1]] || []);
+    return;
+  }
+  if (msgMatch && req.method === 'POST') {
+    const order = orders.find((o) => o.id === msgMatch[1]);
+    if (!order) {
+      json(res, 404, { error: 'Not found' });
+      return;
+    }
+    const body = await readBody(req);
+    const list = messages[order.id] || (messages[order.id] = []);
+    const msg = {
+      id: 'm' + Date.now(),
+      from: body.from || 'User',
+      role: body.role || 'customer',
+      text: String(body.text || '').slice(0, 500),
+      ts: Date.now(),
+    };
+    if (!msg.text) {
+      json(res, 400, { error: 'Empty message' });
+      return;
+    }
+    list.push(msg);
+    save();
+    broadcast();
+    json(res, 201, msg);
     return;
   }
 
@@ -236,20 +382,41 @@ async function handleApi(req, res, url) {
       return;
     }
     const body = await readBody(req);
+    const prev = order.status;
     patchOrder(order, body);
+    if (body.status && body.status !== prev) {
+      const list = messages[order.id] || (messages[order.id] = []);
+      const labels = {
+        preparing: 'Shop accepted and is preparing your order.',
+        ready: 'Order is ready. A rider will pick it up shortly.',
+        on_the_way: (order.riderName || 'Your rider') + ' picked up the order and is on the way.',
+        delivered: 'Delivered. Enjoy your meal!',
+        cancelled: 'Order was cancelled.',
+      };
+      list.push({
+        id: 'm' + Date.now(),
+        from: 'SwiftDrop',
+        role: 'system',
+        text: labels[body.status] || 'Status updated.',
+        ts: Date.now(),
+      });
+    }
+    save();
     broadcast();
     json(res, 200, order);
     return;
   }
 
   if (pathname === '/api/stream') {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.write(`data: ${JSON.stringify({ type: 'state', orders, shops, items })}\n\n`);
+    res.writeHead(
+      200,
+      cors(res, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      }),
+    );
+    res.write(`data: ${JSON.stringify({ type: 'state', orders, shops, items, messages })}\n\n`);
     sseClients.add(res);
     req.on('close', () => sseClients.delete(res));
     return;

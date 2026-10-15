@@ -6,6 +6,7 @@ import '../../models/order.dart';
 import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
 import '../../widgets/tracking_map.dart';
+import '../chat_screen.dart';
 
 class RiderHome extends StatefulWidget {
   final UserRole currentRole;
@@ -115,12 +116,22 @@ class _RiderHomeState extends State<RiderHome> {
                                     onPressed: () => _pickUp(o),
                                     child: const Text('Pick Up Order'),
                                   ),
-                                if (o.status == OrderStatus.onTheWay)
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered),
-                                    child: const Text('Mark Delivered'),
-                                  ),
+                          if (o.status == OrderStatus.onTheWay) ...[
+                            ElevatedButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(orderId: o.id, myRole: 'rider'),
+                                ),
+                              ),
+                              child: const Text('Chat'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () =>
+                                  OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered),
+                              child: const Text('Mark Delivered'),
+                            ),
+                          ],
                               ],
                             ),
                           ],

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-role="customer">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -8,56 +8,62 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
-  <style>:root { --accent: #00c853; }</style>
 </head>
 <body>
-  <div class="app" data-role="user">
-    <header class="top">
-      <div class="brand">
-        <div class="logo">S</div>
-        <div>
-          <h1>SwiftDrop</h1>
-          <p>Colombo · User app</p>
-        </div>
-      </div>
-      <span class="pill">Sahan</span>
-    </header>
-    <main class="view" id="view"></main>
-    <nav class="nav">
-      <button data-tab="home" class="active">Home</button>
-      <button data-tab="search">Search</button>
-      <button data-tab="orders">Orders</button>
-    </nav>
-  </div>
+  <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script>
-    const view = document.getElementById('view');
-    let tab = 'home';
-    let query = '';
-    let category = 'All';
-    let trackId = null;
-    let mapHandle = null;
-    let placing = false;
+    const demo = new URLSearchParams(location.search).has('demo');
+    const state = {
+      tab: 'home',
+      screen: 'home',
+      query: '',
+      category: 'All',
+      shopId: null,
+      trackId: null,
+      cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
+      note: '',
+      address: '45 Galle Road, Colombo 03',
+      payment: 'Cash on delivery',
+      mapHandle: null,
+    };
 
-    document.querySelectorAll('.nav button').forEach((b) => {
-      b.onclick = () => {
-        tab = b.dataset.tab;
-        trackId = null;
-        document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x === b));
-        render();
-      };
-    });
-
+    function saveCart() {
+      sessionStorage.setItem('sd_cart', JSON.stringify(state.cart));
+    }
+    function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
+    function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function addToCart(item) {
+      const hit = state.cart.find((c) => c.id === item.id);
+      if (hit) hit.qty += 1;
+      else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1 });
+      const mixed = state.cart.some((c) => c.shopId !== item.shopId);
+      if (mixed) {
+        state.cart = state.cart.filter((c) => c.shopId === item.shopId);
+        const again = state.cart.find((c) => c.id === item.id);
+        if (!again) state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1 });
+      }
+      saveCart();
+      render();
+    }
+    function setQty(id, d) {
+      const hit = state.cart.find((c) => c.id === id);
+      if (!hit) return;
+      hit.qty += d;
+      if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
+      saveCart();
+      render();
     }
 
     function steps(status) {
       const list = ['pending', 'preparing', 'ready', 'on_the_way', 'delivered'];
       const idx = Math.max(0, list.indexOf(status));
-      const labels = ['Order placed', 'Preparing', 'Ready for pickup', 'Out for delivery', 'Delivered'];
+      const labels = ['Placed', 'Preparing', 'Ready', 'On the way', 'Delivered'];
       return `<div class="steps">${labels.map((l, i) => `
         <div class="step ${i <= idx ? 'done' : ''}">
           ${i ? '<div class="bar"></div>' : ''}
@@ -66,161 +72,375 @@
         </div>`).join('')}</div>`;
     }
 
-    function renderHome() {
-      const shops = API.shops;
-      view.innerHTML = `
-        <h2>Hello, Sahan 👋</h2>
-        <div class="sub">Hungry? Shops around Colombo are live.</div>
-        <div class="search"><span>🔎</span><input id="q" placeholder="Search cake, kottu, coffee…" value="${esc(query)}" /></div>
-        <div class="chips" id="cats"></div>
+    function shell(inner, nav) {
+      const user = API.user;
+      return `
+        <header class="top">
+          <div class="brand">
+            <div class="logo">S</div>
+            <div>
+              <h1>SwiftDrop</h1>
+              <p>${esc(user?.address || 'Colombo 03')}</p>
+            </div>
+          </div>
+          <span class="pill">${esc(user?.name?.split(' ')[0] || 'Guest')}</span>
+        </header>
+        <main class="view ${nav ? '' : 'nonav'}" id="view">${inner}</main>
+        ${nav ? `
+        <nav class="nav">
+          <button data-tab="home" class="${state.tab==='home'?'active':''}">🏠<span>Home</span></button>
+          <button data-tab="orders" class="${state.tab==='orders'?'active':''}">🧾<span>Orders</span></button>
+          <button data-tab="cart" class="${state.tab==='cart'?'active':''}">🛒<span>Cart</span>${cartCount()?`<span class="badge">${cartCount()}</span>`:''}</button>
+          <button data-tab="account" class="${state.tab==='account'?'active':''}">👤<span>Account</span></button>
+        </nav>` : ''}
+      `;
+    }
+
+    function loginView() {
+      return `
+        <div class="login">
+          <div class="logo" style="width:52px;height:52px;font-size:22px">S</div>
+          <h1>Food in minutes.</h1>
+          <p class="sub" style="color:#94a3b8">Colombo’s live tracking delivery — User app</p>
+          <div class="card">
+            <div class="field"><label>Phone</label><input id="phone" value="0771234567" /></div>
+            <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
+            <button class="btn full dark" id="loginBtn">Continue as Sahan</button>
+            <p class="muted" style="margin:10px 0 0">Demo PIN is 1234. Shop & Rider apps use the same PIN.</p>
+          </div>
+        </div>`;
+    }
+
+    function homeView() {
+      const cats = ['All', ...new Set(API.shops.map((s) => s.category))];
+      const q = state.query.toLowerCase();
+      const shops = API.shops.filter((s) => {
+        const matchQ = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q);
+        const matchC = state.category === 'All' || s.category === state.category;
+        return matchQ && matchC;
+      });
+      return shell(`
+        <h2>Hey ${esc(API.user?.name?.split(' ')[0] || '')} 👋</h2>
+        <p class="sub">Hungry? Live shops around Colombo.</p>
+        <div class="banner"><b>Free delivery over Rs. 2,000</b><span>Cash on delivery · live GPS tracking</span></div>
+        <div class="search"><span>🔎</span><input id="q" placeholder="Search shops…" value="${esc(state.query)}" /></div>
+        <div class="chips">${cats.map((c) => `<button class="chip ${c===state.category?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
         ${shops.map((s) => `
-          <div class="card row">
-            <div class="emoji">${s.emoji || '🏪'}</div>
+          <div class="card row" data-shop="${s.id}" style="cursor:pointer">
+            <div class="emoji">${s.emoji}</div>
             <div class="grow">
               <b>${esc(s.name)}</b>
-              <div class="muted">${esc(s.category)} · ${s.rating} ★ · ${s.isOpen ? 'Open' : 'Closed'}</div>
+              <div class="muted">${esc(s.category)} · ${s.rating} ★ (${s.reviews}) · ${esc(s.eta)}</div>
+              <div class="muted">${esc(s.address)}</div>
             </div>
-            <button class="btn ghost" data-open="${s.id}">Menu</button>
+            <span class="status">${s.isOpen ? 'Open' : 'Closed'}</span>
+          </div>`).join('')}
+      `, true);
+    }
+
+    function shopView() {
+      const shop = API.shopOf(state.shopId);
+      const items = API.items.filter((i) => i.shopId === shop.id);
+      return shell(`
+        <button class="btn ghost sm" data-back="home">← Shops</button>
+        <div class="card row" style="margin-top:12px">
+          <div class="emoji">${shop.emoji}</div>
+          <div class="grow">
+            <h2 style="margin:0">${esc(shop.name)}</h2>
+            <div class="muted">${esc(shop.category)} · ${shop.rating} ★ · ${esc(shop.eta)}</div>
           </div>
-        `).join('')}`;
-      bindSearch();
-    }
-
-    function filteredItems() {
-      const q = query.toLowerCase();
-      return API.items.filter((it) => {
-        const shop = API.shopOf(it.shopId);
-        const matchQ = !q || it.name.toLowerCase().includes(q) || shop.name.toLowerCase().includes(q);
-        const matchC = category === 'All' || it.category === category;
-        return matchQ && matchC && it.isAvailable;
-      });
-    }
-
-    function renderSearch() {
-      const cats = ['All', ...new Set(API.items.map((i) => i.category))];
-      const list = filteredItems();
-      view.innerHTML = `
-        <h2>Search</h2>
-        <div class="sub">Filter by shop or item. Tap Order to send it to the shop app.</div>
-        <div class="search"><span>🔎</span><input id="q" placeholder="cake, burger, kottu…" value="${esc(query)}" /></div>
-        <div class="chips">${cats.map((c) => `<button class="chip ${c === category ? 'active' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-        ${list.map((it) => {
-          const shop = API.shopOf(it.shopId);
-          return `<div class="card row">
-            <div class="emoji">${shop.emoji || '🍽️'}</div>
+        </div>
+        ${items.map((it) => `
+          <div class="card row">
             <div class="grow">
               <b>${esc(it.name)}</b>
-              <div class="muted">${esc(shop.name)} · ${esc(it.category)}</div>
-            </div>
-            <div style="text-align:right">
+              <div class="muted">${esc(it.desc || it.category)}</div>
               <div class="price">${API.rs(it.price)}</div>
-              <button class="btn" data-order="${it.id}" ${placing ? 'disabled' : ''}>Order</button>
             </div>
-          </div>`;
-        }).join('') || '<div class="card">No items match.</div>'}`;
-      bindSearch();
+            ${it.isAvailable
+              ? `<button class="btn sm" data-add="${it.id}">Add</button>`
+              : `<span class="muted">Sold out</span>`}
+          </div>`).join('')}
+        ${cartCount() ? `<button class="btn full dark" data-tab="cart">View cart · ${cartCount()} · ${API.rs(cartTotal())}</button>` : ''}
+      `, true);
     }
 
-    function renderOrders() {
-      const list = API.orders;
-      view.innerHTML = `
+    function cartView() {
+      if (!state.cart.length) {
+        return shell(`<h2>Cart</h2><div class="card">Your cart is empty. Add items from a shop.</div>`, true);
+      }
+      const shop = API.shopOf(state.cart[0].shopId);
+      const sub = cartTotal();
+      const fee = sub > 2000 ? 0 : 250;
+      return shell(`
+        <h2>Cart</h2>
+        <p class="sub">${esc(shop.name)}</p>
+        ${state.cart.map((c) => `
+          <div class="card row">
+            <div class="grow"><b>${esc(c.name)}</b><div class="price">${API.rs(c.price)}</div></div>
+            <div class="qty">
+              <button data-qty="${c.id}" data-d="-1">−</button>
+              <b>${c.qty}</b>
+              <button data-qty="${c.id}" data-d="1">+</button>
+            </div>
+          </div>`).join('')}
+        <div class="card">
+          <div class="row"><span class="grow muted">Subtotal</span><b>${API.rs(sub)}</b></div>
+          <div class="row"><span class="grow muted">Delivery</span><b>${fee ? API.rs(fee) : 'Free'}</b></div>
+          <div class="row" style="margin-top:8px"><span class="grow">Total</span><b>${API.rs(sub+fee)}</b></div>
+        </div>
+        <button class="btn full dark" data-go="checkout">Checkout</button>
+      `, true);
+    }
+
+    function checkoutView() {
+      const sub = cartTotal();
+      const fee = sub > 2000 ? 0 : 250;
+      return shell(`
+        <button class="btn ghost sm" data-tab="cart">← Cart</button>
+        <h2>Checkout</h2>
+        <div class="field"><label>Deliver to</label><input id="addr" value="${esc(state.address)}" /></div>
+        <div class="field"><label>Note for rider</label><input id="note" placeholder="Gate code, extra chilli…" value="${esc(state.note)}" /></div>
+        <div class="field">
+          <label>Payment</label>
+          <select id="pay">
+            <option ${state.payment==='Cash on delivery'?'selected':''}>Cash on delivery</option>
+            <option ${state.payment==='Card on delivery'?'selected':''}>Card on delivery</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="row"><span class="grow">Pay on delivery</span><b>${API.rs(sub+fee)}</b></div>
+        </div>
+        <button class="btn full" id="place">Place order</button>
+      `, false);
+    }
+
+    function ordersView() {
+      const mine = API.orders.filter((o) => !API.user || o.userId === API.user.id || true);
+      return shell(`
         <h2>My orders</h2>
-        <div class="sub">Live status from the shop and rider apps.</div>
-        ${list.map((o) => `
+        <p class="sub">Live from the shop and rider apps.</p>
+        ${mine.map((o) => `
           <div class="card" data-track="${esc(o.id)}" style="cursor:pointer">
             <div class="row">
-              <div class="grow"><b>${esc(o.shopName)}</b><div class="muted">${esc(o.items.map((i) => i.name).join(', '))}</div></div>
+              <div class="emoji">${o.shopEmoji || '🛍️'}</div>
+              <div class="grow">
+                <b>${esc(o.shopName)}</b>
+                <div class="muted">${esc(o.items.map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
+              </div>
               <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
             </div>
             <div class="muted" style="margin-top:8px">${API.rs(o.totalAmount)} · ${esc(o.id)}</div>
-          </div>
-        `).join('') || '<div class="card">No orders yet. Place one from Search.</div>'}`;
+          </div>`).join('') || '<div class="card">No orders yet.</div>'}
+      `, true);
     }
 
-    function renderTrack() {
-      const o = API.orders.find((x) => x.id === trackId);
-      if (!o) {
-        view.innerHTML = '<div class="card">Order not found.</div>';
-        return;
-      }
-      const live = view.querySelector('[data-track-root="' + o.id + '"]');
-      if (live && mapHandle) {
-        mapHandle.update(o);
-        const st = live.querySelector('.status');
-        if (st) { st.className = 'status ' + o.status; st.textContent = API.statusLabel(o.status); }
-        const eta = live.querySelector('[data-eta]');
-        if (eta) eta.textContent = o.status === 'delivered' ? 'Delivered' : '12–15 min';
-        const rider = live.querySelector('[data-rider]');
-        if (rider) rider.textContent = o.riderName || 'Assigning rider…';
-        const stepBox = live.querySelector('[data-steps]');
-        if (stepBox) stepBox.innerHTML = steps(o.status);
-        return;
-      }
-      if (mapHandle) {
-        try { mapHandle.destroy(); } catch (_) {}
-        mapHandle = null;
-      }
-      view.innerHTML = `
+    function trackView() {
+      const o = API.orders.find((x) => x.id === state.trackId);
+      if (!o) return shell('<div class="card">Order not found.</div>', true);
+      return shell(`
         <div data-track-root="${esc(o.id)}">
           <div id="map" class="map"></div>
           <div class="card">
             <div class="row">
               <div class="grow">
                 <div class="muted">Estimated arrival</div>
-                <h2 style="margin:0" data-eta>${o.status === 'delivered' ? 'Delivered' : '12–15 min'}</h2>
+                <h2 style="margin:0" data-eta>${o.status==='delivered' ? 'Delivered' : '12–15 min'}</h2>
               </div>
               <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
             </div>
             <div data-steps>${steps(o.status)}</div>
-            <div class="driver">
+            <div class="driver" style="margin-top:8px">
               <div class="avatar">🛵</div>
               <div class="grow">
                 <b data-rider>${esc(o.riderName || 'Assigning rider…')}</b>
-                <div class="muted">Delivery partner · 4.9 ★</div>
+                <div class="muted">4.9 ★ · ${esc(o.riderPhone || 'Honda Dio')}</div>
               </div>
-              <button class="btn ghost">Call</button>
+              ${o.riderPhone ? `<a class="btn ghost sm" href="tel:+94${o.riderPhone.replace(/^0/,'')}">Call</a>` : ''}
+              <button class="btn sm dark" data-chat="${esc(o.id)}">Chat</button>
             </div>
           </div>
           <div class="card">
             <b>${esc(o.shopName)}</b>
-            <div class="muted">${esc(o.items.map((i) => i.name + ' ×' + i.qty).join(', '))}</div>
-            <div class="price" style="margin-top:8px">${API.rs(o.totalAmount)}</div>
+            <div class="muted">${esc(o.address)}</div>
+            <div class="muted">${esc(o.items.map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
+            <div class="price" style="margin-top:8px">${API.rs(o.totalAmount)} · ${esc(o.paymentMethod)}</div>
           </div>
-        </div>`;
-      mapHandle = mountTrackingMap(document.getElementById('map'), o);
+          ${o.status==='delivered' && !o.rating ? `
+            <div class="card">
+              <b>Rate your delivery</b>
+              <div class="stars" id="stars">☆ ☆ ☆ ☆ ☆</div>
+            </div>` : o.rating ? `<div class="card">You rated this ${o.rating} ★</div>` : ''}
+        </div>
+      `, true);
     }
 
-    function bindSearch() {
-      const input = document.getElementById('q');
-      if (input) input.oninput = (e) => { query = e.target.value; render(); input.focus(); const v = input; v.selectionStart = v.selectionEnd = query.length; };
-      view.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { category = b.dataset.cat; tab = 'search'; render(); });
-      view.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => { query = API.shopOf(b.dataset.open).name; tab = 'search'; document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'search')); render(); });
-      view.querySelectorAll('[data-order]').forEach((b) => b.onclick = async () => {
-        const item = API.items.find((i) => i.id === b.dataset.order);
-        if (!item || placing) return;
-        placing = true; b.disabled = true; b.textContent = '…';
-        try {
-          const order = await API.placeOrder(item);
-          trackId = order.id; tab = 'orders';
-          document.querySelectorAll('.nav button').forEach((x) => x.classList.toggle('active', x.dataset.tab === 'orders'));
-          renderTrack();
-        } finally { placing = false; }
-      });
+    function chatView() {
+      const o = API.orders.find((x) => x.id === state.trackId);
+      const msgs = (API.messages[state.trackId] || []);
+      return `
+        <header class="top">
+          <div class="brand">
+            <button class="btn ghost sm" data-back-track>←</button>
+            <div><h1>Chat</h1><p>${esc(o?.riderName || o?.shopName || 'Order')}</p></div>
+          </div>
+        </header>
+        <div class="chat" style="flex:1;min-height:0">
+          <div class="bubbles" id="bubbles">
+            ${msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
+          </div>
+          <form class="composer" id="chatForm">
+            <input name="text" placeholder="Message your rider…" autocomplete="off" />
+            <button class="btn sm dark" type="submit">Send</button>
+          </form>
+        </div>`;
+    }
+
+    function accountView() {
+      const u = API.user || {};
+      return shell(`
+        <h2>Account</h2>
+        <div class="card row">
+          <div class="avatar">👤</div>
+          <div class="grow"><b>${esc(u.name)}</b><div class="muted">${esc(u.phone)} · Customer</div></div>
+        </div>
+        <div class="card">
+          <div class="muted">Saved address</div>
+          <b>${esc(u.address)}</b>
+        </div>
+        <div class="card">
+          <div class="muted">Link APKs to this server</div>
+          <code style="font-size:12px;word-break:break-all">${location.origin}</code>
+        </div>
+        <button class="btn full ghost" id="logout">Log out</button>
+      `, true);
     }
 
     function render() {
-      if (trackId) return renderTrack();
-      if (tab === 'search') return renderSearch();
-      if (tab === 'orders') return renderOrders();
-      return renderHome();
+      const root = document.getElementById('root');
+      if (!API.user) {
+        root.innerHTML = loginView();
+        bind();
+        return;
+      }
+      if (state.screen === 'chat') {
+        root.innerHTML = chatView();
+        const b = document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+        bind();
+        return;
+      }
+      if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bind(); return; }
+      if (state.screen === 'shop') { root.innerHTML = shopView(); bind(); return; }
+      if (state.screen === 'track') {
+        const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (existing && o && state.mapHandle) {
+          state.mapHandle.update(o);
+          const st = existing.querySelector('.status');
+          if (st) { st.className = 'status ' + o.status; st.textContent = API.statusLabel(o.status); }
+          const eta = existing.querySelector('[data-eta]');
+          if (eta) eta.textContent = o.status === 'delivered' ? 'Delivered' : '12–15 min';
+          const rider = existing.querySelector('[data-rider]');
+          if (rider) rider.textContent = o.riderName || 'Assigning rider…';
+          const stepBox = existing.querySelector('[data-steps]');
+          if (stepBox) stepBox.innerHTML = steps(o.status);
+          return;
+        }
+        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+        root.innerHTML = trackView();
+        bind();
+        const el = document.getElementById('map');
+        if (el && o) state.mapHandle = mountTrackingMap(el, o);
+        return;
+      }
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+      if (state.tab === 'orders') root.innerHTML = ordersView();
+      else if (state.tab === 'cart') root.innerHTML = cartView();
+      else if (state.tab === 'account') root.innerHTML = accountView();
+      else root.innerHTML = homeView();
+      bind();
     }
 
-    view.addEventListener('click', (e) => {
-      const t = e.target.closest('[data-track]');
-      if (t) { trackId = t.dataset.track; renderTrack(); }
-    });
+    function bind() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
+        state.tab = b.dataset.tab; state.screen = 'home';
+        if (b.dataset.tab === 'cart') state.screen = 'home';
+        render();
+      });
+      const loginBtn = document.getElementById('loginBtn');
+      if (loginBtn) loginBtn.onclick = async () => {
+        const phone = document.getElementById('phone').value;
+        const pin = document.getElementById('pin').value;
+        loginBtn.disabled = true;
+        try { await API.login('customer', phone, pin); state.tab = 'home'; state.screen = 'home'; render(); }
+        catch (e) { alert(e.message); loginBtn.disabled = false; }
+      };
+      const q = document.getElementById('q');
+      if (q) q.oninput = (e) => { state.query = e.target.value; render(); const n = document.getElementById('q'); if (n) { n.focus(); n.selectionStart = n.selectionEnd = n.value.length; } };
+      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render(); });
+      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
+      root.querySelectorAll('[data-add]').forEach((b) => b.onclick = () => {
+        const item = API.items.find((i) => i.id === b.dataset.add);
+        if (item) addToCart(item);
+      });
+      root.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { state.screen = 'home'; state.tab = 'home'; render(); });
+      root.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
+      root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
+      const place = document.getElementById('place');
+      if (place) place.onclick = async () => {
+        state.address = document.getElementById('addr').value;
+        state.note = document.getElementById('note').value;
+        state.payment = document.getElementById('pay').value;
+        if (!state.cart.length) return;
+        place.disabled = true; place.textContent = 'Placing…';
+        try {
+          const order = await API.placeOrder({
+            shopId: state.cart[0].shopId,
+            userId: API.user.id,
+            customerName: API.user.name,
+            customerPhone: API.user.phone,
+            address: state.address,
+            note: state.note,
+            paymentMethod: state.payment,
+            deliveryLat: 6.9271,
+            deliveryLng: 79.8612,
+            items: state.cart,
+          });
+          state.cart = []; saveCart();
+          state.trackId = order.id; state.screen = 'track'; state.tab = 'orders';
+          render();
+        } catch (e) { alert(e.message); place.disabled = false; }
+      };
+      root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.track; state.screen = 'track'; render(); });
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; render(); });
+      const backTrack = root.querySelector('[data-back-track]');
+      if (backTrack) backTrack.onclick = () => { state.screen = 'track'; render(); };
+      const form = document.getElementById('chatForm');
+      if (form) form.onsubmit = async (e) => {
+        e.preventDefault();
+        const text = form.text.value.trim();
+        if (!text) return;
+        form.text.value = '';
+        await API.sendMessage(state.trackId, API.user.name, 'customer', text);
+      };
+      const stars = document.getElementById('stars');
+      if (stars) stars.onclick = async (e) => {
+        const r = 5;
+        await API.patch(state.trackId, { rating: r });
+      };
+      const logout = document.getElementById('logout');
+      if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_customer'); render(); };
+    }
 
-    API.on(() => render());
+    API.on(() => {
+      if (demo && !API.user && API.shops.length) {
+        API.login('customer', '0771234567', '1234');
+        return;
+      }
+      render();
+    });
   </script>
 </body>
 </html>
