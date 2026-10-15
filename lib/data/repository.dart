@@ -101,6 +101,30 @@ class OrderRepository {
   }
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
+    await _loadSupabaseConfig();
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) {
+      try {
+        var q = 'accounts?select=*&role=eq.$role';
+        if (phone != null && phone.isNotEmpty) q += '&phone=eq.$phone';
+        final rows = await _sbGet(q);
+        Map<String, dynamic>? picked;
+        for (final raw in rows) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if ('${m['pin']}' == pin) {
+            picked = m;
+            break;
+          }
+        }
+        picked ??= rows.isNotEmpty ? Map<String, dynamic>.from(rows.first as Map) : null;
+        if (picked != null) {
+          token = 'sb_${picked['id']}';
+          userNotifier.value = SessionUser.fromJson(picked);
+          connectedNotifier.value = true;
+          await refresh();
+          return true;
+        }
+      } catch (_) {}
+    }
     final uri = _uri('/api/login');
     if (uri == null) return false;
     try {
@@ -165,6 +189,36 @@ class OrderRepository {
     final data = jsonDecode(res.body);
     return data is List ? data : const [];
   }
+
+  Future<void> _sbWrite(String path, String method, Object body) async {
+    final uri = _sb(path);
+    if (uri == null) return;
+    final headers = {
+      'apikey': AppConfig.supabaseAnon,
+      'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    };
+    final encoded = jsonEncode(body);
+    final res = method == 'PATCH'
+        ? await http.patch(uri, headers: headers, body: encoded).timeout(const Duration(seconds: 8))
+        : await http.post(uri, headers: headers, body: encoded).timeout(const Duration(seconds: 8));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Supabase $path ${res.statusCode}');
+    }
+  }
+
+  Map<String, dynamic> _orderRow(Order o) => {
+        'id': o.id,
+        'user_id': o.userId,
+        'shop_id': o.shopId,
+        'shop_name': o.shopName,
+        'customer_name': o.customerName,
+        'status': o.status.apiName,
+        'total_amount': o.totalAmount,
+        'data': o.toJson(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
 
   Future<bool> _refreshFromSupabase() async {
     try {
@@ -281,36 +335,52 @@ class OrderRepository {
   }) async {
     final cart = cartNotifier.value;
     if (cart.isEmpty) return null;
-    final uri = _uri('/api/orders');
-    if (uri == null) return null;
     final u = user;
-    try {
-      final res = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'shopId': cart.first.shopId,
-              'userId': u?.id ?? 'USER_1',
-              'customerName': u?.name ?? 'Vidura',
-              'customerPhone': u?.phone ?? '0771234567',
-              'address': address,
-              'note': note,
-              'paymentMethod': paymentMethod,
-              'deliveryLat': 8.3350,
-              'deliveryLng': 80.4108,
-              'items': cart.map((e) => e.toJson()).toList(),
-            }),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        cartNotifier.value = [];
-        final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
-        await refresh();
-        return created;
-      }
-    } catch (_) {}
-    return null;
+    final payload = {
+      'shopId': cart.first.shopId,
+      'userId': u?.id ?? 'USER_1',
+      'customerName': u?.name ?? 'Vidura',
+      'customerPhone': u?.phone ?? '0771234567',
+      'address': address,
+      'note': note,
+      'paymentMethod': paymentMethod,
+      'deliveryLat': 8.3350,
+      'deliveryLng': 80.4108,
+      'items': cart.map((e) => e.toJson()).toList(),
+    };
+    final uri = _uri('/api/orders');
+    if (uri != null) {
+      try {
+        final res = await http
+            .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 8));
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          cartNotifier.value = [];
+          final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
+          await _pushOrder(created);
+          await refresh();
+          return created;
+        }
+      } catch (_) {}
+    }
+    final shop = Catalog.shops.where((s) => s.id == cart.first.shopId).toList();
+    final created = Order(
+      id: 'ORD-${DateTime.now().millisecondsSinceEpoch % 1000000}',
+      userId: u?.id ?? 'USER_1',
+      shopId: cart.first.shopId,
+      status: OrderStatus.pending,
+      items: cart.map((e) => DeliveryItem(name: e.name, qty: e.qty, price: e.price)).toList(),
+      totalAmount: cartTotal + 200,
+      deliveryLat: 8.3350,
+      deliveryLng: 80.4108,
+      timestamp: DateTime.now(),
+      shopName: shop.isNotEmpty ? shop.first.name : 'Shop',
+      customerName: u?.name ?? 'Vidura',
+    );
+    await _pushOrder(created);
+    cartNotifier.value = [];
+    await refresh();
+    return created;
   }
 
   Future<Order> addOrder(Order order) async {
@@ -356,39 +426,76 @@ class OrderRepository {
 
   Future<void> sendMessage(String orderId, String text, String role, String from) async {
     final uri = _uri('/api/orders/$orderId/messages');
-    if (uri == null) return;
+    if (uri != null) {
+      try {
+        await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'from': from, 'role': role, 'text': text}),
+            )
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
     try {
-      await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'from': from, 'role': role, 'text': text}),
-          )
-          .timeout(const Duration(seconds: 8));
-      await refresh();
+      await _sbWrite('messages', 'POST', [
+        {
+          'id': 'm${DateTime.now().millisecondsSinceEpoch}',
+          'order_id': orderId,
+          'sender': from,
+          'role': role,
+          'body': text,
+          'ts': DateTime.now().millisecondsSinceEpoch,
+        }
+      ]);
     } catch (_) {}
+    await refresh();
   }
 
   Future<void> toggleItem(String id, bool available) async {
     final uri = _uri('/api/items/$id');
-    if (uri == null) return;
+    if (uri != null) {
+      try {
+        await http
+            .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'isAvailable': available}))
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
     try {
-      await http
-          .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'isAvailable': available}))
-          .timeout(const Duration(seconds: 8));
-      await refresh();
+      await _sbWrite('menu_items?id=eq.$id', 'PATCH', {'is_available': available});
+    } catch (_) {}
+    await refresh();
+  }
+
+  Future<void> _pushOrder(Order o) async {
+    try {
+      await _sbWrite('orders', 'POST', [_orderRow(o)]);
     } catch (_) {}
   }
 
   Future<void> _patch(String id, Map<String, dynamic> body) async {
     final uri = _uri('/api/orders/$id');
-    if (uri == null) return;
-    try {
-      await http
-          .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
-          .timeout(const Duration(seconds: 8));
-      await refresh();
-    } catch (_) {}
+    if (uri != null) {
+      try {
+        await http
+            .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+    final current = byId(id);
+    if (current != null) {
+      final next = current.copyWith(
+        status: body['status'] != null ? OrderStatusX.fromApi(body['status']?.toString()) : null,
+        riderId: body['riderId']?.toString(),
+        riderName: body['riderName']?.toString(),
+        riderLat: (body['riderLat'] as num?)?.toDouble(),
+        riderLng: (body['riderLng'] as num?)?.toDouble(),
+      );
+      try {
+        await _sbWrite('orders?id=eq.$id', 'PATCH', _orderRow(next));
+      } catch (_) {}
+    }
+    await refresh();
   }
 }
 

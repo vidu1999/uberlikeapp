@@ -63,17 +63,66 @@
     };
   }
 
+  function sbHeaders(extra) {
+    return Object.assign({
+      apikey: window.QB_SUPABASE_ANON,
+      Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation,resolution=merge-duplicates',
+    }, extra || {});
+  }
+
   async function sbGet(table) {
     const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
-    const res = await fetch(base + '/rest/v1/' + table, {
-      headers: {
-        apikey: window.QB_SUPABASE_ANON,
-        Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
-      },
-    });
+    const res = await fetch(base + '/rest/v1/' + table, { headers: sbHeaders() });
     const text = await res.text();
     if (!res.ok) throw new Error('Supabase ' + table.split('?')[0] + ' ' + res.status);
     return text ? JSON.parse(text) : [];
+  }
+
+  async function sbSend(path, method, body) {
+    const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
+    const res = await fetch(base + '/rest/v1/' + path, {
+      method: method,
+      headers: sbHeaders(),
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error('Supabase ' + path.split('?')[0] + ' ' + res.status + ' ' + String(text).slice(0, 160));
+    return text ? JSON.parse(text) : null;
+  }
+
+  function mapAccount(r) {
+    const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
+    if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
+    if (r.vehicle) a.vehicle = r.vehicle;
+    if (r.rating != null) a.rating = Number(r.rating);
+    return a;
+  }
+
+  function orderRow(o) {
+    return {
+      id: o.id,
+      user_id: o.userId || null,
+      shop_id: o.shopId || null,
+      shop_name: o.shopName || null,
+      customer_name: o.customerName || null,
+      customer_phone: o.customerPhone || null,
+      address: o.address || null,
+      status: o.status || null,
+      total_amount: o.totalAmount,
+      data: o,
+      updated_at: o.updatedAt || new Date().toISOString(),
+    };
+  }
+
+  function nextOrderId() {
+    let seq = 1000;
+    for (const o of API.orders) {
+      const n = Number(String(o.id || '').replace(/\D/g, ''));
+      if (n > seq) seq = n;
+    }
+    return 'ORD-' + (seq + 1);
   }
 
   async function pullSupabase() {
@@ -129,10 +178,26 @@
   };
 
   API.login = async function (role, phone, pin) {
+    pin = pin || '1234';
+    if (sbConfigured()) {
+      try {
+        let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role);
+        if (phone) q += '&phone=eq.' + encodeURIComponent(phone);
+        const rows = await sbGet(q);
+        const picked = (rows || []).find((a) => String(a.pin) === String(pin)) || (rows && rows[0]);
+        if (picked) {
+          API.user = mapAccount(picked);
+          API.token = 'sb_' + picked.id;
+          try { sessionStorage.setItem('sd_user_' + (picked.role || API.roleHint), JSON.stringify(API.user)); } catch (_) {}
+          notify();
+          return API.user;
+        }
+      } catch (_) {}
+    }
     const data = await getJSON('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role, phone, pin: pin || '1234' }),
+      body: JSON.stringify({ role, phone, pin: pin }),
     });
     API.user = data.user;
     API.token = data.token;
@@ -182,39 +247,127 @@
   };
 
   API.placeOrder = async function (payload) {
-    const order = await getJSON('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let order = null;
+    try {
+      order = await getJSON('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (_) {}
+    if (!order || !order.id) {
+      const shop = shopOf(payload.shopId);
+      const lineItems = Array.isArray(payload.items) ? payload.items.map((it) => ({
+        id: it.id || null,
+        name: String(it.name || 'Item'),
+        qty: Number(it.qty || 1),
+        price: Number(it.price || 0),
+      })) : [];
+      const subtotal = lineItems.reduce((s, it) => s + it.price * it.qty, 0);
+      const deliveryFee = payload.deliveryFee != null ? Number(payload.deliveryFee) : 200;
+      order = {
+        id: nextOrderId(),
+        userId: payload.userId || (API.user && API.user.id) || 'USER_1',
+        shopId: payload.shopId,
+        shopName: shop.name,
+        shopEmoji: shop.emoji,
+        customerName: payload.customerName || (API.user && API.user.name) || 'Guest',
+        customerPhone: payload.customerPhone || (API.user && API.user.phone) || '',
+        address: payload.address,
+        note: payload.note || '',
+        paymentMethod: payload.paymentMethod || 'Cash on delivery',
+        riderId: null,
+        riderName: null,
+        riderPhone: null,
+        status: 'pending',
+        items: lineItems,
+        subtotal: subtotal,
+        deliveryFee: deliveryFee,
+        totalAmount: subtotal + deliveryFee,
+        deliveryLat: Number(payload.deliveryLat ?? 8.335),
+        deliveryLng: Number(payload.deliveryLng ?? 80.4108),
+        riderLat: null,
+        riderLng: null,
+        timestamp: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (sbConfigured()) {
+      await sbSend('orders', 'POST', [orderRow(order)]);
+      try {
+        await sbSend('messages', 'POST', [{
+          id: 'm0',
+          order_id: order.id,
+          sender: 'QuickBite',
+          role: 'system',
+          body: 'Order placed at ' + (order.shopName || 'shop'),
+          ts: Date.now(),
+        }]);
+      } catch (_) {}
+    }
     await API.refresh();
     return order;
   };
 
   API.patch = async function (id, body) {
-    const order = await getJSON('/api/orders/' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    let order = null;
+    try {
+      order = await getJSON('/api/orders/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (_) {}
+    const cur = order || API.orders.find((o) => o.id === id);
+    if (cur && sbConfigured()) {
+      const next = Object.assign({}, cur, body);
+      if (body.status === 'on_the_way') {
+        next.riderId = next.riderId || 'RIDER_77';
+        next.riderName = next.riderName || 'Kamal Perera';
+        next.riderPhone = next.riderPhone || '0775556666';
+      }
+      if (body.status === 'delivered') next.deliveredAt = new Date().toISOString();
+      next.updatedAt = new Date().toISOString();
+      await sbSend('orders?id=eq.' + encodeURIComponent(id), 'PATCH', orderRow(next));
+      order = next;
+    }
     await API.refresh();
     return order;
   };
 
-  API.toggleItem = function (id, isAvailable) {
-    return getJSON('/api/items/' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isAvailable }),
-    }).then(() => API.refresh());
+  API.toggleItem = async function (id, isAvailable) {
+    try {
+      await getJSON('/api/items/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAvailable }),
+      });
+    } catch (_) {}
+    if (sbConfigured()) {
+      await sbSend('menu_items?id=eq.' + encodeURIComponent(id), 'PATCH', { is_available: isAvailable });
+    }
+    return API.refresh();
   };
 
-  API.sendMessage = function (orderId, from, role, text) {
-    return getJSON('/api/orders/' + encodeURIComponent(orderId) + '/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, role, text }),
-    }).then(() => API.refresh());
+  API.sendMessage = async function (orderId, from, role, text) {
+    try {
+      await getJSON('/api/orders/' + encodeURIComponent(orderId) + '/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, role, text }),
+      });
+    } catch (_) {}
+    if (sbConfigured()) {
+      await sbSend('messages', 'POST', [{
+        id: 'm' + Date.now(),
+        order_id: orderId,
+        sender: from,
+        role: role,
+        body: text,
+        ts: Date.now(),
+      }]);
+    }
+    return API.refresh();
   };
 
   API.reset = function () {
