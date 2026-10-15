@@ -12,7 +12,7 @@
     const sub = opts.sub || 'We’ll send a 4-digit code on WhatsApp. Free · no PIN.';
     const phone = opts.phone || DEFAULTS[role] || '';
     return `<div class="login otp-login" data-otp-root data-role="${role}">
-      <div class="wordmark">Good <em>Food</em></div>
+      <div class="wordmark">Quick<em>Bite</em></div>
       <div class="otp-steps"><span class="on">1 Phone</span><span>2 WhatsApp</span><span>3 Code</span></div>
       <div data-step="phone">
         <h1>${title}</h1>
@@ -29,7 +29,7 @@
         <h1>Enter the 4-digit code</h1>
         <p class="sub">WhatsApp sent to <b data-sent-phone></b></p>
         <div class="wa-chat" data-wa-chat>
-          <div class="wa-head">${WA_ICON}<div><b>Uber Eats</b><small>WhatsApp · now</small></div></div>
+          <div class="wa-head">${WA_ICON}<div><b>QuickBite</b><small>WhatsApp · now</small></div></div>
           <div class="wa-thread">
             <div class="wa-bubble" data-sms-body>Sending…</div>
           </div>
@@ -48,7 +48,7 @@
         <div class="wa-toast-ico">${WA_ICON}</div>
         <div class="grow">
           <div class="sms-meta"><span>WhatsApp</span><span>now</span></div>
-          <div class="sms-from">Uber Eats</div>
+          <div class="sms-from">QuickBite</div>
           <div class="sms-body" data-sms-preview></div>
         </div>
       </div>

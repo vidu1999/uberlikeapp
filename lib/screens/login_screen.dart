@@ -62,6 +62,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String get _code => _digits.map((c) => c.text).join();
 
+  void _download(String app) {
+    final url = app == 'shop'
+        ? 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk'
+        : 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(app == 'shop' ? 'Shop Owner app' : 'Rider app'),
+        content: Text('Download the ${app == 'shop' ? 'Shop' : 'Rider'} APK:\n$url'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _send() async {
     setState(() {
       busy = true;
@@ -131,8 +147,8 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             children: [
               const Text.rich(TextSpan(children: [
-                TextSpan(text: 'Uber ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22)),
-                TextSpan(text: 'Eats', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22, color: Color(0xFF06C167))),
+                TextSpan(text: 'Quick', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22)),
+                TextSpan(text: 'Bite', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22, color: Color(0xFF00C853))),
               ])),
               const SizedBox(height: 12),
               const Text(
@@ -171,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         color: const Color(0xFF075E54),
-                        child: const Text('Good Food  ·  WhatsApp',
+                        child: const Text('QuickBite  ·  WhatsApp',
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                       ),
                       Padding(
@@ -246,6 +262,36 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
               const SizedBox(height: 12),
               const ConnectionBanner(),
+              if (widget.role == UserRole.customer && !codeStep) ...[
+                const SizedBox(height: 24),
+                const Text('Create Account', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00C853)),
+                        onPressed: busy ? null : _send,
+                        child: const Text('Customer'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _download('shop'),
+                        child: const Text('Shop Owner'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _download('rider'),
+                        child: const Text('Rider'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
           if (smsBody != null)

@@ -56,6 +56,14 @@
     return data.user;
   };
 
+  API.register = function (payload) {
+    return getJSON('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  };
+
   API.sendOtp = function (role, phone) {
     return getJSON('/api/otp/send', {
       method: 'POST',
@@ -144,7 +152,7 @@
   };
 
   API.rs = function (n) {
-    return 'LKR ' + Math.round(Number(n) || 0).toLocaleString('en-LK');
+    return 'Rs. ' + Math.round(Number(n) || 0).toLocaleString('en-LK');
   };
 
   try {

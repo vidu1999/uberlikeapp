@@ -113,7 +113,7 @@
     const km = kmLeft(order);
     const showComplete = viewer === 'rider' && order.status === 'on_the_way';
     const showDone = order.status === 'delivered' && viewer !== 'rider';
-    const title = order.status === 'delivered' ? 'Delivered' : 'On Delivery';
+    const title = order.status === 'delivered' ? 'Delivered' : 'Track Order';
     return `<div class="rd-screen" data-track-root="${esc(order.id)}" data-viewer="${esc(viewer)}" data-has-rider="${order.riderName ? '1' : '0'}">
       <div id="map" class="map"></div>
       <div class="rd-top">

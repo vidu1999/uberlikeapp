@@ -45,7 +45,7 @@ function sendOtp(phoneRaw, role) {
   }
   const code = generateCode();
   const smsToken = crypto.randomBytes(16).toString('hex');
-  const body = 'Your Uber Eats code is ' + code + '. Don\'t share this WhatsApp message.';
+  const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';
   const rec = {
     hash: hashCode(code, phone),
     expires: Date.now() + 5 * 60 * 1000,
@@ -57,7 +57,7 @@ function sendOtp(phoneRaw, role) {
   };
   otps.set(key, rec);
   smsByToken.set(smsToken, {
-    from: 'Uber Eats',
+    from: 'QuickBite',
     body,
     phone,
     channel: 'whatsapp',

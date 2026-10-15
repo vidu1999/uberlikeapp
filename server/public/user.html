@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>User App</title>
+  <title>QuickBite</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
   <link rel="stylesheet" href="/css/ui.css" />
   <link rel="stylesheet" href="/css/track.css" />
+  <link rel="stylesheet" href="/css/qb.css" />
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -17,56 +18,81 @@
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
-  <script src="/js/otp-login.js"></script>
   <script>
-    const state = {
-      tab: 'home',
-      screen: 'home',
-      query: '',
-      category: 'All',
-      shopId: null,
-      trackId: null,
-      cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
-      favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
-      note: '',
-      address: 'New Town, Anuradhapura',
-      payment: 'Cash on delivery',
-      mapHandle: null,
-      lockTrack: false,
+    const APK = {
+      shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
+      rider: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk',
     };
+    const ONBOARD = [
+      { img: '/img/onboard-1.jpg', title: 'Fast & Reliable Delivery', sub: 'Get your favorite food from the best shops, delivered right to your door.' },
+      { img: '/img/onboard-2.jpg', title: 'Wide Variety of Restaurants', sub: 'From local favorites to popular brands, find everything you love.' },
+      { img: '/img/onboard-3.jpg', title: 'Track Your Order in Real Time', sub: 'See your order status and live location until it reaches you.' },
+    ];
     const CATS = [
       { id: 'All', label: 'All', map: 'All', img: '' },
       { id: 'Burgers', label: 'Burgers', map: 'Fast Food', img: '/img/shop-burger.jpg' },
       { id: 'Pizza', label: 'Pizza', map: 'Pizza', img: '/img/shop-pizza.jpg' },
       { id: 'Bakery', label: 'Bakery', map: 'Bakery', img: '/img/shop-bakery.jpg' },
-      { id: 'Beverages', label: 'Beverages', map: 'Coffee', img: '/img/shop-coffee.jpg' },
+      { id: 'Beverages', label: 'Beverages', map: 'Beverages', img: '/img/iced-coffee.jpg' },
     ];
+    const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#fff"/><path d="M8 10.5c0-1.2.9-2.2 2.4-2.6V7h1.3v.8c1.4.3 2.4 1.2 2.4 2.4 0 1.6-1.4 2.2-2.7 2.5v2.2c.7-.1 1.3-.4 1.7-.8l.9.8c-.7.7-1.7 1.1-2.6 1.3V17h-1.3v-.8c-1.6-.3-2.6-1.3-2.6-2.7 0-1.5 1.2-2.2 2.6-2.5V10c-.6.2-1.1.5-1.1 1.1H8zm3.7 1.3c.7-.2 1.2-.4 1.2-.9s-.5-.8-1.2-.9v1.8zm-1.3 3.3v-1.8c-.7.2-1.2.5-1.2 1s.5.7 1.2.8z" fill="#00C853"/></svg>';
+
+    const seenOnboard = sessionStorage.getItem('qb_onboard') === '1';
+    const state = {
+      gate: API.user ? 'app' : 'splash',
+      onboard: 0,
+      tab: 'home',
+      screen: 'home',
+      query: '',
+      category: 'All',
+      shopId: null,
+      menuTab: 'menu',
+      menuCat: 'Cakes',
+      trackId: null,
+      cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
+      favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
+      note: '',
+      address: 'No.123, Lake View Road, Anuradhapura',
+      payment: 'Cash on delivery',
+      deliveryType: 'standard',
+      mapHandle: null,
+      lockTrack: false,
+      regRole: 'customer',
+      downloadRole: 'shop',
+      otp: { phone: '0771234567', smsToken: '', err: '' },
+      loginId: '0771234567',
+      loginPw: '1234',
+      reg: { name: 'Vidura K Jayathilake', phone: '0771234567', email: 'vidurakavindadev@gmail.com', password: '1234' },
+    };
+    if (state.gate === 'splash') {
+      setTimeout(() => {
+        if (state.gate !== 'splash') return;
+        state.gate = seenOnboard ? 'login' : 'onboard';
+        render();
+      }, 1800);
+    }
+
     function saveCart() { sessionStorage.setItem('sd_cart', JSON.stringify(state.cart)); }
     function saveFavs() { sessionStorage.setItem('sd_favs', JSON.stringify(state.favs)); }
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
+    function fee() { return state.deliveryType === 'express' ? 360 : 200; }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
-    function shopImg(s) { return s.image || '/img/shop-curry.jpg'; }
+    function shopImg(s) { return (s && s.image) || '/img/shop-curry.jpg'; }
     function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
-    function firstName() { return (API.user?.name || 'there').split(' ')[0]; }
+    function firstName() { return (API.user?.name || 'Vidura').split(' ')[0]; }
     function hello() {
       const h = new Date().getHours();
       return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
     }
-    function city() {
-      const a = API.user?.address || state.address || '';
-      if (/anuradhapura/i.test(a)) return 'Anuradhapura';
-      const part = a.split(',')[1] || a.split(',')[0] || 'Anuradhapura';
-      return part.trim() || 'Anuradhapura';
-    }
     function addToCart(item) {
-      state.cart = state.cart.filter((c) => c.shopId === item.shopId);
+      if (state.cart.length && state.cart[0].shopId !== item.shopId) state.cart = [];
       const hit = state.cart.find((c) => c.id === item.id);
       if (hit) hit.qty += 1;
-      else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1 });
+      else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1, image: item.image });
       saveCart();
       render();
     }
@@ -76,13 +102,6 @@
       hit.qty += d;
       if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
       saveCart();
-      render();
-    }
-    function toggleFav(id, ev) {
-      if (ev) ev.stopPropagation();
-      if (state.favs.includes(id)) state.favs = state.favs.filter((x) => x !== id);
-      else state.favs.push(id);
-      saveFavs();
       render();
     }
 
@@ -97,7 +116,8 @@
       grid: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
       heart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.6-9.5-8.5C.3 9.2 2.2 5 6.2 5c2 0 3.4 1 4.3 2.2C11.4 6 12.8 5 14.8 5c4 0 5.9 4.2 3.7 7.5C19 16.4 12 21 12 21z"/></svg>',
       heartOn: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-9.5-8.5C.3 9.2 2.2 5 6.2 5c2 0 3.4 1 4.3 2.2C11.4 6 12.8 5 14.8 5c4 0 5.9 4.2 3.7 7.5C19 16.4 12 21 12 21z"/></svg>',
-      chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m8 6 8 6-8 6"/></svg>',
+      mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+      lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
     };
 
     function nav() {
@@ -110,19 +130,17 @@
       </nav>`;
     }
     function cartbar() {
-      if (!cartCount() || ['cart','checkout','track','chat'].includes(state.screen) || state.tab==='cart') return '';
+      if (!cartCount() || ['cart','checkout','track','chat','done'].includes(state.screen) || state.tab==='cart') return '';
       return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${rs(cartTotal())}</span></div>`;
     }
-    function header() {
-      return `<div class="u-top">
-        <div class="u-loc">
-          <div class="u-city">${SVG.pin} ${esc(city())} ▾</div>
-          <div class="u-icons">
-            <button class="u-bell" data-tab="orders" aria-label="Orders">${SVG.bell}</button>
-            <button class="u-ava" data-tab="account" aria-label="Profile"><img src="/img/avatar-user.jpg" alt="" /></button>
-          </div>
-        </div>
-      </div>`;
+    function filteredShops() {
+      const q = state.query.toLowerCase();
+      const cat = CATS.find((c) => c.id === state.category) || CATS[0];
+      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
+      if (cat.id !== 'All') {
+        shops = shops.filter((s) => s.category === cat.map || s.category === cat.id || (cat.id === 'Beverages' && (s.category === 'Coffee' || s.category === 'Beverages')));
+      }
+      return shops;
     }
     function shopRow(s) {
       const liked = state.favs.includes(s.id);
@@ -139,29 +157,133 @@
       </div>`;
     }
 
+    function splash() {
+      return `<div class="qb-splash">
+        <div class="qb-logo">
+          <div class="qb-mark">${MARK}</div>
+          <div class="qb-name">QuickBite</div>
+          <div class="qb-tag">Good Food, Fast Delivery</div>
+        </div>
+        <p class="hero">Your Favorite Food Delivered to Your Door</p>
+        <div class="qb-bar"></div>
+      </div>`;
+    }
+    function onboard() {
+      const o = ONBOARD[state.onboard];
+      const last = state.onboard === ONBOARD.length - 1;
+      return `<div class="qb-onboard">
+        <button class="qb-skip" data-skip>Skip</button>
+        <img class="art" src="${o.img}" alt="" />
+        <h1>${o.title}</h1>
+        <p>${o.sub}</p>
+        <div class="qb-dots">${ONBOARD.map((_,i)=>`<i class="${i===state.onboard?'on':''}"></i>`).join('')}</div>
+        <button class="btn-qb" data-next>${last ? 'Get Started' : 'Next'}</button>
+      </div>`;
+    }
+    function loginView() {
+      return `<div class="qb-auth">
+        <div class="qb-logo">
+          <div class="qb-mark sm">${MARK}</div>
+          <div class="qb-name">QuickBite</div>
+          <div class="qb-tag">Good Food, Fast Delivery</div>
+        </div>
+        <h1>Welcome Back 👋</h1>
+        <p class="sub">Sign in to continue</p>
+        <div class="qb-field"><span class="ico">${SVG.mail}</span><input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" /></div>
+        <div class="qb-field"><span class="ico">${SVG.lock}</span><input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
+        <button class="qb-forgot" type="button">Forgot Password?</button>
+        <p class="err" data-err></p>
+        <button class="btn-qb" data-signin>Sign In</button>
+        <div class="qb-or">or</div>
+        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28;margin-bottom:8px">Continue with Google</button>
+        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28">Continue with Apple</button>
+        <div class="qb-foot">Don't have an account? <button class="link" data-go-reg>Sign Up</button></div>
+      </div>`;
+    }
+    function registerView() {
+      const r = state.regRole;
+      return `<div class="qb-reg">
+        <h1>Create Account</h1>
+        <p class="sub">Join QuickBite and start ordering your favorite food.</p>
+        <div class="role-tabs">
+          <button class="${r==='customer'?'on':''}" data-regrole="customer">Customer</button>
+          <button class="${r==='shop'?'on':''}" data-regrole="shop">Shop Owner</button>
+          <button class="${r==='rider'?'on':''}" data-regrole="rider">Rider</button>
+        </div>
+        <label>Full Name</label>
+        <div class="qb-field"><input id="regName" placeholder="Enter your name" value="${esc(state.reg.name)}" /></div>
+        <label>Phone Number</label>
+        <div class="qb-field"><input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(state.reg.phone)}" /></div>
+        <label>Email Address</label>
+        <div class="qb-field"><input id="regEmail" placeholder="Enter your email" value="${esc(state.reg.email)}" /></div>
+        <label>Password</label>
+        <div class="qb-field"><input id="regPw" type="password" placeholder="Create a password" value="${esc(state.reg.password)}" /></div>
+        <p class="err" data-err></p>
+        <button class="btn-qb" data-register style="margin-top:12px">${r==='customer'?'Register': r==='shop' ? 'Download Shop App' : 'Download Rider App'}</button>
+        <div class="qb-foot" style="color:#6B7280">Already have an account? <button class="link" data-go-login>Sign In</button></div>
+      </div>`;
+    }
+    function otpView() {
+      return `<div class="qb-otp" data-otp-root>
+        <button class="qb-skip" style="align-self:flex-start" data-go-login>←</button>
+        <div class="qb-mark sm" style="margin:8px auto">${MARK}</div>
+        <h1>Enter verification code</h1>
+        <p class="sub">We sent a 4-digit WhatsApp code to <b data-sent-phone>${esc(state.otp.phone)}</b></p>
+        <div class="wa-chat" data-wa-chat style="margin-top:12px">
+          <div class="wa-head"><b>QuickBite</b><small>WhatsApp · now</small></div>
+          <div class="wa-thread"><div class="wa-bubble" data-sms-body>Sending…</div></div>
+        </div>
+        <div class="otp-boxes">
+          <input data-d="0" maxlength="1" inputmode="numeric" />
+          <input data-d="1" maxlength="1" inputmode="numeric" />
+          <input data-d="2" maxlength="1" inputmode="numeric" />
+          <input data-d="3" maxlength="1" inputmode="numeric" />
+        </div>
+        <p class="err" data-err2></p>
+        <button class="btn-qb" data-verify>Verify & enter</button>
+        <button class="btn-ghost-qb" data-resend>Resend on WhatsApp</button>
+      </div>`;
+    }
+    function downloadView() {
+      const shop = state.downloadRole === 'shop';
+      return `<div class="qb-dl">
+        <div class="qb-mark">${MARK}</div>
+        <h1>${shop ? 'Shop Owner app' : 'Rider app'}</h1>
+        <p>${shop
+          ? 'Manage orders, mark food ready, and grow Kandy Bakers from the Shop app.'
+          : 'Go online, pick up orders, and deliver with live tracking from the Rider app.'}</p>
+        <a class="btn-qb" style="display:block;text-decoration:none;margin-top:18px" href="${shop ? APK.shop : APK.rider}">Download ${shop ? 'Shop' : 'Rider'} APK</a>
+        <a class="btn-ghost-qb" href="${shop ? '/shop' : '/rider'}" style="display:block;margin-top:8px">Open in browser</a>
+        <button class="btn-ghost-qb" data-go-reg>Back to register</button>
+      </div>`;
+    }
+
+    function header() {
+      return `<div class="u-top">
+        <div class="u-loc">
+          <div class="u-city">${SVG.pin} Anuradhapura ▾</div>
+          <div class="u-icons">
+            <button class="u-bell" data-tab="orders">${SVG.bell}</button>
+            <button class="u-ava" data-tab="account"><img src="/img/avatar-user.jpg" alt="" /></button>
+          </div>
+        </div>
+      </div>`;
+    }
     function homeView() {
-      const q = state.query.toLowerCase();
-      const cat = CATS.find((c) => c.id === state.category) || CATS[0];
-      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
-      if (cat.id !== 'All') shops = shops.filter((s) => s.category === cat.map || s.category === cat.id);
-      const live = TrackUI.liveOrder(API.orders);
+        const live = TrackUI.liveOrder(API.orders);
       return `<div class="scroll">
         ${header()}
         <div class="u-hi">
           <p class="greet">${hello()},</p>
           <h1>${esc(firstName())} 👋</h1>
-          <p>Great food, delivered to your door!</p>
+          <p class="hungry">Hungry? Let's get you something delicious!</p>
         </div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
         ${TrackUI.banner(live)}
         <div class="u-promo">
           <img src="/img/shop-burger.jpg" alt="" />
-          <div class="copy">
-            <h3>Delicious Food</h3>
-            <h3>Fast Delivery</h3>
-            <p>Your favorite restaurants, now closer than ever!</p>
-          </div>
-          <button class="u-play" data-shop="${(API.shops[1]||API.shops[0]||{}).id||''}" aria-label="Browse">▶</button>
+          <div class="copy"><h3>Delicious Food</h3><h3>Fast Delivery</h3><p>Fresh · Hot · Trusted</p></div>
+          <button class="u-play" data-shop="${(API.shops[1]||API.shops[0]||{}).id||''}">▶</button>
         </div>
         <div class="u-cats">
           ${CATS.map((c) => `<button class="u-cat ${state.category===c.id?'on':''}" data-cat="${c.id}">
@@ -169,182 +291,254 @@
             <span>${c.label}</span>
           </button>`).join('')}
         </div>
-        <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-cat="All">See All ›</button></div>
-        ${shops.map(shopRow).join('') || '<div class="pad muted">No shops match.</div>'}
+        <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-go-search>See All ›</button></div>
+        ${filteredShops().slice(0,6).map(shopRow).join('') || '<div class="pad muted">Loading shops from database…</div>'}
       </div>${cartbar()}${nav()}`;
     }
-
+    function searchView() {
+      return `<div class="scroll qb-search-page">
+        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>
+        <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
+        <div class="u-cats">
+          ${CATS.map((c) => `<button class="u-cat ${state.category===c.id?'on':''}" data-cat="${c.id}">
+            <div class="ico">${c.img ? `<img src="${c.img}" alt="" />` : SVG.grid}</div>
+            <span>${c.label}</span>
+          </button>`).join('')}
+        </div>
+        <div class="sec-row"><h2>Popular Near You</h2></div>
+        ${filteredShops().map(shopRow).join('')}
+      </div>${nav()}`;
+    }
     function shopView() {
       const shop = API.shopOf(state.shopId);
       const items = API.items.filter((i) => i.shopId === shop.id);
+      const cats = [...new Set(items.map((i) => i.category))];
+      if (cats.length && !cats.includes(state.menuCat)) state.menuCat = cats[0];
+      const list = items.filter((i) => !state.menuCat || i.category === state.menuCat);
       return `<div class="scroll">
-        <div class="shophead">
+        <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
-          <button class="back back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
+          <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
+          <div class="overlay">
+            <h1>${esc(shop.name)}</h1>
+            <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${shop.km || 2.5} km</div>
+            <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
+          </div>
         </div>
-        <div class="pad" style="padding-top:14px">
-          <h2 class="sec-row" style="padding:0"><span>${esc(shop.name)}</span></h2>
-          <div class="muted">★ ${shop.rating} (${shop.reviews || 0}+) · ${esc(shop.category)} · ${shop.km || 2.5} km</div>
+        <div class="menu-tabs">
+          <button class="${state.menuTab==='menu'?'on':''}" data-mtab="menu">Menu</button>
+          <button class="${state.menuTab==='reviews'?'on':''}" data-mtab="reviews">Reviews</button>
+          <button class="${state.menuTab==='info'?'on':''}" data-mtab="info">Info</button>
         </div>
-        ${items.map((it) => `
-          <div class="menu-item">
-            <div class="grow">
-              <b>${esc(it.name)}</b>
-              <p>${esc(it.desc || it.category)}</p>
-              <div class="price">${rs(it.price)}</div>
-              ${it.isAvailable ? `<button class="add" data-add="${it.id}">Add</button>` : `<span class="muted">Sold out</span>`}
-            </div>
+        ${state.menuTab==='menu' ? `
+          <div class="menu-cats">${cats.map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          ${list.map((it)=>`<div class="menu-row">
             <img src="${itemImg(it)}" alt="" />
+            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}</div></div>
+            ${it.isAvailable ? `<button class="add" data-add="${it.id}">Add</button>` : `<span class="muted">Sold out</span>`}
           </div>`).join('')}
+        ` : state.menuTab==='reviews' ? `<div class="pad"><p>★ ${shop.rating} from ${shop.reviews || 0} reviews (from database).</p></div>`
+          : `<div class="pad"><p>${esc(shop.address)}</p><p class="muted">${esc(shop.hours)}</p></div>`}
       </div>${cartbar()}${nav()}`;
     }
-
     function cartView() {
       if (!state.cart.length) {
-        return `<div class="scroll">${header()}<div class="pad"><h2>Cart</h2><p class="muted">Add items from a shop to start a cart.</p></div></div>${nav()}`;
+        return `<div class="scroll"><div class="back-row"><b>Cart</b></div><div class="pad muted">Your cart is empty.</div></div>${nav()}`;
       }
       const shop = API.shopOf(state.cart[0].shopId);
+      const extras = API.items.filter((i) => i.shopId === shop.id && !state.cart.some((c) => c.id === i.id)).slice(0, 4);
       const sub = cartTotal();
-      const fee = sub > 2000 ? 0 : (shop.fee || 250);
-      return `<div class="scroll">${header()}
-        <div class="pad">
-          <h2>${esc(shop.name)}</h2>
-          ${state.cart.map((c) => `
-            <div class="row" style="padding:10px 0;border-bottom:1px solid #f3f3f3">
-              <div class="grow"><b>${esc(c.name)}</b><div class="muted">${rs(c.price)}</div></div>
-              <div class="qty">
-                <button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b>
-                <button data-qty="${c.id}" data-d="1">+</button>
-              </div>
-            </div>`).join('')}
-          <div style="margin-top:16px" class="muted">Subtotal ${rs(sub)}</div>
-          <div class="muted">Delivery ${fee ? rs(fee) : 'Free'}</div>
-          <h2 style="margin:12px 0">Total ${rs(sub+fee)}</h2>
-          <button class="btn full green" data-go="checkout">Go to checkout</button>
-        </div></div>${nav()}`;
+      return `<div class="scroll">
+        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Cart</b></div>
+        ${state.cart.map((c) => {
+          const it = API.items.find((i) => i.id === c.id) || c;
+          return `<div class="cart-line">
+            <img src="${itemImg(it)}" alt="" />
+            <div class="grow"><b>${esc(c.name)}</b><div class="muted">${rs(c.price)}</div></div>
+            <div class="qty"><button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b><button data-qty="${c.id}" data-d="1">+</button></div>
+          </div>`;
+        }).join('')}
+        <div class="sec-row"><h2>Add more items</h2></div>
+        <div class="add-more">${extras.map((it)=>`<div class="add-mini" data-add="${it.id}"><img src="${itemImg(it)}" alt="" /><b style="font-size:12px">${esc(it.name)}</b><div class="muted">${rs(it.price)}</div></div>`).join('')}</div>
+        <div class="totals">
+          <div class="row"><span>Subtotal</span><span>${rs(sub)}</span></div>
+          <div class="row"><span>Delivery Fee</span><span>${rs(fee())}</span></div>
+          <div class="row tot"><span>Total</span><span>${rs(sub+fee())}</span></div>
+        </div>
+        <div class="pad"><button class="btn-qb" data-go="checkout">Proceed to Checkout</button></div>
+      </div>${nav()}`;
     }
-
     function checkoutView() {
       const sub = cartTotal();
-      const shop = state.cart[0] ? API.shopOf(state.cart[0].shopId) : {};
-      const fee = sub > 2000 ? 0 : (shop.fee || 250);
+      const f = fee();
       return `<div class="scroll">
         <div class="back-row"><button class="back-fab" data-tab="cart">←</button><b>Checkout</b></div>
         <div class="pad">
-          <div class="field"><label>Deliver to</label><input id="addr" value="${esc(state.address)}" /></div>
-          <div class="field"><label>Note for courier</label><input id="note" placeholder="Gate code, extra chilli…" value="${esc(state.note)}" /></div>
-          <div class="field"><label>Payment</label>
-            <select id="pay"><option>Cash on delivery</option><option>Card on delivery</option></select>
+          <h3>Delivery Address</h3>
+          <div class="addr-card">${SVG.pin} ${esc(state.address)} <button class="link" style="float:right;color:#00C853;border:0;background:0;font-weight:700">Change</button>
+            <input id="addr" value="${esc(state.address)}" style="margin-top:8px;width:100%;border:0;background:transparent;font-size:14px" />
           </div>
-          <p class="muted">Pay ${rs(sub+fee)} when your order arrives.</p>
-          <button class="btn full green" id="place">Place order</button>
-        </div></div>`;
+          <h3>Delivery Type</h3>
+          <label class="ship-opt"><input type="radio" name="ship" value="standard" ${state.deliveryType==='standard'?'checked':''} /> Standard (30–45 min) <span class="grow"></span> ${rs(200)}</label>
+          <label class="ship-opt"><input type="radio" name="ship" value="express" ${state.deliveryType==='express'?'checked':''} /> Express (15–25 min) <span class="grow"></span> ${rs(360)}</label>
+          <h3>Payment Method</h3>
+          <label class="pay-opt"><input type="radio" name="pay" value="Cash on delivery" checked /> Cash on Delivery</label>
+          <label class="pay-opt"><input type="radio" name="pay" value="Card on delivery" /> Card Payment</label>
+          <label class="pay-opt"><input type="radio" name="pay" value="wallet" disabled /> Online Wallet (Coming Soon)</label>
+          <div class="totals"><div class="row tot"><span>Total</span><span>${rs(sub+f)}</span></div></div>
+          <button class="btn-qb" id="place">Place Order</button>
+        </div>
+      </div>`;
     }
-
     function ordersView() {
+      const mine = API.orders;
       return `<div class="scroll">${header()}
-        <div class="pad"><h2>Orders</h2></div>
-        ${API.orders.map((o) => `
+        <div class="pad"><h2>My Orders</h2></div>
+        ${mine.map((o) => `
           <div class="order-row" data-track="${esc(o.id)}">
             <img src="${shopImg(API.shopOf(o.shopId))}" alt="" />
             <div class="grow">
               <b>${esc(o.shopName)}</b>
-              <div class="muted">${esc(o.items.map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
+              <div class="muted">${esc((o.items||[]).map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
               <div class="price">${rs(o.totalAmount)}</div>
             </div>
             <span class="badge ${o.status}">${API.statusLabel(o.status)}</span>
           </div>`).join('') || '<div class="pad muted">No orders yet.</div>'}
       </div>${nav()}`;
     }
-
     function trackView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       if (!o) return `<div class="pad">Order not found.</div>${nav()}`;
+      if (o.status === 'delivered') return doneView(o);
       return TrackUI.screen(o, 'customer');
     }
-
+    function doneView() {
+      return `<div class="qb-done">
+        <div class="ok"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="m5 12 5 5 9-10"/></svg></div>
+        <h1>Order Delivered!</h1>
+        <p class="muted">Your food has been delivered successfully.</p>
+        <img class="art" src="/img/delivered-hero.jpg" alt="" />
+        <button class="btn-qb" data-done>Done</button>
+        <button class="btn-ghost-qb" data-tab="orders">View Order Details</button>
+      </div>`;
+    }
     function chatView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       const msgs = API.messages[state.trackId] || [];
       return `<div class="back-row"><button class="back-fab" data-back-track>←</button><b>${esc(o?.riderName || 'Courier')}</b></div>
         <div class="chat" style="flex:1;min-height:0">
-          <div class="bubbles" id="bubbles">
-            ${msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
-          </div>
-          <form class="composer" id="chatForm">
-            <input name="text" placeholder="Message your courier…" autocomplete="off" />
-            <button class="btn sm green" type="submit">Send</button>
-          </form>
+          <div class="bubbles" id="bubbles">${msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}</div>
+          <form class="composer" id="chatForm"><input name="text" placeholder="Message…" autocomplete="off" /><button class="btn sm green" type="submit">Send</button></form>
         </div>`;
     }
-
     function accountView() {
       const u = API.user || {};
-      return `<div class="scroll">${header()}
-        <div class="profile-card">
-          <img class="ava" src="/img/avatar-user.jpg" alt="" />
-          <h2 style="margin:0">${esc(u.name)}</h2>
-          <p class="muted">${esc(u.phone)}</p>
-          <div class="muted">Saved address</div>
-          <b>${esc(u.address)}</b>
-          <div style="height:20px"></div>
-          <button class="btn ghost full" id="logout">Sign out</button>
+      return `<div class="scroll">
+        <div class="prof-head">
+          <img src="/img/avatar-user.jpg" alt="" />
+          <div class="grow">
+            <b>${esc(u.name || 'Vidura K Jayathilake')}</b>
+            <div class="muted">${esc(u.email || 'vidurakavindadev@gmail.com')}</div>
+          </div>
+          <button class="edit-pill">Edit Profile</button>
+        </div>
+        <div class="prof-list">
+          <button data-tab="orders">${SVG.orders} My Orders</button>
+          <button>${SVG.pin} Addresses</button>
+          <button>${SVG.lock} Payment Methods</button>
+          <button>${SVG.bell} Notifications</button>
+          <button>${SVG.mail} Help & Support</button>
+          <button id="logout">Settings · Sign out</button>
         </div>
       </div>${nav()}`;
     }
 
-    function loginView() {
-      return OtpLogin.render({
-        role: 'customer',
-        title: 'Enter your mobile number',
-        sub: 'We’ll send a 4-digit code on WhatsApp to this number. Then you enter the app.',
-        phone: '0771234567',
+    async function startOtp(phone) {
+      state.otp.phone = phone;
+      state.otp.err = '';
+      const out = await API.sendOtp('customer', phone);
+      state.otp.phone = out.phone;
+      state.otp.smsToken = out.smsToken;
+      state.gate = 'otp';
+      render();
+    }
+    function bindOtp() {
+      const root = document.querySelector('[data-otp-root]');
+      if (!root) return;
+      const err2 = root.querySelector('[data-err2]');
+      const codeValue = () => [...root.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+      async function deliver() {
+        const bubble = root.querySelector('[data-sms-body]');
+        try {
+          await new Promise((r) => setTimeout(r, 600));
+          const msg = await API.readSms(state.otp.smsToken);
+          if (bubble) bubble.textContent = msg.body;
+        } catch (_) {
+          if (bubble) bubble.textContent = 'WhatsApp message failed. Tap resend.';
+        }
+      }
+      deliver();
+      async function verify() {
+        const code = codeValue();
+        if (code.length !== 4) { err2.textContent = 'Enter the 4-digit code'; return; }
+        try {
+          await API.verifyOtp('customer', state.otp.phone, code);
+          state.gate = 'app'; state.tab = 'home'; state.screen = 'home';
+          render();
+        } catch (e) { err2.textContent = e.message; }
+      }
+      root.querySelector('[data-verify]').onclick = verify;
+      root.querySelector('[data-resend]').onclick = async () => {
+        const out = await API.sendOtp('customer', state.otp.phone);
+        state.otp.smsToken = out.smsToken;
+        deliver();
+      };
+      root.querySelectorAll('.otp-boxes input').forEach((el) => {
+        el.oninput = () => {
+          el.value = el.value.replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.dataset.d);
+          if (el.value && i < 3) root.querySelector('.otp-boxes input[data-d="' + (i + 1) + '"]').focus();
+          if (codeValue().length === 4) verify();
+        };
       });
     }
 
     function openTrack(id, lock) {
-      state.trackId = id;
-      state.screen = 'track';
-      state.lockTrack = lock !== false;
-      render();
+      state.trackId = id; state.screen = 'track'; state.lockTrack = lock !== false; render();
     }
     function leaveTrack() {
-      state.lockTrack = false;
-      state.screen = 'home';
-      state.tab = 'home';
-      render();
+      state.lockTrack = false; state.screen = 'home'; state.tab = 'home'; render();
     }
-    function bindMapChrome() {
-      const root = document.getElementById('root');
-      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
-        if (!state.mapHandle) return;
-        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn();
-        else state.mapHandle.zoomOut();
-      });
-      const loc = root.querySelector('[data-locate]');
-      if (loc) loc.onclick = () => {
-        const o = API.orders.find((x) => x.id === state.trackId);
-        if (state.mapHandle && o) state.mapHandle.locate(o);
-      };
-    }
+
     function render() {
       const root = document.getElementById('root');
+      if (!API.user && state.gate !== 'app') {
+        if (state.gate === 'splash') { root.innerHTML = splash(); return; }
+        if (state.gate === 'onboard') { root.innerHTML = onboard(); bindGate(); return; }
+        if (state.gate === 'login') { root.innerHTML = loginView(); bindGate(); return; }
+        if (state.gate === 'register') { root.innerHTML = registerView(); bindGate(); return; }
+        if (state.gate === 'otp') { root.innerHTML = otpView(); bindGate(); bindOtp(); return; }
+        if (state.gate === 'download') { root.innerHTML = downloadView(); bindGate(); return; }
+      }
       if (!API.user) {
-        if (root.querySelector('[data-otp-root]')) return;
+        state.gate = 'login';
         root.innerHTML = loginView();
-        OtpLogin.bind({ role: 'customer', onReady: () => { state.tab = 'home'; state.screen = 'home'; render(); } });
+        bindGate();
         return;
       }
       if (state.lockTrack && state.trackId) {
         const live = API.orders.find((x) => x.id === state.trackId);
-        if (live && live.status !== 'cancelled') state.screen = 'track';
+        if (live && live.status !== 'cancelled') state.screen = live.status === 'delivered' ? 'done' : 'track';
       }
-      if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bind(); return; }
-      if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bind(); return; }
-      if (state.screen === 'shop') { root.innerHTML = shopView(); bind(); return; }
+      if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bindApp(); return; }
+      if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
+      if (state.screen === 'shop') { root.innerHTML = shopView(); bindApp(); return; }
+      if (state.screen === 'search') { root.innerHTML = searchView(); bindApp(); return; }
+      if (state.screen === 'done') { root.innerHTML = doneView(); bindApp(); return; }
       if (state.screen === 'track') {
-        const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
         const o = API.orders.find((x) => x.id === state.trackId);
+        if (o && o.status === 'delivered') { root.innerHTML = doneView(); bindApp(); return; }
+        const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
         const hasRider = o && o.riderName ? '1' : '0';
         if (existing && o && state.mapHandle && existing.dataset.hasRider === hasRider) {
           state.mapHandle.update(o);
@@ -353,8 +547,7 @@
         }
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
         root.innerHTML = trackView();
-        bind();
-        bindMapChrome();
+        bindApp();
         const el = document.getElementById('map');
         if (el && o) state.mapHandle = mountTrackingMap(el, o);
         return;
@@ -364,39 +557,106 @@
       else if (state.tab === 'orders') root.innerHTML = ordersView();
       else if (state.tab === 'account') root.innerHTML = accountView();
       else root.innerHTML = homeView();
-      bind();
+      bindApp();
     }
 
-    function bind() {
+    function bindGate() {
       const root = document.getElementById('root');
-      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
-        state.tab = b.dataset.tab; state.screen = 'home'; render();
+      const skip = () => { sessionStorage.setItem('qb_onboard','1'); state.gate = 'login'; render(); };
+      root.querySelectorAll('[data-skip]').forEach((b) => b.onclick = skip);
+      const next = root.querySelector('[data-next]');
+      if (next) next.onclick = () => {
+        if (state.onboard < ONBOARD.length - 1) { state.onboard += 1; render(); }
+        else skip();
+      };
+      const goReg = root.querySelector('[data-go-reg]');
+      if (goReg) goReg.onclick = () => { state.gate = 'register'; render(); };
+      const goLogin = root.querySelector('[data-go-login]');
+      if (goLogin) goLogin.onclick = () => { state.gate = 'login'; render(); };
+      root.querySelectorAll('[data-regrole]').forEach((b) => b.onclick = () => {
+        state.regRole = b.dataset.regrole;
+        if (state.regRole === 'shop' || state.regRole === 'rider') {
+          state.downloadRole = state.regRole;
+          state.gate = 'download';
+        }
+        render();
       });
+      const signin = root.querySelector('[data-signin]');
+      if (signin) signin.onclick = async () => {
+        const id = (document.getElementById('loginId') || {}).value || state.loginId;
+        const err = root.querySelector('[data-err]');
+        signin.disabled = true; signin.textContent = 'Sending code…';
+        try { await startOtp(id); } catch (e) { if (err) err.textContent = e.message; signin.disabled = false; signin.textContent = 'Sign In'; }
+      };
+      const reg = root.querySelector('[data-register]');
+      if (reg) reg.onclick = async () => {
+        state.reg = {
+          name: (document.getElementById('regName') || {}).value || state.reg.name,
+          phone: (document.getElementById('regPhone') || {}).value || state.reg.phone,
+          email: (document.getElementById('regEmail') || {}).value || state.reg.email,
+          password: (document.getElementById('regPw') || {}).value || state.reg.password,
+        };
+        const err = root.querySelector('[data-err]');
+        reg.disabled = true;
+        try {
+          const out = await API.register({ ...state.reg, role: state.regRole });
+          if (out.app === 'shop' || out.app === 'rider') {
+            state.downloadRole = out.app;
+            state.gate = 'download';
+            render();
+            return;
+          }
+          state.otp.phone = out.phone;
+          state.otp.smsToken = out.smsToken;
+          state.gate = 'otp';
+          render();
+        } catch (e) {
+          if (err) err.textContent = e.message;
+          reg.disabled = false;
+        }
+      };
+    }
+
+    function bindApp() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
       const q = document.getElementById('q');
-      if (q) q.oninput = (e) => { state.query = e.target.value; state.tab = 'home'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
-      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; state.tab='home'; state.screen='home'; render(); });
+      if (q) q.oninput = (e) => { state.query = e.target.value; if (state.screen !== 'search') state.screen = 'search'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render(); });
+      root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
       root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
-      root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => toggleFav(b.dataset.fav, e));
+      root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        const id = b.dataset.fav;
+        if (state.favs.includes(id)) state.favs = state.favs.filter((x) => x !== id);
+        else state.favs.push(id);
+        saveFavs(); render();
+      });
       root.querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
         const item = API.items.find((i) => i.id === b.dataset.add);
         if (item) addToCart(item);
       });
       root.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { state.screen='home'; state.tab='home'; render(); });
+      root.querySelectorAll('[data-mtab]').forEach((b) => b.onclick = () => { state.menuTab = b.dataset.mtab; render(); });
+      root.querySelectorAll('[data-mcat]').forEach((b) => b.onclick = () => { state.menuCat = b.dataset.mcat; render(); });
       root.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
       root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
+      root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render(); });
       const place = document.getElementById('place');
       if (place) place.onclick = async () => {
-        state.address = document.getElementById('addr').value;
-        state.note = document.getElementById('note').value;
-        state.payment = document.getElementById('pay').value;
+        const addr = document.getElementById('addr');
+        if (addr) state.address = addr.value;
+        const pay = document.querySelector('input[name="pay"]:checked');
+        if (pay) state.payment = pay.value;
         if (!state.cart.length) return;
         place.disabled = true; place.textContent = 'Placing…';
         try {
           const order = await API.placeOrder({
             shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
             customerPhone: API.user.phone, address: state.address, note: state.note,
-            paymentMethod: state.payment, deliveryLat: 8.3350, deliveryLng: 80.4108, items: state.cart,
+            paymentMethod: state.payment, deliveryType: state.deliveryType, deliveryFee: fee(),
+            deliveryLat: 8.3350, deliveryLng: 80.4108, items: state.cart,
           });
           state.cart = []; saveCart();
           openTrack(order.id, true);
@@ -404,10 +664,18 @@
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; state.lockTrack = false; render(); });
-      const backTrack = root.querySelector('[data-back-track]');
-      if (backTrack) backTrack.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); };
+      root.querySelectorAll('[data-back-track]').forEach((b) => b.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); });
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = leaveTrack);
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = leaveTrack);
+      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
+        if (!state.mapHandle) return;
+        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn(); else state.mapHandle.zoomOut();
+      });
+      const loc = root.querySelector('[data-locate]');
+      if (loc) loc.onclick = () => {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (state.mapHandle && o) state.mapHandle.locate(o);
+      };
       const form = document.getElementById('chatForm');
       if (form) form.onsubmit = async (e) => {
         e.preventDefault();
@@ -417,11 +685,16 @@
         await API.sendMessage(state.trackId, API.user.name, 'customer', text);
       };
       const logout = document.getElementById('logout');
-      if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_customer'); render(); };
+      if (logout) logout.onclick = () => {
+        API.user = null; sessionStorage.removeItem('sd_user_customer');
+        state.gate = 'login'; render();
+      };
     }
 
     API.on(() => {
-      if (!API.user && document.querySelector('[data-otp-root]')) return;
+      if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {
+        if (!API.user) return;
+      }
       render();
     });
   </script>

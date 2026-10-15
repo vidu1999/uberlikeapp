@@ -6,60 +6,17 @@ const fs = require('fs');
 const path = require('path');
 const otp = require('./otp');
 const db = require('./db');
+const seed = require('./seed');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const PUBLIC = path.join(__dirname, 'public');
 const DATA_FILE = path.join(__dirname, 'data.json');
 
-const shops = [
-  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 120, isOpen: true, lat: 8.3514, lng: 80.3988, km: 2.5, emoji: '🎂', eta: '20–35 min', fee: 0, address: 'Main Street, Anuradhapura', image: '/img/shop-bakery.jpg', promo: 'Buy 1, Get 1 Free' },
-  { id: 'SHOP_2', name: 'Burger King', category: 'Fast Food', rating: 4.6, reviews: 98, isOpen: true, lat: 8.3580, lng: 80.4280, km: 3.2, emoji: '🍔', eta: '25–40 min', fee: 250, address: 'New Town, Anuradhapura', image: '/img/shop-burger.jpg' },
-  { id: 'SHOP_3', name: 'Pizza Hut', category: 'Pizza', rating: 4.5, reviews: 76, isOpen: true, lat: 8.3650, lng: 80.4380, km: 4.1, emoji: '🍕', eta: '30–45 min', fee: 0, address: 'Stage 1, Anuradhapura', image: '/img/shop-pizza.jpg', promo: 'Free Delivery' },
-  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Coffee', rating: 4.7, reviews: 210, isOpen: true, lat: 8.3410, lng: 80.4050, km: 1.8, emoji: '☕', eta: '15–25 min', fee: 0, address: 'Sacred City, Anuradhapura', image: '/img/shop-coffee.jpg' },
-  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 8.3380, lng: 80.4180, km: 2.1, emoji: '🍛', eta: '22–35 min', fee: 0, address: 'Old Town, Anuradhapura', image: '/img/shop-curry.jpg', promo: 'Top Eats' },
-  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 8.3290, lng: 80.3990, km: 3.0, emoji: '🧁', eta: '18–30 min', fee: 250, address: 'Mihintale Road', image: '/img/shop-dessert.jpg' },
-  { id: 'SHOP_7', name: 'Street Burger SL', category: 'Fast Food', rating: 4.6, reviews: 430, isOpen: true, lat: 8.3460, lng: 80.4220, km: 2.8, emoji: '🍔', eta: '20–30 min', fee: 0, address: 'New Town', image: '/img/shop-burger.jpg', promo: 'Free Delivery' },
-  { id: 'SHOP_8', name: 'Hopper House', category: 'Sri Lankan', rating: 4.8, reviews: 670, isOpen: true, lat: 8.3320, lng: 80.4120, km: 1.4, emoji: '🥞', eta: '18–28 min', fee: 0, address: 'Market Road', image: '/img/shop-hoppers.jpg', promo: 'Top Eats' },
-  { id: 'SHOP_9', name: 'Dragon Noodles', category: 'Chinese', rating: 4.3, reviews: 290, isOpen: true, lat: 8.3720, lng: 80.4250, km: 4.6, emoji: '🍜', eta: '30–45 min', fee: 250, address: 'Stage 2', image: '/img/shop-noodles.jpg' },
-  { id: 'SHOP_10', name: 'Fresh Mart', category: 'Grocery', rating: 4.5, reviews: 1200, isOpen: true, lat: 8.3250, lng: 80.4080, km: 2.2, emoji: '🛒', eta: '25–40 min', fee: 0, address: 'Bus Stand', image: '/img/shop-grocery.jpg', promo: 'Grocery' },
-];
-
-let items = [
-  { id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500, isAvailable: true, desc: 'Rich ganache, serves 8', image: '/img/shop-bakery.jpg' },
-  { id: 'I2', shopId: 'SHOP_1', name: 'Butter Cake Slice', category: 'Bakery', price: 350, isAvailable: true, desc: 'Warm vanilla butter cake' },
-  { id: 'I3', shopId: 'SHOP_1', name: 'Fish Bun', category: 'Bakery', price: 180, isAvailable: true, desc: 'Spicy fish filling' },
-  { id: 'I4', shopId: 'SHOP_1', name: 'Egg Roll', category: 'Bakery', price: 220, isAvailable: true, desc: 'Crispy pastry roll' },
-  { id: 'I5', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200, isAvailable: true, desc: 'Crispy fillet, cheese, slaw', image: '/img/shop-burger.jpg' },
-  { id: 'I6', shopId: 'SHOP_2', name: 'Cheese Fries', category: 'Fast Food', price: 700, isAvailable: true, desc: 'Loaded cheddar fries' },
-  { id: 'I7', shopId: 'SHOP_2', name: 'Beef Burger', category: 'Fast Food', price: 1450, isAvailable: true, desc: 'Double patty, BBQ sauce' },
-  { id: 'I8', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400, isAvailable: true, desc: '12" mozzarella classic', image: '/img/shop-pizza.jpg' },
-  { id: 'I9', shopId: 'SHOP_3', name: 'Devilled Chicken Pizza', category: 'Pizza', price: 2800, isAvailable: true, desc: 'Sri Lankan spicy chicken' },
-  { id: 'I10', shopId: 'SHOP_4', name: 'Iced Coffee', category: 'Beverages', price: 600, isAvailable: true, desc: 'Cold brew, milk, ice' },
-  { id: 'I11', shopId: 'SHOP_4', name: 'Cappuccino', category: 'Beverages', price: 550, isAvailable: true, desc: 'Double shot, foam art' },
-  { id: 'I12', shopId: 'SHOP_5', name: 'Chicken Rice & Curry', category: 'Sri Lankan', price: 850, isAvailable: true, desc: '4 curries + papadam' },
-  { id: 'I13', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950, isAvailable: true, desc: 'Chicken kottu, egg', image: '/img/kottu.jpg' },
-  { id: 'I14', shopId: 'SHOP_5', name: 'Hoppers (3)', category: 'Sri Lankan', price: 400, isAvailable: true, desc: 'Plain hoppers, lunu miris' },
-  { id: 'I15', shopId: 'SHOP_5', name: 'Pol Sambol Rice', category: 'Sri Lankan', price: 650, isAvailable: true, desc: 'Coconut sambol + dhal' },
-  { id: 'I16', shopId: 'SHOP_6', name: 'Watalappan', category: 'Dessert', price: 450, isAvailable: true, desc: 'Jaggery coconut pudding' },
-  { id: 'I17', shopId: 'SHOP_6', name: 'Chocolate Mousse', category: 'Dessert', price: 520, isAvailable: true, desc: 'Dark chocolate cup' },
-  { id: 'I18', shopId: 'SHOP_7', name: 'Street Smash Burger', category: 'Fast Food', price: 990, isAvailable: true, desc: 'Smashed beef, pickles, sauce' },
-  { id: 'I19', shopId: 'SHOP_7', name: 'Loaded Fries', category: 'Fast Food', price: 650, isAvailable: true, desc: 'Cheese, chilli, mayo' },
-  { id: 'I20', shopId: 'SHOP_8', name: 'Egg Hopper (2)', category: 'Sri Lankan', price: 480, isAvailable: true, desc: 'Crispy edge, runny yolk' },
-  { id: 'I21', shopId: 'SHOP_8', name: 'String Hoppers & Curry', category: 'Sri Lankan', price: 720, isAvailable: true, desc: 'Chicken curry, pol sambol' },
-  { id: 'I22', shopId: 'SHOP_9', name: 'Devilled Noodles', category: 'Chinese', price: 1100, isAvailable: true, desc: 'Wok-tossed, extra chilli' },
-  { id: 'I23', shopId: 'SHOP_9', name: 'Chicken Fried Rice', category: 'Chinese', price: 950, isAvailable: true, desc: 'Egg, spring onion' },
-  { id: 'I24', shopId: 'SHOP_10', name: 'Fresh Milk 1L', category: 'Grocery', price: 420, isAvailable: true, desc: 'Chilled full cream' },
-  { id: 'I25', shopId: 'SHOP_10', name: 'Banana (1kg)', category: 'Grocery', price: 280, isAvailable: true, desc: 'Embul bananas' },
-  { id: 'I26', shopId: 'SHOP_10', name: 'White Bread', category: 'Grocery', price: 190, isAvailable: true, desc: 'Fresh morning loaf' },
-];
-
-let accounts = [
-  { id: 'USER_1', name: 'Vidura', phone: '0771234567', pin: '1234', role: 'customer', address: 'New Town, Anuradhapura' },
-  { id: 'USER_2', name: 'Nimal Silva', phone: '0771112222', pin: '1234', role: 'customer', address: 'Stage 1, Anuradhapura' },
-  { id: 'SHOP_STAFF', name: 'Nadeesha Fernando', phone: '0772223333', pin: '1234', role: 'shop', shopId: 'ALL' },
-  { id: 'RIDER_77', name: 'Kamal Perera', phone: '0775556666', pin: '1234', role: 'rider', vehicle: 'Honda Dio · WP CAB-4521', rating: 4.9 },
-];
+let shops = seed.shops.map((s) => ({ ...s }));
+let items = seed.items.map((i) => ({ ...i }));
+let accounts = seed.accounts.map((a) => ({ ...a }));
+const pendingReg = new Map();
 
 let seq = 1000;
 let orders = [];
@@ -73,7 +30,8 @@ function snapshot() {
     orders,
     messages,
     seq,
-    items: items.map((i) => ({ id: i.id, isAvailable: i.isAvailable })),
+    shops,
+    items,
     accounts,
   };
 }
@@ -83,9 +41,14 @@ function applySnapshot(d) {
   if (Array.isArray(d.orders)) orders = d.orders;
   if (d.messages && typeof d.messages === 'object') messages = d.messages;
   if (d.seq) seq = Number(d.seq) || seq;
-  if (Array.isArray(d.items)) {
-    const avail = new Map(d.items.map((i) => [i.id, i.isAvailable]));
-    items = items.map((i) => ({ ...i, isAvailable: avail.has(i.id) ? avail.get(i.id) : i.isAvailable }));
+  if (Array.isArray(d.shops) && d.shops.length) shops = d.shops;
+  if (Array.isArray(d.items) && d.items.length) {
+    const byId = new Map(seed.items.map((i) => [i.id, { ...i }]));
+    for (const i of d.items) {
+      if (!i || !i.id) continue;
+      byId.set(i.id, { ...(byId.get(i.id) || {}), ...i });
+    }
+    items = [...byId.values()];
   }
   if (Array.isArray(d.accounts) && d.accounts.length) {
     const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -96,11 +59,31 @@ function applySnapshot(d) {
   }
 }
 
+function seedDemoIfEmpty() {
+  if (orders.length) return false;
+  orders = seed.demoOrders();
+  seq = 1004;
+  messages = {};
+  for (const o of orders) {
+    messages[o.id] = [
+      {
+        id: 'm0',
+        from: 'QuickBite',
+        role: 'system',
+        text: 'Demo order loaded from the database.',
+        ts: Date.now(),
+      },
+    ];
+  }
+  return true;
+}
+
 function load() {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
     applySnapshot(JSON.parse(raw));
   } catch (_) {}
+  if (seedDemoIfEmpty()) save();
 }
 
 function save() {
@@ -273,7 +256,12 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/otp/send' && req.method === 'POST') {
     const body = await readBody(req);
     try {
-      const out = otp.sendOtp(body.phone, body.role || 'customer');
+      let phone = body.phone;
+      if (phone && String(phone).includes('@')) {
+        const acc = accounts.find((a) => a.email && a.email.toLowerCase() === String(phone).toLowerCase());
+        if (acc) phone = acc.phone;
+      }
+      const out = otp.sendOtp(phone, body.role || 'customer');
       json(res, 200, out);
     } catch (err) {
       json(res, err.status || 400, { error: err.message });
@@ -295,7 +283,15 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     try {
       const checked = otp.verifyOtp(body.phone, body.role || 'customer', body.code);
+      const pending = pendingReg.get(checked.phone);
       const user = userForVerifiedPhone(checked.phone, checked.role);
+      if (pending) {
+        if (pending.name) user.name = pending.name;
+        if (pending.email) user.email = pending.email;
+        if (pending.pin) user.pin = pending.pin;
+        pendingReg.delete(checked.phone);
+        save();
+      }
       const tok = token();
       sessions[tok] = user.id;
       json(res, 200, { token: tok, user: publicUser(user) });
@@ -363,13 +359,70 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/reset' && req.method === 'POST') {
+    shops = seed.shops.map((s) => ({ ...s }));
+    items = seed.items.map((i) => ({ ...i }));
+    accounts = seed.accounts.map((a) => ({ ...a }));
     orders = [];
     messages = {};
     seq = 1000;
-    items = items.map((i) => ({ ...i, isAvailable: true }));
+    seedDemoIfEmpty();
     save();
     broadcast();
     json(res, 200, { ok: true });
+    return;
+  }
+
+  if (pathname === '/api/register' && req.method === 'POST') {
+    const body = await readBody(req);
+    const role = body.role === 'shop' || body.role === 'rider' ? body.role : 'customer';
+    const phone = otp.normalizePhone(body.phone);
+    if (!otp.isValidPhone(phone)) {
+      json(res, 400, { error: 'Enter a valid mobile number' });
+      return;
+    }
+    const name = String(body.name || '').trim() || (role === 'shop' ? 'Shop owner' : role === 'rider' ? 'Rider' : 'Guest');
+    const email = String(body.email || '').trim();
+    const pin = String(body.password || body.pin || '1234').slice(0, 32);
+    let user = accounts.find((a) => a.role === role && a.phone === phone);
+    if (!user) {
+      user = {
+        id: role.toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
+        name,
+        phone,
+        email,
+        pin,
+        role,
+        address: body.address || 'No.123, Lake View Road, Anuradhapura',
+      };
+      if (role === 'rider') {
+        user.vehicle = 'Bike';
+        user.rating = 5;
+      }
+      if (role === 'shop') user.shopId = 'SHOP_1';
+      accounts.push(user);
+    } else {
+      user.name = name;
+      if (email) user.email = email;
+      user.pin = pin;
+    }
+    save();
+    if (role === 'shop' || role === 'rider') {
+      json(res, 200, {
+        ok: true,
+        app: role,
+        download: seed.APKS[role],
+        web: role === 'shop' ? '/shop' : '/rider',
+        user: publicUser(user),
+      });
+      return;
+    }
+    pendingReg.set(phone, { name, email, pin, role });
+    try {
+      const out = otp.sendOtp(phone, 'customer');
+      json(res, 200, { ok: true, next: 'otp', ...out });
+    } catch (err) {
+      json(res, err.status || 400, { error: err.message });
+    }
     return;
   }
 
@@ -389,7 +442,7 @@ async function handleApi(req, res, url) {
         }))
       : [{ name: 'Custom order', qty: 1, price: Number(body.totalAmount || 0) }];
     const subtotal = lineItems.reduce((s, it) => s + it.price * it.qty, 0);
-    const deliveryFee = subtotal > 2000 ? 0 : 250;
+    const deliveryFee = body.deliveryFee != null ? Number(body.deliveryFee) : 200;
     const order = {
       id: `ORD-${++seq}`,
       userId: body.userId || 'USER_1',
@@ -398,7 +451,8 @@ async function handleApi(req, res, url) {
       shopEmoji: shop.emoji,
       customerName: body.customerName || 'Vidura',
       customerPhone: body.customerPhone || '0771234567',
-      address: body.address || 'New Town, Anuradhapura',
+      address: body.address || 'No.123, Lake View Road, Anuradhapura',
+      deliveryType: body.deliveryType || 'Standard',
       note: body.note || '',
       paymentMethod: body.paymentMethod || 'Cash on delivery',
       riderId: null,
@@ -573,6 +627,7 @@ async function boot() {
     if (cloud) {
       applySnapshot(cloud);
       dbReady.cloud = true;
+      if (seedDemoIfEmpty()) save();
       console.log('Database: ' + dbReady.db + ' (cloud loaded)');
     } else if (dbReady.db !== 'local') {
       dbReady.cloud = false;

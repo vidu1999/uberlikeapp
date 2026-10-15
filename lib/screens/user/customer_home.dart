@@ -157,7 +157,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                 Text('$_hello,', style: const TextStyle(color: Brand.soft, fontWeight: FontWeight.w600)),
                 Text('$_name 👋', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
                 const SizedBox(height: 4),
-                const Text('Great food, delivered to your door!', style: TextStyle(color: Brand.soft)),
+                const Text('Hungry? Let\'s get you something delicious!', style: TextStyle(color: Brand.soft)),
               ],
             ),
           ),
