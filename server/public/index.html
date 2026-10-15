@@ -230,7 +230,7 @@
       }
       if (state.page === 'otp') {
         if (root.querySelector('[data-otp-root]')) return;
-        root.innerHTML = OtpLogin.render({ role: 'customer', phone: '0771234567', title: 'Enter your mobile number', sub: 'We’ll SMS a 4-digit code to this number. Then you enter Uber Eats.' });
+        root.innerHTML = OtpLogin.render({ role: 'customer', phone: '0771234567', title: 'Enter your mobile number', sub: 'We’ll send a 4-digit code on WhatsApp. Then you enter Uber Eats.' });
         OtpLogin.bind({ role: 'customer', onReady: () => { state.page = state.afterOtp || 'feed'; render(); } });
         return;
       }

@@ -223,16 +223,35 @@ h2.sec { font-size: 22px; letter-spacing: -0.4px; margin: 18px 0 12px; font-weig
 }
 .otp-boxes input:focus { border-color: #000; outline: 0; }
 .otp-err { color: #b91c1c; min-height: 18px; font-size: 13px; margin: 6px 0 12px; }
-.sms-toast {
+.sms-toast, .wa-toast {
   position: absolute; top: 12px; left: 12px; right: 12px;
-  background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
-  border-radius: 16px; padding: 12px 14px;
+  background: #fff; border-radius: 16px; padding: 12px 14px;
   box-shadow: 0 12px 40px rgba(0,0,0,.18); z-index: 30;
   animation: smsIn .35s ease;
 }
+.wa-toast { display: flex; gap: 10px; align-items: flex-start; }
+.wa-toast-ico {
+  width: 36px; height: 36px; border-radius: 50%; background: #25D366;
+  display: grid; place-items: center; flex: none;
+}
 .sms-meta { display: flex; justify-content: space-between; font-size: 11px; color: #6b6b6b; font-weight: 600; }
-.sms-from { font-weight: 800; margin-top: 4px; }
+.sms-from { font-weight: 800; margin-top: 2px; }
 .sms-body { font-size: 14px; margin-top: 2px; color: #111; }
+.wa-chat {
+  margin: 12px 0 4px; border-radius: 16px; overflow: hidden;
+  border: 1px solid #d1f4d5; background: #ece5dd;
+}
+.wa-head {
+  background: #075E54; color: #fff; padding: 10px 12px;
+  display: flex; gap: 10px; align-items: center;
+}
+.wa-head small { display: block; opacity: .8; font-weight: 500; font-size: 11px; }
+.wa-thread { padding: 12px; min-height: 72px; }
+.wa-bubble {
+  background: #fff; border-radius: 8px 8px 8px 2px;
+  padding: 10px 12px; font-size: 14px; line-height: 1.4;
+  max-width: 90%; box-shadow: 0 1px 1px rgba(0,0,0,.08);
+}
 @keyframes smsIn {
   from { transform: translateY(-16px); opacity: 0; }
   to { transform: none; opacity: 1; }

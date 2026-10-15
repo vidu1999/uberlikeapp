@@ -100,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _verify() async {
     if (_code.length != 4) {
-      setState(() => error = 'Enter the 4-digit SMS code');
+      setState(() => error = 'Enter the 4-digit WhatsApp code');
       return;
     }
     setState(() {
@@ -135,17 +135,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextSpan(text: 'Eats', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22, color: Color(0xFF06C167))),
               ])),
               const SizedBox(height: 12),
-              Text(
-                codeStep ? '1 Phone   2 SMS   3 Code' : '1 Phone   2 SMS   3 Code',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.black54),
+              const Text(
+                '1 Phone   2 WhatsApp   3 Code',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.black54),
               ),
               const SizedBox(height: 20),
               Text(_title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Text(
                 codeStep
-                    ? 'SMS sent to $phoneSent'
-                    : 'We’ll SMS a 4-digit code to this number. Free · then you enter the app.',
+                    ? 'WhatsApp sent to $phoneSent'
+                    : 'We’ll send a 4-digit code on WhatsApp to this number. Then you enter the app.',
                 style: const TextStyle(color: Colors.black54),
               ),
               const SizedBox(height: 20),
@@ -159,7 +159,37 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(),
                   ),
                 )
-              else
+              else ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                  color: const Color(0xFFECE5DD),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        color: const Color(0xFF075E54),
+                        child: const Text('Uber Eats  ·  WhatsApp',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(smsBody ?? 'Sending…'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ),
+                const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: List.generate(4, (i) {
@@ -185,6 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     );
                   }),
                 ),
+              ],
               if (error != null) ...[
                 const SizedBox(height: 12),
                 Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
@@ -194,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: FilledButton.styleFrom(backgroundColor: Colors.black, minimumSize: const Size.fromHeight(48)),
                 onPressed: busy ? null : (codeStep ? _verify : _send),
                 child: Text(busy
-                    ? (codeStep ? 'Checking…' : 'Sending SMS…')
+                    ? (codeStep ? 'Checking…' : 'Sending WhatsApp…')
                     : (codeStep ? 'Verify & enter' : 'Continue')),
               ),
               if (codeStep) ...[
@@ -206,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           setState(() => codeStep = false);
                           _send();
                         },
-                  child: const Text('Resend SMS'),
+                  child: const Text('Resend on WhatsApp'),
                 ),
                 TextButton(
                   onPressed: () => setState(() => codeStep = false),
@@ -233,7 +264,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Messages', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black54)),
+                          Text('WhatsApp', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black54)),
                           Text('now', style: TextStyle(fontSize: 11, color: Colors.black54)),
                         ],
                       ),

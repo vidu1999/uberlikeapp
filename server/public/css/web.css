@@ -155,14 +155,21 @@ button, input, select { font-family: inherit; }
 .otp-boxes { display: flex; gap: 10px; margin: 18px 0; }
 .otp-boxes input { width: 56px; height: 64px; text-align: center; font-size: 28px; font-weight: 800; border: 1px solid #ddd; border-radius: 12px; }
 .otp-err { color: #b91c1c; min-height: 18px; font-size: 13px; }
-.sms-toast {
+.sms-toast, .wa-toast {
   position: absolute; top: 12px; left: 12px; right: 12px;
   background: #fff; border-radius: 16px; padding: 12px 14px;
   box-shadow: 0 12px 40px rgba(0,0,0,.18); z-index: 30;
+  display: flex; gap: 10px;
 }
+.wa-toast-ico { width: 36px; height: 36px; border-radius: 50%; background: #25D366; display: grid; place-items: center; flex: none; }
 .sms-meta { display: flex; justify-content: space-between; font-size: 11px; color: #6b6b6b; font-weight: 600; }
-.sms-from { font-weight: 800; margin-top: 4px; }
+.sms-from { font-weight: 800; margin-top: 2px; }
 .sms-body { font-size: 14px; margin-top: 2px; }
+.wa-chat { margin: 12px 0; border-radius: 16px; overflow: hidden; background: #ece5dd; }
+.wa-head { background: #075E54; color: #fff; padding: 10px 12px; display: flex; gap: 10px; align-items: center; }
+.wa-head small { display: block; opacity: .8; font-size: 11px; }
+.wa-thread { padding: 12px; }
+.wa-bubble { background: #fff; border-radius: 8px; padding: 10px 12px; max-width: 90%; }
 .wordmark { font-weight: 800; font-size: 22px; letter-spacing: -0.6px; }
 .wordmark em { color: var(--ue); font-style: normal; }
 .hidden { display: none !important; }

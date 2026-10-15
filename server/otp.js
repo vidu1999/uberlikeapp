@@ -45,7 +45,7 @@ function sendOtp(phoneRaw, role) {
   }
   const code = generateCode();
   const smsToken = crypto.randomBytes(16).toString('hex');
-  const body = 'Uber Eats: ' + code + ' is your verification code. Don\'t share it.';
+  const body = 'Your Uber Eats code is ' + code + '. Don\'t share this WhatsApp message.';
   const rec = {
     hash: hashCode(code, phone),
     expires: Date.now() + 5 * 60 * 1000,
@@ -60,13 +60,14 @@ function sendOtp(phoneRaw, role) {
     from: 'Uber Eats',
     body,
     phone,
+    channel: 'whatsapp',
     expires: rec.expires,
   });
   return {
     ok: true,
     phone,
     smsToken,
-    channel: 'sms',
+    channel: 'whatsapp',
     expiresIn: 300,
   };
 }
@@ -74,7 +75,7 @@ function sendOtp(phoneRaw, role) {
 function readSms(smsToken) {
   const m = smsByToken.get(String(smsToken || ''));
   if (!m || m.expires < Date.now()) return null;
-  return { from: m.from, body: m.body, phone: m.phone };
+  return { from: m.from, body: m.body, phone: m.phone, channel: m.channel || 'whatsapp' };
 }
 
 function verifyOtp(phoneRaw, role, codeRaw) {
