@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/track.css" />
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -245,28 +246,52 @@
         ${nav()}`;
     }
 
+    const ICO_BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+    const ICO_MORE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#111"><circle cx="12" cy="6" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="18" r="1.7"/></svg>';
+    const ICO_PHONE = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+
+    function paintTrackCard(root, o) {
+      const name = root.querySelector('[data-rider]');
+      if (name) name.textContent = o.riderName || 'Assigning courier…';
+      const call = root.querySelector('[data-call]');
+      if (call) {
+        call.classList.toggle('hidden', !o.riderPhone);
+        if (o.riderPhone) call.href = 'tel:+94' + String(o.riderPhone).replace(/^0/, '');
+      }
+      root.querySelector('[data-online]')?.classList.toggle('hidden', !o.riderName);
+      const img = root.querySelector('[data-avatar]');
+      if (img) img.style.filter = o.riderName ? 'none' : 'grayscale(1)';
+    }
+
     function trackView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       if (!o) return `<div class="pad">Order not found.</div>${nav()}`;
-      const step = { pending:1, preparing:2, ready:3, on_the_way:4, delivered:5 }[o.status] || 1;
-      return `<div id="map" class="map"></div>
-        <div class="sheet" data-track-root="${esc(o.id)}">
-          <div class="grab"></div>
-          <p class="muted" style="margin:0">Estimated arrival</p>
-          <h2 class="eta" data-eta>${o.status==='delivered' ? 'Delivered' : '12–15 min'}</h2>
-          <div class="dots">${[1,2,3,4,5].map((i)=>`<i class="${i<=step?'on':''}"></i>`).join('')}</div>
-          <div class="courier">
-            <img src="/img/courier.jpg" alt="" />
-            <div class="grow">
-              <b data-rider>${esc(o.riderName || 'Finding a courier…')}</b>
-              <div class="muted">Uber Eats · 4.9 ★</div>
-            </div>
-            ${o.riderPhone ? `<a class="btn sm ghost" href="tel:+94${o.riderPhone.replace(/^0,'')}">Call</a>` : ''}
-            <button class="btn sm" data-chat="${esc(o.id)}">Chat</button>
+      const tel = o.riderPhone ? 'tel:+94' + String(o.riderPhone).replace(/^0/, '') : '#';
+      return `<div class="track-screen" data-track-root="${esc(o.id)}">
+        <div id="map" class="map"></div>
+        <div class="track-top">
+          <button class="fab" type="button" data-tab="orders" aria-label="Back">${ICO_BACK}</button>
+          <h1>Order Track</h1>
+          <button class="fab" type="button" data-more aria-label="More">${ICO_MORE}</button>
+        </div>
+        <div class="track-more hidden" data-more-panel>
+          <b>${esc(o.shopName)}</b>
+          <p class="muted">${esc(o.items.map((i) => i.name + ' ×' + i.qty).join(', '))}</p>
+          <p>${lkr(o.totalAmount)} · ${esc(API.statusLabel(o.status))}</p>
+          <button class="btn sm ghost" data-chat="${esc(o.id)}">Message courier</button>
+        </div>
+        <div class="track-card">
+          <div class="avatar-wrap">
+            <img data-avatar src="/img/courier-avatar.jpg" alt="" />
+            <span class="online ${o.riderName ? '' : 'hidden'}" data-online></span>
           </div>
-          <div class="muted">${esc(o.shopName)} · ${esc(o.items.map((i)=>i.name).join(', '))}</div>
-          <div class="price" style="margin-top:8px">${lkr(o.totalAmount)} · ${esc(o.paymentMethod)}</div>
-        </div>${nav()}`;
+          <div class="grow">
+            <b data-rider>${esc(o.riderName || 'Assigning courier…')}</b>
+            <div class="stars">★★★★★</div>
+          </div>
+          <a class="call ${o.riderPhone ? '' : 'hidden'}" data-call href="${tel}" aria-label="Call">${ICO_PHONE}</a>
+        </div>
+      </div>`;
     }
 
     function chatView() {
@@ -322,12 +347,7 @@
         const o = API.orders.find((x) => x.id === state.trackId);
         if (existing && o && state.mapHandle) {
           state.mapHandle.update(o);
-          const eta = existing.querySelector('[data-eta]');
-          if (eta) eta.textContent = o.status === 'delivered' ? 'Delivered' : '12–15 min';
-          const rider = existing.querySelector('[data-rider]');
-          if (rider) rider.textContent = o.riderName || 'Finding a courier…';
-          const step = { pending:1, preparing:2, ready:3, on_the_way:4, delivered:5 }[o.status] || 1;
-          existing.querySelectorAll('.dots i').forEach((el, i) => el.classList.toggle('on', i < step));
+          paintTrackCard(existing, o);
           return;
         }
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
@@ -389,6 +409,9 @@
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.track; state.screen = 'track'; render(); });
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; render(); });
+      const moreBtn = root.querySelector('[data-more]');
+      const morePanel = root.querySelector('[data-more-panel]');
+      if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
       const backTrack = root.querySelector('[data-back-track]');
       if (backTrack) backTrack.onclick = () => { state.screen = 'track'; render(); };
       const form = document.getElementById('chatForm');

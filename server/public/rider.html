@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/track.css" />
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -25,22 +26,23 @@
     function startGps(order) {
       const shop = API.shopOf(order.shopId);
       if (gps[order.id]) clearInterval(gps[order.id].timer);
-      let lat = order.riderLat ?? shop.lat;
-      let lng = order.riderLng ?? shop.lng;
-      const destLat = order.deliveryLat, destLng = order.deliveryLng;
+      const from = [order.riderLat ?? shop.lat, order.riderLng ?? shop.lng];
+      const to = [order.deliveryLat, order.deliveryLng];
+      const pts = (typeof routeCurve === 'function') ? routeCurve(from, to) : [from, to];
+      let i = 0;
       const tick = () => {
-        lat += (destLat - lat) * 0.16;
-        lng += (destLng - lng) * 0.16;
+        i = Math.min(i + 1, pts.length - 1);
+        const [lat, lng] = pts[i];
         API.patch(order.id, {
           riderLat: lat, riderLng: lng, status: 'on_the_way',
           riderId: 'RIDER_77', riderName: 'Kamal Perera', riderPhone: '0775556666',
         });
-        if (Math.abs(lat - destLat) < 0.0004 && Math.abs(lng - destLng) < 0.0004) clearInterval(gps[order.id].timer);
+        if (i >= pts.length - 1) clearInterval(gps[order.id].timer);
       };
-      gps[order.id] = { timer: setInterval(tick, 2000) };
+      gps[order.id] = { timer: setInterval(tick, 1200) };
       API.patch(order.id, {
         status: 'on_the_way', riderId: 'RIDER_77', riderName: 'Kamal Perera',
-        riderPhone: '0775556666', riderLat: lat, riderLng: lng,
+        riderPhone: '0775556666', riderLat: from[0], riderLng: from[1],
       });
     }
     function nav() {

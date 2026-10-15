@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../config.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
-import '../../widgets/step_tracker.dart';
+import '../../models/shop.dart';
 import '../../widgets/tracking_map.dart';
 import '../chat_screen.dart';
 
@@ -9,10 +10,17 @@ class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
   const OrderTrackingScreen({super.key, required this.orderId});
 
+  Shop? _shop(String id) {
+    for (final s in Catalog.shops) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Order #$orderId')),
+      backgroundColor: const Color(0xFFF3F4F6),
       body: ValueListenableBuilder<List<Order>>(
         valueListenable: OrderRepository.instance.ordersNotifier,
         builder: (context, orders, _) {
@@ -28,89 +36,175 @@ class OrderTrackingScreen extends StatelessWidget {
             return const Center(child: Text('Waiting for order…'));
           }
           final current = order;
-          return Column(
+          final shop = _shop(current.shopId);
+          final hasRider = (current.riderName ?? '').isNotEmpty;
+
+          return Stack(
             children: [
-              SizedBox(
-                height: 260,
+              Positioned.fill(
                 child: TrackingMap(
                   destLat: current.deliveryLat,
                   destLng: current.deliveryLng,
                   riderLat: current.riderLat,
                   riderLng: current.riderLng,
+                  shopLat: shop?.lat,
+                  shopLng: shop?.lng,
                 ),
               ),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: SizedBox(
+                    height: 48,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        const Text('Estimated Arrival', style: TextStyle(color: Colors.grey)),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: current.status.color.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            current.status.label,
-                            style: TextStyle(color: current.status.color, fontWeight: FontWeight.bold),
+                        const Text(
+                          'Order Track',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      current.status == OrderStatus.delivered ? 'Delivered' : '12 – 15 minutes',
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    const Divider(height: 30),
-                    StepTracker(currentStatus: current.status),
-                    const Divider(height: 30),
-                    Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 25,
-                          backgroundColor: Colors.blueAccent,
-                          child: Icon(Icons.person, color: Colors.white),
-                        ),
-                        const SizedBox(width: 15),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
                           children: [
-                            Text(
-                              current.riderName ?? current.riderId ?? 'Assigning rider…',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            _Fab(
+                              icon: Icons.arrow_back_ios_new_rounded,
+                              onTap: () => Navigator.pop(context),
                             ),
-                            const Text('Delivery Partner • 4.9 ★',
-                                style: TextStyle(color: Colors.grey, fontSize: 12)),
+                            const Spacer(),
+                            _Fab(
+                              icon: Icons.more_vert,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(
+                                      orderId: current.id,
+                                      myRole: 'customer',
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ],
                         ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: current.riderPhone == null
-                              ? null
-                              : () {},
-                          icon: const Icon(Icons.phone, color: Colors.green),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 24,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 10,
+                  shadowColor: Colors.black26,
+                  borderRadius: BorderRadius.circular(28),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+                    child: Row(
+                      children: [
+                        Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 32,
+                              backgroundColor: const Color(0xFFEEEAF8),
+                              backgroundImage: () {
+                                if (!hasRider) return null;
+                                final base = AppConfig.normalize(AppConfig.baseUrl);
+                                if (base.isEmpty) return null;
+                                return NetworkImage('$base/img/courier-avatar.jpg');
+                              }(),
+                              child: hasRider
+                                  ? null
+                                  : const Icon(Icons.person, color: Colors.grey),
+                            ),
+                            if (hasRider)
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF22C55E),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                current.riderName ?? 'Assigning courier…',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Row(
+                                children: [
+                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
+                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
+                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
+                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
+                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                         IconButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
-                            ),
-                          ),
-                          icon: const Icon(Icons.chat, color: Colors.blue),
+                          onPressed: current.riderPhone == null ? null : () {},
+                          icon: const Icon(Icons.phone_outlined, color: Colors.black, size: 26),
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _Fab extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _Fab({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 4,
+      shadowColor: Colors.black26,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(icon, size: 18, color: Colors.black),
+        ),
       ),
     );
   }
