@@ -1,6 +1,6 @@
 (function (global) {
-  const PURPLE = '#6B4DFF';
-  const PURPLE_GLOW = '#C4B6FF';
+  const GREEN = '#22C55E';
+  const GLOW = '#86EFAC';
 
   function curvePoints(from, to) {
     const lat1 = from[0];
@@ -42,20 +42,40 @@
     return best;
   }
 
-  function courierIcon() {
+  function haversineKm(a, b) {
+    const R = 6371;
+    const dLat = ((b[0] - a[0]) * Math.PI) / 180;
+    const dLng = ((b[1] - a[1]) * Math.PI) / 180;
+    const s =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((a[0] * Math.PI) / 180) * Math.cos((b[0] * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  function shopIcon() {
     return L.divIcon({
-      className: 'pin-courier-wrap',
+      className: 'pin-shop-wrap',
       html:
-        '<div class="pin-courier"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6l6 6-6 6"/><path d="M13 6l6 6-6 6"/></svg></div>',
-      iconSize: [52, 52],
-      iconAnchor: [26, 26],
+        '<div class="pin-lab"><div class="pin-shop-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div><span>Shop</span></div>',
+      iconSize: [72, 58],
+      iconAnchor: [36, 58],
     });
   }
 
   function destIcon() {
     return L.divIcon({
       className: 'pin-dest-wrap',
-      html: '<div class="pin-dest"><i></i></div>',
+      html:
+        '<div class="pin-lab"><div class="pin-home-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10.5 12 4l8 6.5V20h-6v-6H10v6H4z"/></svg></div><span>Customer</span></div>',
+      iconSize: [90, 58],
+      iconAnchor: [45, 58],
+    });
+  }
+
+  function bikeIcon() {
+    return L.divIcon({
+      className: 'pin-bike-wrap',
+      html: '<div class="pin-bike">🛵</div>',
       iconSize: [40, 40],
       iconAnchor: [20, 20],
     });
@@ -63,9 +83,7 @@
 
   function positions(order) {
     const shop =
-      typeof API !== 'undefined' && API.shopOf
-        ? API.shopOf(order.shopId)
-        : {};
+      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
     const dest = [Number(order.deliveryLat), Number(order.deliveryLng)];
     const shopPos = [
       Number(shop.lat != null ? shop.lat : dest[0] + 0.012),
@@ -92,14 +110,14 @@
     if (layers.solid) map.removeLayer(layers.solid);
     if (layers.dash) map.removeLayer(layers.dash);
     layers.glow = L.polyline(rest.length ? rest : full, {
-      color: PURPLE_GLOW,
-      weight: 10,
-      opacity: 0.55,
+      color: GLOW,
+      weight: 12,
+      opacity: 0.45,
       lineCap: 'round',
       lineJoin: 'round',
     }).addTo(map);
     layers.solid = L.polyline(rest.length ? rest : full, {
-      color: PURPLE,
+      color: GREEN,
       weight: 5,
       opacity: 1,
       lineCap: 'round',
@@ -107,9 +125,9 @@
     }).addTo(map);
     if (done.length > 1) {
       layers.dash = L.polyline(done, {
-        color: PURPLE,
+        color: GREEN,
         weight: 5,
-        opacity: 0.85,
+        opacity: 0.55,
         dashArray: '7 10',
         lineCap: 'round',
       }).addTo(map);
@@ -118,29 +136,53 @@
     }
   }
 
+  function tipHtml(order) {
+    const pos = positions(order);
+    const from = pos.rider || pos.shopPos;
+    const km = haversineKm(from, pos.dest);
+    const left = Math.max(0.2, km).toFixed(1);
+    const label =
+      order.status === 'delivered'
+        ? 'Delivered'
+        : order.status === 'on_the_way'
+          ? 'On the way'
+          : 'Heading out';
+    return `<b>${label}</b><br>${left} km left`;
+  }
+
   global.routeCurve = curvePoints;
+  global.haversineKm = haversineKm;
 
   global.mountTrackingMap = function (el, order) {
     if (!el || !order || typeof L === 'undefined') return null;
     const pos = positions(order);
-    const center = pos.rider || pos.dest;
+    const center = pos.rider || pos.shopPos;
     const map = L.map(el, {
       zoomControl: false,
       attributionControl: false,
     }).setView(center, 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
+      subdomains: 'abcd',
     }).addTo(map);
 
+    L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map);
     L.marker(pos.dest, { icon: destIcon() }).addTo(map);
     let riderMarker = null;
     const layers = { glow: null, solid: null, dash: null };
     drawRoutes(map, layers, pos.shopPos, pos.dest, pos.rider);
     if (pos.rider) {
-      riderMarker = L.marker(pos.rider, { icon: courierIcon() }).addTo(map);
+      riderMarker = L.marker(pos.rider, { icon: bikeIcon() }).addTo(map);
+      riderMarker.bindTooltip(tipHtml(order), {
+        permanent: true,
+        direction: 'right',
+        offset: [16, -8],
+        className: 'km-tip',
+        opacity: 1,
+      });
     }
 
-    const pad = { paddingTopLeft: [28, 88], paddingBottomRight: [28, 150] };
+    const pad = { paddingTopLeft: [28, 96], paddingBottomRight: [56, 220] };
     const pts = [pos.dest, pos.shopPos];
     if (pos.rider) pts.push(pos.rider);
     map.fitBounds(L.latLngBounds(pts).pad(0.18), pad);
@@ -148,14 +190,37 @@
     setTimeout(() => map.invalidateSize(), 600);
 
     return {
+      map,
       update(next) {
         if (!next) return;
         const p = positions(next);
         drawRoutes(map, layers, p.shopPos, p.dest, p.rider);
         if (p.rider) {
-          if (!riderMarker) riderMarker = L.marker(p.rider, { icon: courierIcon() }).addTo(map);
-          else riderMarker.setLatLng(p.rider);
+          if (!riderMarker) {
+            riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);
+            riderMarker.bindTooltip(tipHtml(next), {
+              permanent: true,
+              direction: 'right',
+              offset: [16, -8],
+              className: 'km-tip',
+              opacity: 1,
+            });
+          } else {
+            riderMarker.setLatLng(p.rider);
+            riderMarker.setTooltipContent(tipHtml(next));
+          }
         }
+      },
+      zoomIn() {
+        map.zoomIn();
+      },
+      zoomOut() {
+        map.zoomOut();
+      },
+      locate(order2) {
+        const p = positions(order2 || order);
+        const c = p.rider || p.dest;
+        map.setView(c, Math.max(map.getZoom(), 14));
       },
       destroy() {
         try {

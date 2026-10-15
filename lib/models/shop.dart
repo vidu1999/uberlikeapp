@@ -6,6 +6,9 @@ class Shop {
   final bool isOpen;
   final double? lat;
   final double? lng;
+  final String? image;
+  final double? km;
+  final int reviews;
   const Shop({
     required this.id,
     required this.name,
@@ -14,6 +17,9 @@ class Shop {
     required this.isOpen,
     this.lat,
     this.lng,
+    this.image,
+    this.km,
+    this.reviews = 0,
   });
 
   factory Shop.fromJson(Map<String, dynamic> j) => Shop(
@@ -24,6 +30,9 @@ class Shop {
         isOpen: j['isOpen'] != false,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
+        image: j['image']?.toString(),
+        km: (j['km'] as num?)?.toDouble(),
+        reviews: (j['reviews'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -35,6 +44,7 @@ class CatalogItem {
   final double price;
   final bool isAvailable;
   final String desc;
+  final String? image;
   const CatalogItem({
     required this.id,
     required this.shopId,
@@ -43,6 +53,7 @@ class CatalogItem {
     required this.price,
     this.isAvailable = true,
     this.desc = '',
+    this.image,
   });
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) => CatalogItem(
@@ -53,5 +64,6 @@ class CatalogItem {
         price: (j['price'] as num?)?.toDouble() ?? 0,
         isAvailable: j['isAvailable'] != false,
         desc: '${j['desc'] ?? ''}',
+        image: j['image']?.toString(),
       );
 }

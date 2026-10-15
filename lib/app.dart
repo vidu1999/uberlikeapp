@@ -5,6 +5,7 @@ import 'screens/login_screen.dart';
 import 'screens/user/customer_home.dart';
 import 'screens/shop/shop_home.dart';
 import 'screens/rider/rider_home.dart';
+import 'theme.dart';
 
 enum UserRole { customer, shop, rider }
 
@@ -15,23 +16,14 @@ class LiveTrackingApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     OrderRepository.instance.seed();
-    final seed = switch (defaultRole) {
-      UserRole.customer => const Color(0xFF00C853),
-      UserRole.shop => const Color(0xFFFF6D00),
-      UserRole.rider => const Color(0xFF2979FF),
-    };
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: switch (defaultRole) {
-        UserRole.customer => 'SwiftDrop User',
-        UserRole.shop => 'SwiftDrop Shop',
-        UserRole.rider => 'SwiftDrop Rider',
+        UserRole.customer => 'User App',
+        UserRole.shop => 'Shop Dashboard',
+        UserRole.rider => 'Rider App',
       },
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: seed),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
-      ),
+      theme: defaultRole == UserRole.customer ? Brand.light() : Brand.dark(),
       home: AuthGate(role: defaultRole),
     );
   }

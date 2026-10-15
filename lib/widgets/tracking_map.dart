@@ -9,6 +9,7 @@ class TrackingMap extends StatelessWidget {
   final double? riderLng;
   final double? shopLat;
   final double? shopLng;
+  final bool dark;
   const TrackingMap({
     super.key,
     required this.destLat,
@@ -17,10 +18,11 @@ class TrackingMap extends StatelessWidget {
     this.riderLng,
     this.shopLat,
     this.shopLng,
+    this.dark = true,
   });
 
-  static const purple = Color(0xFF6B4DFF);
-  static const glow = Color(0xFFC4B6FF);
+  static const green = Color(0xFF22C55E);
+  static const glow = Color(0xFF86EFAC);
 
   List<LatLng> _curve(LatLng from, LatLng to) {
     final dlat = to.latitude - from.latitude;
@@ -62,75 +64,82 @@ class TrackingMap extends StatelessWidget {
   Widget build(BuildContext context) {
     final dest = LatLng(destLat, destLng);
     final shop = LatLng(shopLat ?? destLat + 0.012, shopLng ?? destLng - 0.01);
-    final rider = (riderLat != null && riderLng != null)
-        ? LatLng(riderLat!, riderLng!)
-        : null;
+    final rider = (riderLat != null && riderLng != null) ? LatLng(riderLat!, riderLng!) : null;
     final full = _curve(shop, dest);
     var rest = full;
     if (rider != null) {
       rest = full.sublist(_nearest(full, rider));
     }
     final center = rider ?? dest;
+    final tiles = dark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
 
     return FlutterMap(
       options: MapOptions(initialCenter: center, initialZoom: 14),
       children: [
         TileLayer(
-          urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+          urlTemplate: tiles,
           subdomains: const ['a', 'b', 'c', 'd'],
           userAgentPackageName: 'com.uberlike.customer',
         ),
         PolylineLayer(
           polylines: [
-            if (rest.length > 1)
-              Polyline(points: rest, color: glow, strokeWidth: 10),
-            if (rest.length > 1)
-              Polyline(points: rest, color: purple, strokeWidth: 5),
+            if (rest.length > 1) Polyline(points: rest, color: glow, strokeWidth: 12),
+            if (rest.length > 1) Polyline(points: rest, color: green, strokeWidth: 5),
           ],
         ),
         MarkerLayer(
           markers: [
             Marker(
-              point: dest,
-              width: 40,
-              height: 40,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFC8F5DC),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Container(
-                    width: 14,
-                    height: 14,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
+              point: shop,
+              width: 72,
+              height: 58,
+              child: Column(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE11D48),
+                      borderRadius: BorderRadius.circular(12),
                     ),
+                    child: const Icon(Icons.store, color: Colors.white, size: 18),
                   ),
-                ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('Shop', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black)),
+                  ),
+                ],
+              ),
+            ),
+            Marker(
+              point: dest,
+              width: 90,
+              height: 58,
+              child: Column(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
+                    child: const Icon(Icons.home, color: Colors.white, size: 18),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: const Text('Customer', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black)),
+                  ),
+                ],
               ),
             ),
             if (rider != null)
               Marker(
                 point: rider,
-                width: 52,
-                height: 52,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: purple,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 4),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x556B4DFF),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.fast_forward, color: Colors.white, size: 22),
-                ),
+                width: 40,
+                height: 40,
+                child: const Text('🛵', style: TextStyle(fontSize: 28)),
               ),
           ],
         ),

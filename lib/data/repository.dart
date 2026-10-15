@@ -212,13 +212,13 @@ class OrderRepository {
             body: jsonEncode({
               'shopId': cart.first.shopId,
               'userId': u?.id ?? 'USER_1',
-              'customerName': u?.name ?? 'Sahan Perera',
+              'customerName': u?.name ?? 'Vidura',
               'customerPhone': u?.phone ?? '0771234567',
               'address': address,
               'note': note,
               'paymentMethod': paymentMethod,
-              'deliveryLat': 6.9271,
-              'deliveryLng': 79.8612,
+              'deliveryLat': 8.3350,
+              'deliveryLng': 80.4108,
               'items': cart.map((e) => e.toJson()).toList(),
             }),
           )
@@ -245,7 +245,7 @@ class OrderRepository {
                 'shopId': order.shopId,
                 'userId': order.userId,
                 'customerName': order.customerName,
-                'address': user?.address ?? '45 Galle Road, Colombo 03',
+                'address': user?.address ?? 'New Town, Anuradhapura',
                 'deliveryLat': order.deliveryLat,
                 'deliveryLng': order.deliveryLng,
                 'items': order.items.map((e) => e.toJson()).toList(),
@@ -318,9 +318,9 @@ class Catalog {
 }
 
 const _defaultShops = <Shop>[
-  Shop(id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, isOpen: true),
-  Shop(id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, isOpen: true),
-  Shop(id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, isOpen: true),
+  Shop(id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, isOpen: true, km: 2.5, reviews: 120, image: '/img/shop-bakery.jpg'),
+  Shop(id: 'SHOP_2', name: 'Burger King', category: 'Fast Food', rating: 4.6, isOpen: true, km: 3.2, reviews: 98, image: '/img/shop-burger.jpg'),
+  Shop(id: 'SHOP_3', name: 'Pizza Hut', category: 'Pizza', rating: 4.5, isOpen: true, km: 4.1, reviews: 76, image: '/img/shop-pizza.jpg'),
   Shop(id: 'SHOP_4', name: 'Coffee Lab', category: 'Beverages', rating: 4.7, isOpen: true),
   Shop(id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, isOpen: true),
 ];

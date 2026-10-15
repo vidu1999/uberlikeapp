@@ -12,7 +12,7 @@
     const sub = opts.sub || 'We’ll send a 4-digit code on WhatsApp. Free · no PIN.';
     const phone = opts.phone || DEFAULTS[role] || '';
     return `<div class="login otp-login" data-otp-root data-role="${role}">
-      <div class="wordmark">Uber <em>Eats</em></div>
+      <div class="wordmark">Good <em>Food</em></div>
       <div class="otp-steps"><span class="on">1 Phone</span><span>2 WhatsApp</span><span>3 Code</span></div>
       <div data-step="phone">
         <h1>${title}</h1>

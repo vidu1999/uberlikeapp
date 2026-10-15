@@ -11,7 +11,7 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final _addr = TextEditingController(text: '45 Galle Road, Colombo 03');
+  final _addr = TextEditingController(text: 'New Town, Anuradhapura');
   final _note = TextEditingController();
   bool placing = false;
 

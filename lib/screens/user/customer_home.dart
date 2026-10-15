@@ -1,127 +1,332 @@
 import 'package:flutter/material.dart';
 import '../../app.dart';
+import '../../config.dart';
 import '../../data/repository.dart';
+import '../../models/shop.dart';
+import '../../theme.dart';
 import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
-import 'search_screen.dart';
+import 'cart_screen.dart';
 import 'my_orders_screen.dart';
 import 'shop_menu_screen.dart';
-import 'cart_screen.dart';
 
-class CustomerHome extends StatelessWidget {
+class CustomerHome extends StatefulWidget {
   final UserRole currentRole;
   final ValueChanged<UserRole> onSwitchRole;
   const CustomerHome({super.key, required this.currentRole, required this.onSwitchRole});
 
   @override
+  State<CustomerHome> createState() => _CustomerHomeState();
+}
+
+class _CustomerHomeState extends State<CustomerHome> {
+  int tab = 0;
+  String category = 'All';
+  String query = '';
+  final favs = <String>{};
+
+  String get _hello {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good Morning';
+    if (h < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
+  String get _name {
+    final n = OrderRepository.instance.user?.name ?? 'Vidura';
+    return n.split(' ').first;
+  }
+
+  String? _url(String? path) {
+    if (path == null || path.isEmpty) return null;
+    final base = AppConfig.normalize(AppConfig.baseUrl);
+    if (base.isEmpty) return null;
+    if (path.startsWith('http')) return path;
+    return '$base$path';
+  }
+
+  List<Shop> get _shops {
+    var list = Catalog.shops;
+    if (category == 'Burgers') {
+      list = list.where((s) => s.category == 'Fast Food').toList();
+    } else if (category != 'All') {
+      list = list.where((s) => s.category == category || (category == 'Beverages' && s.category == 'Coffee')).toList();
+    }
+    if (query.isNotEmpty) {
+      final q = query.toLowerCase();
+      list = list.where((s) => s.name.toLowerCase().contains(q) || s.category.toLowerCase().contains(q)).toList();
+    }
+    return list;
+  }
+
+  Widget _photo(String? path, {double w = 72, double h = 72, double r = 16}) {
+    final url = _url(path);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(r),
+      child: url == null
+          ? Container(width: w, height: h, color: Brand.search, child: const Icon(Icons.store, color: Brand.soft))
+          : Image.network(
+              url,
+              width: w,
+              height: h,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(width: w, height: h, color: Brand.search),
+            ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('SwiftDrop'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.shopping_bag_outlined),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
-          ),
-          const SettingsButton(),
-          RoleSwitcher(currentRole: currentRole, onSwitchRole: onSwitchRole),
+      backgroundColor: Colors.white,
+      body: IndexedStack(
+        index: tab,
+        children: [
+          _home(),
+          const MyOrdersScreen(),
+          const CartScreen(),
+          _profile(),
         ],
       ),
-      body: Column(
-        children: [
-          const ConnectionBanner(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Hello, Sahan 👋', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  const Text('What would you like to order today?', style: TextStyle(color: Colors.grey)),
-                  const SizedBox(height: 20),
-                  _ActionCard(
-                    icon: Icons.search,
-                    title: 'Search Shops & Items',
-                    subtitle: 'Find food, cakes, coffee and more',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionCard(
-                    icon: Icons.receipt_long,
-                    title: 'My Orders',
-                    subtitle: 'Track your deliveries live',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyOrdersScreen())),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Popular Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: Catalog.shops.length,
-                      itemBuilder: (context, i) {
-                        final s = Catalog.shops[i];
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(child: Text(s.name[0])),
-                            title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text('${s.category} • ${s.rating} ★'),
-                            trailing: s.isOpen
-                                ? const Text('Open', style: TextStyle(color: Colors.green))
-                                : const Text('Closed', style: TextStyle(color: Colors.red)),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s)),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+      bottomNavigationBar: NavigationBar(
+        height: 64,
+        selectedIndex: tab,
+        indicatorColor: Brand.green.withOpacity(0.12),
+        onDestinationSelected: (i) => setState(() => tab = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: Brand.green), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long, color: Brand.green), label: 'Orders'),
+          NavigationDestination(icon: Icon(Icons.shopping_bag_outlined), selectedIcon: Icon(Icons.shopping_bag, color: Brand.green), label: 'Cart'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: Brand.green), label: 'Profile'),
         ],
       ),
     );
   }
-}
 
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  const _ActionCard({required this.icon, required this.title, required this.subtitle, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(backgroundColor: Colors.green.shade50, child: Icon(icon, color: Colors.green)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
+  Widget _home() {
+    const cats = [
+      ('All', 'All', null),
+      ('Burgers', 'Burgers', '/img/shop-burger.jpg'),
+      ('Pizza', 'Pizza', '/img/shop-pizza.jpg'),
+      ('Bakery', 'Bakery', '/img/shop-bakery.jpg'),
+      ('Beverages', 'Beverages', '/img/shop-coffee.jpg'),
+    ];
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          const ConnectionBanner(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 18),
+                const SizedBox(width: 4),
+                const Text('Anuradhapura', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const Icon(Icons.expand_more, size: 18),
+                const Spacer(),
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Brand.search,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.notifications_none, color: Brand.ink, size: 20),
+                    onPressed: () => setState(() => tab = 1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => setState(() => tab = 3),
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Brand.search,
+                    backgroundImage: () {
+                      final u = _url('/img/avatar-user.jpg');
+                      return u == null ? null : NetworkImage(u);
+                    }(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$_hello,', style: const TextStyle(color: Brand.soft, fontWeight: FontWeight.w600)),
+                Text('$_name 👋', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+                const SizedBox(height: 4),
+                const Text('Great food, delivered to your door!', style: TextStyle(color: Brand.soft)),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Search for food, shops or items...',
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Brand.search,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+              ),
+              onChanged: (v) => setState(() => query = v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: SizedBox(
+                height: 168,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: const Color(0xFF14120E)),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _photo('/img/shop-burger.jpg', w: 220, h: 200, r: 0),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(18, 20, 140, 18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Delicious Food', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                          Text('Fast Delivery', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                          SizedBox(height: 8),
+                          Text('Your favorite restaurants, now closer than ever!', style: TextStyle(color: Color(0xFFC9C9C9), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      left: 18,
+                      bottom: 16,
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Brand.green,
+                        child: const Icon(Icons.play_arrow, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
+          ),
+          SizedBox(
+            height: 96,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              children: cats.map((c) {
+                final on = category == c.$1;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: GestureDetector(
+                    onTap: () => setState(() => category = c.$1),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: on ? Brand.green : Brand.search,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: c.$3 == null
+                              ? Icon(Icons.grid_view_rounded, color: on ? Colors.white : Brand.ink)
+                              : _photo(c.$3, w: 58, h: 58, r: 18),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(c.$2, style: TextStyle(fontSize: 11, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Brand.ink : Brand.muted)),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Text('Popular Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                Spacer(),
+                Text('See All ›', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          ..._shops.map((s) {
+            final liked = favs.contains(s.id);
+            final km = s.km ?? 2.5;
+            final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews == 0 ? '120+' : s.reviews}';
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: _photo(s.image ?? '/img/shop-bakery.jpg'),
+              title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.star_rounded, color: Brand.star, size: 16),
+                    Text(' ${s.rating} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                    Text('($rev)', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                  ]),
+                  Text('${s.category} · $km km', style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                ],
+              ),
+              trailing: IconButton(
+                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? Colors.red : Colors.grey),
+                onPressed: () => setState(() {
+                  if (liked) {
+                    favs.remove(s.id);
+                  } else {
+                    favs.add(s.id);
+                  }
+                }),
+              ),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s))),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _profile() {
+    final u = OrderRepository.instance.user;
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const ConnectionBanner(),
+          CircleAvatar(
+            radius: 36,
+            backgroundImage: () {
+              final url = _url('/img/avatar-user.jpg');
+              return url == null ? null : NetworkImage(url);
+            }(),
+          ),
+          const SizedBox(height: 12),
+          Text(u?.name ?? 'Vidura', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(u?.phone ?? '', style: const TextStyle(color: Brand.muted)),
+          const SizedBox(height: 8),
+          Text(u?.address ?? 'New Town, Anuradhapura'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const SettingsButton(),
+              RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole),
+            ],
+          ),
+          const SizedBox(height: 24),
+          OutlinedButton(
+            onPressed: () => OrderRepository.instance.logout(),
+            child: const Text('Sign out'),
+          ),
+        ],
       ),
     );
   }

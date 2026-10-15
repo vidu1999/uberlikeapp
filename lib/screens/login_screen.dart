@@ -171,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         color: const Color(0xFF075E54),
-                        child: const Text('Uber Eats  ·  WhatsApp',
+                        child: const Text('Good Food  ·  WhatsApp',
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                       ),
                       Padding(
@@ -269,7 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      const Text('Uber Eats', style: TextStyle(fontWeight: FontWeight.w800)),
+                      const Text('Good Food', style: TextStyle(fontWeight: FontWeight.w800)),
                       Text(smsBody!),
                     ],
                   ),

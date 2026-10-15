@@ -98,11 +98,11 @@ class _SearchScreenState extends State<SearchScreen> {
       status: OrderStatus.pending,
       items: [DeliveryItem(name: item.name, qty: 1, price: item.price)],
       totalAmount: item.price,
-      deliveryLat: 6.9271,
-      deliveryLng: 79.8612,
+      deliveryLat: 8.3350,
+      deliveryLng: 80.4108,
       timestamp: DateTime.now(),
       shopName: shop.name,
-      customerName: 'Sahan Perera',
+      customerName: 'Vidura',
     );
     final created = await OrderRepository.instance.addOrder(draft);
     if (!mounted) return;

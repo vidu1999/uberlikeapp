@@ -13,27 +13,27 @@ const PUBLIC = path.join(__dirname, 'public');
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 const shops = [
-  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 312, isOpen: true, lat: 6.9278, lng: 79.8502, emoji: '🎂', eta: '20–35 min', fee: 0, address: 'Galle Road, Colombo 03', image: '/img/shop-bakery.jpg', promo: 'Buy 1, Get 1 Free' },
-  { id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, reviews: 890, isOpen: true, lat: 6.9210, lng: 79.8601, emoji: '🍔', eta: '25–40 min', fee: 250, address: 'Bambalapitiya', image: '/img/shop-burger.jpg' },
-  { id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, reviews: 540, isOpen: true, lat: 6.9340, lng: 79.8475, emoji: '🍕', eta: '30–45 min', fee: 0, address: 'Kollupitiya', image: '/img/shop-pizza.jpg', promo: 'LKR 0 Delivery Fee' },
-  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Coffee', rating: 4.7, reviews: 210, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕', eta: '15–25 min', fee: 0, address: 'Wellawatte', image: '/img/shop-coffee.jpg' },
-  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛', eta: '22–35 min', fee: 0, address: 'Pettah', image: '/img/shop-curry.jpg', promo: 'Top Eats' },
-  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 6.9155, lng: 79.8490, emoji: '🧁', eta: '18–30 min', fee: 250, address: 'Dehiwala', image: '/img/shop-dessert.jpg' },
-  { id: 'SHOP_7', name: 'Street Burger SL', category: 'Fast Food', rating: 4.6, reviews: 430, isOpen: true, lat: 6.9102, lng: 79.8522, emoji: '🍔', eta: '20–30 min', fee: 0, address: 'Bambalapitiya', image: '/img/shop-burger.jpg', promo: 'LKR 0 Delivery Fee' },
-  { id: 'SHOP_8', name: 'Hopper House', category: 'Sri Lankan', rating: 4.8, reviews: 670, isOpen: true, lat: 6.9244, lng: 79.8488, emoji: '🥞', eta: '18–28 min', fee: 0, address: 'Colombo 07', image: '/img/shop-hoppers.jpg', promo: 'Top Eats' },
-  { id: 'SHOP_9', name: 'Dragon Noodles', category: 'Chinese', rating: 4.3, reviews: 290, isOpen: true, lat: 6.9360, lng: 79.8440, emoji: '🍜', eta: '30–45 min', fee: 250, address: 'Slave Island', image: '/img/shop-noodles.jpg' },
-  { id: 'SHOP_10', name: 'Fresh Mart', category: 'Grocery', rating: 4.5, reviews: 1200, isOpen: true, lat: 6.9020, lng: 79.8605, emoji: '🛒', eta: '25–40 min', fee: 0, address: 'Nugegoda', image: '/img/shop-grocery.jpg', promo: 'Grocery' },
+  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 120, isOpen: true, lat: 8.3514, lng: 80.3988, km: 2.5, emoji: '🎂', eta: '20–35 min', fee: 0, address: 'Main Street, Anuradhapura', image: '/img/shop-bakery.jpg', promo: 'Buy 1, Get 1 Free' },
+  { id: 'SHOP_2', name: 'Burger King', category: 'Fast Food', rating: 4.6, reviews: 98, isOpen: true, lat: 8.3580, lng: 80.4280, km: 3.2, emoji: '🍔', eta: '25–40 min', fee: 250, address: 'New Town, Anuradhapura', image: '/img/shop-burger.jpg' },
+  { id: 'SHOP_3', name: 'Pizza Hut', category: 'Pizza', rating: 4.5, reviews: 76, isOpen: true, lat: 8.3650, lng: 80.4380, km: 4.1, emoji: '🍕', eta: '30–45 min', fee: 0, address: 'Stage 1, Anuradhapura', image: '/img/shop-pizza.jpg', promo: 'Free Delivery' },
+  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Coffee', rating: 4.7, reviews: 210, isOpen: true, lat: 8.3410, lng: 80.4050, km: 1.8, emoji: '☕', eta: '15–25 min', fee: 0, address: 'Sacred City, Anuradhapura', image: '/img/shop-coffee.jpg' },
+  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 8.3380, lng: 80.4180, km: 2.1, emoji: '🍛', eta: '22–35 min', fee: 0, address: 'Old Town, Anuradhapura', image: '/img/shop-curry.jpg', promo: 'Top Eats' },
+  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 8.3290, lng: 80.3990, km: 3.0, emoji: '🧁', eta: '18–30 min', fee: 250, address: 'Mihintale Road', image: '/img/shop-dessert.jpg' },
+  { id: 'SHOP_7', name: 'Street Burger SL', category: 'Fast Food', rating: 4.6, reviews: 430, isOpen: true, lat: 8.3460, lng: 80.4220, km: 2.8, emoji: '🍔', eta: '20–30 min', fee: 0, address: 'New Town', image: '/img/shop-burger.jpg', promo: 'Free Delivery' },
+  { id: 'SHOP_8', name: 'Hopper House', category: 'Sri Lankan', rating: 4.8, reviews: 670, isOpen: true, lat: 8.3320, lng: 80.4120, km: 1.4, emoji: '🥞', eta: '18–28 min', fee: 0, address: 'Market Road', image: '/img/shop-hoppers.jpg', promo: 'Top Eats' },
+  { id: 'SHOP_9', name: 'Dragon Noodles', category: 'Chinese', rating: 4.3, reviews: 290, isOpen: true, lat: 8.3720, lng: 80.4250, km: 4.6, emoji: '🍜', eta: '30–45 min', fee: 250, address: 'Stage 2', image: '/img/shop-noodles.jpg' },
+  { id: 'SHOP_10', name: 'Fresh Mart', category: 'Grocery', rating: 4.5, reviews: 1200, isOpen: true, lat: 8.3250, lng: 80.4080, km: 2.2, emoji: '🛒', eta: '25–40 min', fee: 0, address: 'Bus Stand', image: '/img/shop-grocery.jpg', promo: 'Grocery' },
 ];
 
 let items = [
-  { id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500, isAvailable: true, desc: 'Rich ganache, serves 8' },
+  { id: 'I1', shopId: 'SHOP_1', name: 'Chocolate Cake 1kg', category: 'Bakery', price: 2500, isAvailable: true, desc: 'Rich ganache, serves 8', image: '/img/shop-bakery.jpg' },
   { id: 'I2', shopId: 'SHOP_1', name: 'Butter Cake Slice', category: 'Bakery', price: 350, isAvailable: true, desc: 'Warm vanilla butter cake' },
   { id: 'I3', shopId: 'SHOP_1', name: 'Fish Bun', category: 'Bakery', price: 180, isAvailable: true, desc: 'Spicy fish filling' },
   { id: 'I4', shopId: 'SHOP_1', name: 'Egg Roll', category: 'Bakery', price: 220, isAvailable: true, desc: 'Crispy pastry roll' },
-  { id: 'I5', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200, isAvailable: true, desc: 'Crispy fillet, cheese, slaw' },
+  { id: 'I5', shopId: 'SHOP_2', name: 'Chicken Burger', category: 'Fast Food', price: 1200, isAvailable: true, desc: 'Crispy fillet, cheese, slaw', image: '/img/shop-burger.jpg' },
   { id: 'I6', shopId: 'SHOP_2', name: 'Cheese Fries', category: 'Fast Food', price: 700, isAvailable: true, desc: 'Loaded cheddar fries' },
   { id: 'I7', shopId: 'SHOP_2', name: 'Beef Burger', category: 'Fast Food', price: 1450, isAvailable: true, desc: 'Double patty, BBQ sauce' },
-  { id: 'I8', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400, isAvailable: true, desc: '12" mozzarella classic' },
+  { id: 'I8', shopId: 'SHOP_3', name: 'Cheese Pizza', category: 'Pizza', price: 2400, isAvailable: true, desc: '12" mozzarella classic', image: '/img/shop-pizza.jpg' },
   { id: 'I9', shopId: 'SHOP_3', name: 'Devilled Chicken Pizza', category: 'Pizza', price: 2800, isAvailable: true, desc: 'Sri Lankan spicy chicken' },
   { id: 'I10', shopId: 'SHOP_4', name: 'Iced Coffee', category: 'Beverages', price: 600, isAvailable: true, desc: 'Cold brew, milk, ice' },
   { id: 'I11', shopId: 'SHOP_4', name: 'Cappuccino', category: 'Beverages', price: 550, isAvailable: true, desc: 'Double shot, foam art' },
@@ -55,8 +55,8 @@ let items = [
 ];
 
 let accounts = [
-  { id: 'USER_1', name: 'Sahan Perera', phone: '0771234567', pin: '1234', role: 'customer', address: '45 Galle Road, Colombo 03' },
-  { id: 'USER_2', name: 'Nimal Silva', phone: '0771112222', pin: '1234', role: 'customer', address: '12 Duplication Road, Colombo 04' },
+  { id: 'USER_1', name: 'Vidura', phone: '0771234567', pin: '1234', role: 'customer', address: 'New Town, Anuradhapura' },
+  { id: 'USER_2', name: 'Nimal Silva', phone: '0771112222', pin: '1234', role: 'customer', address: 'Stage 1, Anuradhapura' },
   { id: 'SHOP_STAFF', name: 'Nadeesha Fernando', phone: '0772223333', pin: '1234', role: 'shop', shopId: 'ALL' },
   { id: 'RIDER_77', name: 'Kamal Perera', phone: '0775556666', pin: '1234', role: 'rider', vehicle: 'Honda Dio · WP CAB-4521', rating: 4.9 },
 ];
@@ -181,6 +181,9 @@ function mime(file) {
       '.json': 'application/json; charset=utf-8',
       '.svg': 'image/svg+xml',
       '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
       '.ico': 'image/x-icon',
     }[ext] || 'application/octet-stream'
   );
@@ -208,8 +211,8 @@ function patchOrder(order, body) {
   if (body.rating !== undefined) order.rating = Number(body.rating);
   if (body.status === 'on_the_way' && (order.riderLat == null || order.riderLng == null)) {
     const shop = shopById(order.shopId);
-    order.riderLat = shop ? shop.lat : 6.93;
-    order.riderLng = shop ? shop.lng : 79.855;
+    order.riderLat = shop ? shop.lat : 8.3514;
+    order.riderLng = shop ? shop.lng : 80.3988;
     order.riderId = order.riderId || 'RIDER_77';
     order.riderName = order.riderName || 'Kamal Perera';
     order.riderPhone = order.riderPhone || '0775556666';
@@ -234,7 +237,7 @@ function userForVerifiedPhone(phone, role) {
     phone,
     pin: 'otp',
     role: role || 'customer',
-    address: '45 Galle Road, Colombo 03',
+    address: 'New Town, Anuradhapura',
   };
   if (role === 'rider') {
     user.vehicle = 'Bike';
@@ -388,14 +391,14 @@ async function handleApi(req, res, url) {
     const subtotal = lineItems.reduce((s, it) => s + it.price * it.qty, 0);
     const deliveryFee = subtotal > 2000 ? 0 : 250;
     const order = {
-      id: `ORD_${++seq}`,
+      id: `ORD-${++seq}`,
       userId: body.userId || 'USER_1',
       shopId: shop.id,
       shopName: shop.name,
       shopEmoji: shop.emoji,
-      customerName: body.customerName || 'Sahan Perera',
+      customerName: body.customerName || 'Vidura',
       customerPhone: body.customerPhone || '0771234567',
-      address: body.address || '45 Galle Road, Colombo 03',
+      address: body.address || 'New Town, Anuradhapura',
       note: body.note || '',
       paymentMethod: body.paymentMethod || 'Cash on delivery',
       riderId: null,
@@ -406,8 +409,8 @@ async function handleApi(req, res, url) {
       subtotal,
       deliveryFee,
       totalAmount: subtotal + deliveryFee,
-      deliveryLat: Number(body.deliveryLat ?? 6.9271),
-      deliveryLng: Number(body.deliveryLng ?? 79.8612),
+      deliveryLat: Number(body.deliveryLat ?? 8.3350),
+      deliveryLng: Number(body.deliveryLng ?? 80.4108),
       riderLat: null,
       riderLng: null,
       rating: null,

@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Shop — Uber Eats Manager</title>
+  <title>Shop Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/ui.css" />
   <link rel="stylesheet" href="/css/track.css" />
 </head>
 <body>
@@ -18,17 +19,54 @@
   <script src="/js/track-ui.js"></script>
   <script src="/js/otp-login.js"></script>
   <script>
-    const demo = new URLSearchParams(location.search).has('demo');
-    const state = { tab: 'orders', filter: 'new', trackId: null, mapHandle: null };
+    const state = { tab: 'dash', filter: 'all', trackId: null, mapHandle: null };
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
-    function lkr(n) { return 'LKR ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function oid(id) { return '#' + String(id||'').replace('_','-'); }
+    function shopName() {
+      const s = API.shops.find((x) => x.id === 'SHOP_1') || API.shops[0] || {};
+      return s.name || 'Kandy Bakers';
+    }
+    function timeOf(o) {
+      const d = new Date(o.timestamp || Date.now());
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function thumb(o) {
+      const it = (o.items || [])[0];
+      if (it && it.id) {
+        const item = API.items.find((i) => i.id === it.id);
+        if (item && item.image) return item.image;
+      }
+      const shop = API.shopOf(o.shopId);
+      return shop.image || '/img/shop-bakery.jpg';
+    }
+    function badgeText(o) {
+      if (o.status === 'pending') return 'New';
+      if (o.status === 'ready') return 'Ready';
+      if (o.status === 'on_the_way') return 'On the Way';
+      return API.statusLabel(o.status);
+    }
+    const SVG = {
+      dash: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
+      orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      bell: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg>',
+      store: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg>',
+      clip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      chef: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 14h8v6H8z"/><path d="M6 14c0-5 3-8 6-8s6 3 6 8"/></svg>',
+      check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="m5 12 5 5 9-10"/></svg>',
+      bike: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17 10 8h6l4 9"/></svg>',
+    };
     function nav() {
-      return `<nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-        <button data-tab="orders" class="${state.tab==='orders'?'active':''}">Orders</button>
-        <button data-tab="menu" class="${state.tab==='menu'?'active':''}">Menu</button>
-        <button data-tab="account" class="${state.tab==='account'?'active':''}">Account</button>
+      const t = state.tab;
+      return `<nav class="bnav">
+        <button data-tab="dash" class="${t==='dash'?'on':''}">${SVG.dash}Dashboard</button>
+        <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
+        <button data-tab="menu" class="${t==='menu'?'on':''}">${SVG.menu}Menu</button>
+        <button data-tab="account" class="${t==='account'?'on':''}">${SVG.profile}Profile</button>
       </nav>`;
     }
     function loginView() {
@@ -39,82 +77,115 @@
         phone: '0772223333',
       });
     }
-    function ordersView() {
+    function orderCard(o) {
+      const items = (o.items||[]).map((i)=>i.name+' x'+i.qty).join(', ');
+      return `<div class="sd-order">
+        <img src="${thumb(o)}" alt="" />
+        <div class="grow">
+          <div class="oid">${esc(oid(o.id))}</div>
+          <div class="sub">${esc(timeOf(o))} · ${esc(items)}</div>
+          <div class="rs">${rs(o.totalAmount)}</div>
+          <div class="sd-acts">
+            ${o.status==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
+              <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
+            ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
+            ${o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
+          </div>
+        </div>
+        <span class="badge ${o.status}">${esc(badgeText(o))}</span>
+      </div>`;
+    }
+    function dashView() {
       const orders = API.orders;
       const pending = orders.filter((o) => o.status === 'pending').length;
       const preparing = orders.filter((o) => o.status === 'preparing').length;
       const ready = orders.filter((o) => o.status === 'ready').length;
+      const onway = orders.filter((o) => o.status === 'on_the_way').length;
       const list = orders.filter((o) => {
-        if (state.filter === 'new') return o.status === 'pending';
         if (state.filter === 'prep') return o.status === 'preparing';
         if (state.filter === 'ready') return o.status === 'ready';
+        if (state.filter === 'way') return o.status === 'on_the_way';
         return true;
       });
-      const live = orders.find((o) => o.status === 'on_the_way');
-      return `<div class="ue-top"><div class="where">Restaurant dashboard<small>${esc(API.user?.name)} · Colombo</small></div></div>
-        ${live ? TrackUI.banner(live) : ''}
-        <div class="stats">
-          <div class="stat"><b>${pending}</b><span>New</span></div>
-          <div class="stat"><b>${preparing}</b><span>Preparing</span></div>
-          <div class="stat"><b>${ready}</b><span>Ready</span></div>
+      return `<div class="scroll">
+        <div class="sd-head">
+          <div class="sd-logo">${SVG.store}</div>
+          <h1>Shop Dashboard</h1>
+          <button class="sd-bell" data-tab="orders">${SVG.bell}</button>
         </div>
-        <div class="chips">
-          <button class="chip ${state.filter==='new'?'active':''}" data-filter="new">New</button>
-          <button class="chip ${state.filter==='prep'?'active':''}" data-filter="prep">Preparing</button>
-          <button class="chip ${state.filter==='ready'?'active':''}" data-filter="ready">Ready</button>
-          <button class="chip ${state.filter==='all'?'active':''}" data-filter="all">All</button>
+        <div class="sd-shop">${esc(shopName())} <span class="open-pill"><i></i> Open</span></div>
+        <div class="sd-hero">
+          <img src="/img/shop-bakery.jpg" alt="" />
+          <div class="copy">
+            <h2>Good Food<br>Happy Customers</h2>
+            <p>Manage your orders and grow your business</p>
+          </div>
         </div>
-        ${list.map((o) => `
-          <div class="ticket">
-            <div class="row">
-              <div class="grow">
-                <b>${esc(o.id)}</b>
-                <div class="muted">${esc(o.shopName)} · ${esc(o.customerName)}</div>
-              </div>
-              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
-            </div>
-            <div style="margin:10px 0">${o.items.map((i)=>`<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
-            ${o.note ? `<div class="muted">Note: ${esc(o.note)}</div>` : ''}
-            <div class="row" style="margin-top:10px">
-              <div class="price grow">${lkr(o.totalAmount)}</div>
-              ${o.status==='pending' ? `<button class="btn sm" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
-                <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
-              ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
-              ${o.status==='ready' ? `<span class="muted">Waiting for courier…</span>` : ''}
-              ${o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
-            </div>
-          </div>`).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the User app.</div>'}
-        ${nav()}`;
+        <div class="sd-stats">
+          <div class="sd-stat teal"><div class="si">${SVG.clip}</div><b>${pending}</b><span>New Orders</span></div>
+          <div class="sd-stat gold"><div class="si">${SVG.chef}</div><b>${preparing}</b><span>Preparing</span></div>
+          <div class="sd-stat purple"><div class="si">${SVG.check}</div><b>${ready}</b><span>Ready</span></div>
+          <div class="sd-stat green"><div class="si">${SVG.bike}</div><b>${onway}</b><span>On Delivery</span></div>
+        </div>
+        <div class="sd-tabs">
+          <button class="${state.filter==='all'?'on':''}" data-filter="all">All Orders</button>
+          <button class="${state.filter==='prep'?'on':''}" data-filter="prep">Preparing</button>
+          <button class="${state.filter==='ready'?'on':''}" data-filter="ready">Ready</button>
+          <button class="${state.filter==='way'?'on':''}" data-filter="way">On Delivery</button>
+        </div>
+        ${list.map(orderCard).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the User app.</div>'}
+      </div>${nav()}`;
+    }
+    function ordersView() {
+      state.filter = state.filter || 'all';
+      return dashView();
     }
     function menuView() {
-      return `<div class="ue-top"><div class="where">Menu<small>Mark items sold out</small></div></div>
+      return `<div class="scroll">
+        <div class="sd-head"><div class="sd-logo">${SVG.store}</div><h1>Menu</h1></div>
         ${API.items.map((it) => {
           const shop = API.shopOf(it.shopId);
-          return `<div class="item">
+          return `<div class="menu-item">
             <div class="grow">
               <b>${esc(it.name)}</b>
-              <p>${esc(shop.name)} · ${lkr(it.price)}</p>
+              <p class="muted">${esc(shop.name)} · ${rs(it.price)}</p>
               <button class="add" data-toggle="${it.id}" data-on="${it.isAvailable?0:1}">${it.isAvailable ? 'Available' : 'Sold out'}</button>
             </div>
-            <img src="${shop.image || '/img/shop-curry.jpg'}" alt="" />
+            <img src="${shop.image || '/img/shop-bakery.jpg'}" alt="" />
           </div>`;
         }).join('')}
-        ${nav()}`;
+      </div>${nav()}`;
     }
     function accountView() {
       const today = API.orders.filter((o) => o.status !== 'cancelled');
       const sales = today.reduce((s, o) => s + o.totalAmount, 0);
-      return `<div class="ue-top"><div class="where">Account</div></div>
-        <div class="stats">
-          <div class="stat"><b>${today.length}</b><span>Orders</span></div>
-          <div class="stat"><b>${lkr(sales)}</b><span>Volume</span></div>
-          <div class="stat"><b>Open</b><span>Kitchen</span></div>
+      return `<div class="scroll">
+        <div class="sd-head"><div class="sd-logo">${SVG.store}</div><h1>Profile</h1></div>
+        <div class="sd-stats">
+          <div class="sd-stat teal"><b>${today.length}</b><span>Orders</span></div>
+          <div class="sd-stat gold"><b>${rs(sales)}</b><span>Volume</span></div>
+          <div class="sd-stat green"><b>Open</b><span>Kitchen</span></div>
         </div>
         <div class="pad">
           <b>${esc(API.user?.name)}</b>
           <p class="muted">${esc(API.user?.phone)}</p>
+          <p class="muted">${esc(shopName())}</p>
           <button class="btn ghost full" id="logout">Sign out</button>
-        </div>${nav()}`;
+        </div>
+      </div>${nav()}`;
+    }
+    function bindMapChrome() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
+        if (!state.mapHandle) return;
+        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn();
+        else state.mapHandle.zoomOut();
+      });
+      const loc = root.querySelector('[data-locate]');
+      if (loc) loc.onclick = () => {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (state.mapHandle && o) state.mapHandle.locate(o);
+      };
     }
     function render() {
       const root = document.getElementById('root');
@@ -138,6 +209,7 @@
           if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
           root.innerHTML = TrackUI.screen(o, 'shop');
           bind();
+          bindMapChrome();
           const el = document.getElementById('map');
           if (el) state.mapHandle = mountTrackingMap(el, o);
           return;
@@ -146,12 +218,11 @@
       if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
       if (state.tab === 'menu') root.innerHTML = menuView();
       else if (state.tab === 'account') root.innerHTML = accountView();
-      else root.innerHTML = ordersView();
+      else root.innerHTML = dashView();
       bind();
     }
     function bind() {
       const root = document.getElementById('root');
-
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.trackId = null; render(); });
       root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
       root.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act }));
@@ -159,9 +230,6 @@
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.track; render(); });
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
-      const moreBtn = root.querySelector('[data-more]');
-      const morePanel = root.querySelector('[data-more-panel]');
-      if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
     }

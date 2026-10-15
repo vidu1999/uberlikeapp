@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Uber Eats</title>
+  <title>User App</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/ui.css" />
   <link rel="stylesheet" href="/css/track.css" />
 </head>
 <body>
@@ -18,7 +19,6 @@
   <script src="/js/track-ui.js"></script>
   <script src="/js/otp-login.js"></script>
   <script>
-    const demo = new URLSearchParams(location.search).has('demo');
     const state = {
       tab: 'home',
       screen: 'home',
@@ -27,23 +27,40 @@
       shopId: null,
       trackId: null,
       cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
+      favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
       note: '',
-      address: '45 Galle Road, Colombo 03',
+      address: 'New Town, Anuradhapura',
       payment: 'Cash on delivery',
       mapHandle: null,
       lockTrack: false,
     };
+    const CATS = [
+      { id: 'All', label: 'All', map: 'All', img: '' },
+      { id: 'Burgers', label: 'Burgers', map: 'Fast Food', img: '/img/shop-burger.jpg' },
+      { id: 'Pizza', label: 'Pizza', map: 'Pizza', img: '/img/shop-pizza.jpg' },
+      { id: 'Bakery', label: 'Bakery', map: 'Bakery', img: '/img/shop-bakery.jpg' },
+      { id: 'Beverages', label: 'Beverages', map: 'Coffee', img: '/img/shop-coffee.jpg' },
+    ];
     function saveCart() { sessionStorage.setItem('sd_cart', JSON.stringify(state.cart)); }
+    function saveFavs() { sessionStorage.setItem('sd_favs', JSON.stringify(state.favs)); }
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
-    function lkr(n) { return 'LKR ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function shopImg(s) { return s.image || '/img/shop-curry.jpg'; }
-    function itemImg(it) {
-      if (it.image) return it.image;
-      return shopImg(API.shopOf(it.shopId));
+    function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
+    function firstName() { return (API.user?.name || 'there').split(' ')[0]; }
+    function hello() {
+      const h = new Date().getHours();
+      return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+    }
+    function city() {
+      const a = API.user?.address || state.address || '';
+      if (/anuradhapura/i.test(a)) return 'Anuradhapura';
+      const part = a.split(',')[1] || a.split(',')[0] || 'Anuradhapura';
+      return part.trim() || 'Anuradhapura';
     }
     function addToCart(item) {
       state.cart = state.cart.filter((c) => c.shopId === item.shopId);
@@ -61,194 +78,183 @@
       saveCart();
       render();
     }
+    function toggleFav(id, ev) {
+      if (ev) ev.stopPropagation();
+      if (state.favs.includes(id)) state.favs = state.favs.filter((x) => x !== id);
+      else state.favs.push(id);
+      saveFavs();
+      render();
+    }
 
-    const NAV = `
-      <nav class="nav">
-        <button data-tab="home" class="${'${tabhome}'}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 4 9v12h6v-7h4v7h6V9z"/></svg>Home</button>
-        <button data-tab="browse" class="${'${tabbrowse}'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>Browse</button>
-        <button data-tab="cart" class="${'${tabcart}'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6 5 3H2"/></svg>Carts</button>
-        <button data-tab="orders" class="${'${taborders}'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4h10v16H7z"/><path d="M9 8h6M9 12h6"/></svg>Orders</button>
-        <button data-tab="account" class="${'${tabaccount}'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>Account</button>
-      </nav>`;
+    const SVG = {
+      home: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3 4 9.2V21h6v-7h4v7h6V9.2z"/></svg>',
+      orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4h10v16H7z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+      cart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 7h15l-1.5 9h-12z"/><path d="M6 7 5 4H2"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/></svg>',
+      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      pin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.2"/></svg>',
+      bell: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg>',
+      search: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>',
+      grid: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
+      heart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-4.6-9.5-8.5C.3 9.2 2.2 5 6.2 5c2 0 3.4 1 4.3 2.2C11.4 6 12.8 5 14.8 5c4 0 5.9 4.2 3.7 7.5C19 16.4 12 21 12 21z"/></svg>',
+      heartOn: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-9.5-8.5C.3 9.2 2.2 5 6.2 5c2 0 3.4 1 4.3 2.2C11.4 6 12.8 5 14.8 5c4 0 5.9 4.2 3.7 7.5C19 16.4 12 21 12 21z"/></svg>',
+      chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m8 6 8 6-8 6"/></svg>',
+    };
+
     function nav() {
-      return NAV
-        .replace('${tabhome}', state.tab==='home'?'active':'')
-        .replace('${tabbrowse}', state.tab==='browse'?'active':'')
-        .replace('${tabcart}', state.tab==='cart'?'active':'')
-        .replace('${taborders}', state.tab==='orders'?'active':'')
-        .replace('${tabaccount}', state.tab==='account'?'active':'');
+      const t = state.tab;
+      return `<nav class="bnav">
+        <button data-tab="home" class="${t==='home'?'on':''}">${SVG.home}Home</button>
+        <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
+        <button data-tab="cart" class="${t==='cart'?'on':''}">${SVG.cart}Cart</button>
+        <button data-tab="account" class="${t==='account'?'on':''}">${SVG.profile}Profile</button>
+      </nav>`;
     }
     function cartbar() {
       if (!cartCount() || ['cart','checkout','track','chat'].includes(state.screen) || state.tab==='cart') return '';
-      return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${lkr(cartTotal())}</span></div>`;
+      return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${rs(cartTotal())}</span></div>`;
     }
     function header() {
-      return `<div class="ue-top">
-        <div class="ue-loc">
-          <div class="where">Colombo 03 ▾<small>Deliver now · ${esc(API.user?.address || 'Galle Road')}</small></div>
-          <div class="ue-icons">
-            <button class="icon-btn" data-tab="cart">🛒</button>
+      return `<div class="u-top">
+        <div class="u-loc">
+          <div class="u-city">${SVG.pin} ${esc(city())} ▾</div>
+          <div class="u-icons">
+            <button class="u-bell" data-tab="orders" aria-label="Orders">${SVG.bell}</button>
+            <button class="u-ava" data-tab="account" aria-label="Profile"><img src="/img/avatar-user.jpg" alt="" /></button>
           </div>
         </div>
-        <div class="search"><span>🔍</span><input id="q" placeholder="Food, groceries, drinks, etc" value="${esc(state.query)}" /></div>
       </div>`;
     }
-
-    function storeCard(s, compact) {
-      if (compact) {
-        return `<div class="hcard" data-shop="${s.id}">
-          <img src="${shopImg(s)}" alt="" />
-          <b>${esc(s.name)}</b>
-          <div class="fee">${s.fee ? lkr(s.fee)+' Delivery Fee' : 'LKR 0 Delivery Fee'} · ${esc(s.eta)}</div>
-        </div>`;
-      }
-      return `<div class="store" data-shop="${s.id}">
-        <div class="hero">
-          <img src="${shopImg(s)}" alt="" />
-          <button class="heart">♡</button>
-          ${s.promo ? `<div class="promo">${esc(s.promo)}</div>` : ''}
+    function shopRow(s) {
+      const liked = state.favs.includes(s.id);
+      const km = s.km != null ? s.km : 2.5;
+      const rev = s.reviews >= 100 ? s.reviews + '+' : (s.reviews || 0);
+      return `<div class="shop-row" data-shop="${s.id}">
+        <img class="thumb" src="${shopImg(s)}" alt="" />
+        <div class="grow">
+          <div class="name">${esc(s.name)}</div>
+          <div class="rate"><span class="star">★</span> ${s.rating} <em>(${rev})</em></div>
+          <div class="meta">${esc(s.category)} · ${km} km</div>
         </div>
-        <div class="meta">
-          <div>
-            <div class="name">${esc(s.name)}</div>
-            <div class="fee">⬤ ${s.fee ? lkr(s.fee)+' Delivery Fee' : 'LKR 0 Delivery Fee'} · ${esc(s.eta)}</div>
-          </div>
-          <div class="rate">${s.rating}</div>
-        </div>
+        <button class="heart ${liked?'on':''}" data-fav="${s.id}">${liked ? SVG.heartOn : SVG.heart}</button>
       </div>`;
     }
 
     function homeView() {
       const q = state.query.toLowerCase();
-      const shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
-      const featured = shops.slice(0, 4);
+      const cat = CATS.find((c) => c.id === state.category) || CATS[0];
+      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
+      if (cat.id !== 'All') shops = shops.filter((s) => s.category === cat.map || s.category === cat.id);
       const live = TrackUI.liveOrder(API.orders);
-      return `${header()}
+      return `<div class="scroll">
+        ${header()}
+        <div class="u-hi">
+          <p class="greet">${hello()},</p>
+          <h1>${esc(firstName())} 👋</h1>
+          <p>Great food, delivered to your door!</p>
+        </div>
+        <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
         ${TrackUI.banner(live)}
-        <div class="cats">
-          ${[['All','🍽️'],['Sri Lankan','🍛'],['Fast Food','🍔'],['Pizza','🍕'],['Coffee','☕'],['Dessert','🧁'],['Bakery','🎂']].map(([c,e]) =>
-            `<button class="cat ${state.category===c?'active':''}" data-cat="${c}"><div class="cico">${e}</div><span>${c}</span></button>`
-          ).join('')}
-        </div>
-        <div class="banner">
-          <img src="/img/banner-promo.jpg" alt="" />
+        <div class="u-promo">
+          <img src="/img/shop-burger.jpg" alt="" />
           <div class="copy">
-            <b>LKR 0 delivery fee from Burger House</b>
-            <span class="chip">Details →</span>
+            <h3>Delicious Food</h3>
+            <h3>Fast Delivery</h3>
+            <p>Your favorite restaurants, now closer than ever!</p>
           </div>
+          <button class="u-play" data-shop="${(API.shops[1]||API.shops[0]||{}).id||''}" aria-label="Browse">▶</button>
         </div>
-        <div class="pad"><h2 class="sec">National brands</h2></div>
-        <div class="hscroll">${featured.map((s) => storeCard(s, true)).join('')}</div>
-        <div class="pad"><h2 class="sec">${q ? 'Search results' : 'Nearby in Colombo'}</h2></div>
-        ${shops.filter((s) => state.category==='All' || s.category===state.category).map((s) => storeCard(s)).join('') || '<div class="pad muted">No restaurants match.</div>'}
-        ${cartbar()}${nav()}`;
-    }
-
-    function browseView() {
-      const items = API.items.filter((it) => {
-        const shop = API.shopOf(it.shopId);
-        const q = state.query.toLowerCase();
-        return !q || it.name.toLowerCase().includes(q) || shop.name.toLowerCase().includes(q);
-      });
-      return `${header()}
-        <div class="pad"><h2 class="sec">Browse Colombo</h2></div>
-        ${items.map((it) => {
-          const shop = API.shopOf(it.shopId);
-          return `<div class="item" data-shop="${shop.id}">
-            <div class="grow">
-              <b>${esc(it.name)}</b>
-              <p>${esc(it.desc || shop.name)}</p>
-              <div class="price">${lkr(it.price)}</div>
-            </div>
-            <img src="${itemImg(it)}" alt="" />
-          </div>`;
-        }).join('')}
-        ${cartbar()}${nav()}`;
+        <div class="u-cats">
+          ${CATS.map((c) => `<button class="u-cat ${state.category===c.id?'on':''}" data-cat="${c.id}">
+            <div class="ico">${c.img ? `<img src="${c.img}" alt="" />` : SVG.grid}</div>
+            <span>${c.label}</span>
+          </button>`).join('')}
+        </div>
+        <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-cat="All">See All ›</button></div>
+        ${shops.map(shopRow).join('') || '<div class="pad muted">No shops match.</div>'}
+      </div>${cartbar()}${nav()}`;
     }
 
     function shopView() {
       const shop = API.shopOf(state.shopId);
       const items = API.items.filter((i) => i.shopId === shop.id);
-      return `<div class="shophead">
+      return `<div class="scroll">
+        <div class="shophead">
           <img src="${shopImg(shop)}" alt="" />
-          <button class="back" data-back>←</button>
+          <button class="back back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
         </div>
-        <div class="pad" style="padding-top:12px">
-          <h2 class="sec" style="margin-top:0">${esc(shop.name)}</h2>
-          <div class="muted">${shop.rating} ★ (${shop.reviews}) · ${esc(shop.category)} · ${esc(shop.eta)}</div>
-          <div class="fee">${shop.fee ? lkr(shop.fee)+' Delivery Fee' : 'LKR 0 Delivery Fee'}</div>
+        <div class="pad" style="padding-top:14px">
+          <h2 class="sec-row" style="padding:0"><span>${esc(shop.name)}</span></h2>
+          <div class="muted">★ ${shop.rating} (${shop.reviews || 0}+) · ${esc(shop.category)} · ${shop.km || 2.5} km</div>
         </div>
         ${items.map((it) => `
-          <div class="item">
+          <div class="menu-item">
             <div class="grow">
               <b>${esc(it.name)}</b>
               <p>${esc(it.desc || it.category)}</p>
-              <div class="price">${lkr(it.price)}</div>
+              <div class="price">${rs(it.price)}</div>
               ${it.isAvailable ? `<button class="add" data-add="${it.id}">Add</button>` : `<span class="muted">Sold out</span>`}
             </div>
             <img src="${itemImg(it)}" alt="" />
           </div>`).join('')}
-        ${cartbar()}${nav()}`;
+      </div>${cartbar()}${nav()}`;
     }
 
     function cartView() {
       if (!state.cart.length) {
-        return `${header()}<div class="pad"><h2 class="sec">Carts</h2><p class="sub">Add items from a restaurant to start a cart.</p></div>${nav()}`;
+        return `<div class="scroll">${header()}<div class="pad"><h2>Cart</h2><p class="muted">Add items from a shop to start a cart.</p></div></div>${nav()}`;
       }
       const shop = API.shopOf(state.cart[0].shopId);
       const sub = cartTotal();
       const fee = sub > 2000 ? 0 : (shop.fee || 250);
-      return `${header()}
+      return `<div class="scroll">${header()}
         <div class="pad">
-          <h2 class="sec">${esc(shop.name)}</h2>
+          <h2>${esc(shop.name)}</h2>
           ${state.cart.map((c) => `
             <div class="row" style="padding:10px 0;border-bottom:1px solid #f3f3f3">
-              <div class="grow"><b>${esc(c.name)}</b><div class="muted">${lkr(c.price)}</div></div>
+              <div class="grow"><b>${esc(c.name)}</b><div class="muted">${rs(c.price)}</div></div>
               <div class="qty">
                 <button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b>
                 <button data-qty="${c.id}" data-d="1">+</button>
               </div>
             </div>`).join('')}
-          <div style="margin-top:16px" class="muted">Subtotal ${lkr(sub)}</div>
-          <div class="muted">Delivery ${fee ? lkr(fee) : 'LKR 0'}</div>
-          <h2 class="sec">Total ${lkr(sub+fee)}</h2>
-          <button class="btn full" data-go="checkout">Go to checkout</button>
-        </div>${nav()}`;
+          <div style="margin-top:16px" class="muted">Subtotal ${rs(sub)}</div>
+          <div class="muted">Delivery ${fee ? rs(fee) : 'Free'}</div>
+          <h2 style="margin:12px 0">Total ${rs(sub+fee)}</h2>
+          <button class="btn full green" data-go="checkout">Go to checkout</button>
+        </div></div>${nav()}`;
     }
 
     function checkoutView() {
       const sub = cartTotal();
       const shop = state.cart[0] ? API.shopOf(state.cart[0].shopId) : {};
       const fee = sub > 2000 ? 0 : (shop.fee || 250);
-      return `<div class="ue-top"><button class="back" style="position:static" data-tab="cart">←</button></div>
+      return `<div class="scroll">
+        <div class="back-row"><button class="back-fab" data-tab="cart">←</button><b>Checkout</b></div>
         <div class="pad">
-          <h2 class="sec">Checkout</h2>
           <div class="field"><label>Deliver to</label><input id="addr" value="${esc(state.address)}" /></div>
           <div class="field"><label>Note for courier</label><input id="note" placeholder="Gate code, extra chilli…" value="${esc(state.note)}" /></div>
           <div class="field"><label>Payment</label>
             <select id="pay"><option>Cash on delivery</option><option>Card on delivery</option></select>
           </div>
-          <p class="muted">Pay ${lkr(sub+fee)} when your order arrives.</p>
+          <p class="muted">Pay ${rs(sub+fee)} when your order arrives.</p>
           <button class="btn full green" id="place">Place order</button>
-        </div>`;
+        </div></div>`;
     }
 
     function ordersView() {
-      return `${header()}
-        <div class="pad"><h2 class="sec">Orders</h2></div>
+      return `<div class="scroll">${header()}
+        <div class="pad"><h2>Orders</h2></div>
         ${API.orders.map((o) => `
-          <div class="store" data-track="${esc(o.id)}" style="padding-bottom:8px">
-            <div class="row">
-              <img src="${shopImg(API.shopOf(o.shopId))}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px" />
-              <div class="grow">
-                <div class="name">${esc(o.shopName)}</div>
-                <div class="muted">${esc(o.items.map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
-                <div class="fee">${lkr(o.totalAmount)}</div>
-              </div>
-              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+          <div class="order-row" data-track="${esc(o.id)}">
+            <img src="${shopImg(API.shopOf(o.shopId))}" alt="" />
+            <div class="grow">
+              <b>${esc(o.shopName)}</b>
+              <div class="muted">${esc(o.items.map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
+              <div class="price">${rs(o.totalAmount)}</div>
             </div>
+            <span class="badge ${o.status}">${API.statusLabel(o.status)}</span>
           </div>`).join('') || '<div class="pad muted">No orders yet.</div>'}
-        ${nav()}`;
+      </div>${nav()}`;
     }
 
     function trackView() {
@@ -260,31 +266,31 @@
     function chatView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       const msgs = API.messages[state.trackId] || [];
-      return `<div class="ue-top"><button class="back" style="position:static" data-back-track>←</button>
-          <b style="margin-left:8px">${esc(o?.riderName || 'Courier')}</b></div>
+      return `<div class="back-row"><button class="back-fab" data-back-track>←</button><b>${esc(o?.riderName || 'Courier')}</b></div>
         <div class="chat" style="flex:1;min-height:0">
           <div class="bubbles" id="bubbles">
             ${msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
           </div>
           <form class="composer" id="chatForm">
             <input name="text" placeholder="Message your courier…" autocomplete="off" />
-            <button class="btn sm" type="submit">Send</button>
+            <button class="btn sm green" type="submit">Send</button>
           </form>
         </div>`;
     }
 
     function accountView() {
       const u = API.user || {};
-      return `${header()}
-        <div class="pad">
-          <h2 class="sec">${esc(u.name)}</h2>
+      return `<div class="scroll">${header()}
+        <div class="profile-card">
+          <img class="ava" src="/img/avatar-user.jpg" alt="" />
+          <h2 style="margin:0">${esc(u.name)}</h2>
           <p class="muted">${esc(u.phone)}</p>
-          <div class="card"><div class="muted">Saved address</div><b>${esc(u.address)}</b></div>
-          <p class="muted" style="margin-top:16px">Link Android APKs to this server</p>
-          <code style="font-size:12px;word-break:break-all">${location.origin}</code>
-          <div style="height:16px"></div>
+          <div class="muted">Saved address</div>
+          <b>${esc(u.address)}</b>
+          <div style="height:20px"></div>
           <button class="btn ghost full" id="logout">Sign out</button>
-        </div>${nav()}`;
+        </div>
+      </div>${nav()}`;
     }
 
     function loginView() {
@@ -307,6 +313,19 @@
       state.screen = 'home';
       state.tab = 'home';
       render();
+    }
+    function bindMapChrome() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
+        if (!state.mapHandle) return;
+        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn();
+        else state.mapHandle.zoomOut();
+      });
+      const loc = root.querySelector('[data-locate]');
+      if (loc) loc.onclick = () => {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (state.mapHandle && o) state.mapHandle.locate(o);
+      };
     }
     function render() {
       const root = document.getElementById('root');
@@ -335,13 +354,13 @@
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
         root.innerHTML = trackView();
         bind();
+        bindMapChrome();
         const el = document.getElementById('map');
         if (el && o) state.mapHandle = mountTrackingMap(el, o);
         return;
       }
       if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
-      if (state.tab === 'browse') root.innerHTML = browseView();
-      else if (state.tab === 'cart') root.innerHTML = cartView();
+      if (state.tab === 'cart') root.innerHTML = cartView();
       else if (state.tab === 'orders') root.innerHTML = ordersView();
       else if (state.tab === 'account') root.innerHTML = accountView();
       else root.innerHTML = homeView();
@@ -353,11 +372,11 @@
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
         state.tab = b.dataset.tab; state.screen = 'home'; render();
       });
-
       const q = document.getElementById('q');
-      if (q) q.oninput = (e) => { state.query = e.target.value; state.tab = 'browse'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      if (q) q.oninput = (e) => { state.query = e.target.value; state.tab = 'home'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
       root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; state.tab='home'; state.screen='home'; render(); });
-      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
+      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
+      root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => toggleFav(b.dataset.fav, e));
       root.querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
         const item = API.items.find((i) => i.id === b.dataset.add);
@@ -377,7 +396,7 @@
           const order = await API.placeOrder({
             shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
             customerPhone: API.user.phone, address: state.address, note: state.note,
-            paymentMethod: state.payment, deliveryLat: 6.9271, deliveryLng: 79.8612, items: state.cart,
+            paymentMethod: state.payment, deliveryLat: 8.3350, deliveryLng: 80.4108, items: state.cart,
           });
           state.cart = []; saveCart();
           openTrack(order.id, true);
@@ -385,9 +404,6 @@
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; state.lockTrack = false; render(); });
-      const moreBtn = root.querySelector('[data-more]');
-      const morePanel = root.querySelector('[data-more-panel]');
-      if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
       const backTrack = root.querySelector('[data-back-track]');
       if (backTrack) backTrack.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); };
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = leaveTrack);

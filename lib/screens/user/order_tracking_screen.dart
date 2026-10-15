@@ -3,6 +3,7 @@ import '../../config.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../models/shop.dart';
+import '../../theme.dart';
 import '../../widgets/tracking_map.dart';
 import '../chat_screen.dart';
 
@@ -20,7 +21,7 @@ class OrderTrackingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
+      backgroundColor: Brand.navy,
       body: ValueListenableBuilder<List<Order>>(
         valueListenable: OrderRepository.instance.ordersNotifier,
         builder: (context, orders, _) {
@@ -33,11 +34,12 @@ class OrderTrackingScreen extends StatelessWidget {
           }
           order ??= OrderRepository.instance.byId(orderId);
           if (order == null) {
-            return const Center(child: Text('Waiting for order…'));
+            return const Center(child: Text('Waiting for order…', style: TextStyle(color: Colors.white)));
           }
           final current = order;
           final shop = _shop(current.shopId);
-          final hasRider = (current.riderName ?? '').isNotEmpty;
+          final base = AppConfig.normalize(AppConfig.baseUrl);
+          final avatar = base.isEmpty ? null : '$base/img/avatar-rider.jpg';
 
           return Stack(
             children: [
@@ -49,191 +51,114 @@ class OrderTrackingScreen extends StatelessWidget {
                   riderLng: current.riderLng,
                   shopLat: shop?.lat,
                   shopLng: shop?.lng,
+                  dark: true,
                 ),
               ),
               SafeArea(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: SizedBox(
-                    height: 48,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        const Text(
-                          'Order Track',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        Row(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                  child: Row(
+                    children: [
+                      IconButton.filled(
+                        style: IconButton.styleFrom(backgroundColor: Brand.navy2),
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.menu, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            _Fab(
-                              icon: Icons.arrow_back_ios_new_rounded,
-                              onTap: () => Navigator.pop(context),
+                            Text(
+                              current.status == OrderStatus.delivered ? 'Delivered' : 'On Delivery',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
                             ),
-                            const Spacer(),
-                            _Fab(
-                              icon: Icons.more_vert,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(
-                                      orderId: current.id,
-                                      myRole: 'customer',
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+                            Text('Order ${current.id.replaceAll('_', '-')}',
+                                style: const TextStyle(color: Brand.soft, fontSize: 12)),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(20)),
+                        child: const Text('●  Online', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 12)),
+                      ),
+                    ],
                   ),
                 ),
               ),
               Positioned(
-                left: 16,
-                right: 16,
-                bottom: 24,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                Material(
-                  color: Colors.white,
-                  elevation: 10,
-                  shadowColor: Colors.black26,
-                  borderRadius: BorderRadius.circular(28),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-                    child: Row(
-                      children: [
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 32,
-                              backgroundColor: const Color(0xFFEEEAF8),
-                              backgroundImage: () {
-                                if (!hasRider) return null;
-                                final base = AppConfig.normalize(AppConfig.baseUrl);
-                                if (base.isEmpty) return null;
-                                return NetworkImage('$base/img/courier-avatar.jpg');
-                              }(),
-                              child: hasRider
-                                  ? null
-                                  : const Icon(Icons.person, color: Colors.grey),
-                            ),
-                            if (hasRider)
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: Container(
-                                  width: 14,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF22C55E),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                current.riderName ??
-                                    (current.status == OrderStatus.delivered
-                                        ? 'Order delivered'
-                                        : 'Assigning courier…'),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                current.status.label,
-                                style: const TextStyle(color: Color(0xFF6B6B6B), fontSize: 13),
-                              ),
-                              const SizedBox(height: 6),
-                              const Row(
-                                children: [
-                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
-                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
-                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
-                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
-                                  Icon(Icons.star_rounded, color: Color(0xFFF5B400), size: 18),
-                                ],
-                              ),
-                            ],
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(24)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: Brand.navy3,
+                            backgroundImage: avatar == null ? null : NetworkImage(avatar),
                           ),
-                        ),
-                        IconButton(
-                          onPressed: current.riderPhone == null ? null : () {},
-                          icon: const Icon(Icons.phone_outlined, color: Colors.black, size: 26),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (current.status == OrderStatus.delivered) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.black,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(current.riderName ?? 'Assigning courier…',
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+                                const Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
+                                const Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white)),
+                              ],
+                            ),
+                          ),
+                          const Text('🛵', style: TextStyle(fontSize: 28)),
+                        ],
                       ),
-                      child: const Text('Done'),
-                    ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(vertical: 14)),
+                              onPressed: () {},
+                              icon: const Icon(Icons.call),
+                              label: const Text('Call'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
+                                ),
+                              ),
+                              icon: const Icon(Icons.chat_bubble),
+                              label: const Text('Chat'),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (current.status == OrderStatus.delivered)
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Done', style: TextStyle(color: Brand.soft)),
+                        ),
+                    ],
                   ),
-                ],
-                  ],
                 ),
               ),
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class _Fab extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _Fab({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 4,
-      shadowColor: Colors.black26,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(icon, size: 18, color: Colors.black),
-        ),
       ),
     );
   }
