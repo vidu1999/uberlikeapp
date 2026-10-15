@@ -15,6 +15,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
+  <script src="/js/track-ui.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
     const state = {
@@ -29,6 +30,7 @@
       address: '45 Galle Road, Colombo 03',
       payment: 'Cash on delivery',
       mapHandle: null,
+      lockTrack: false,
     };
     function saveCart() { sessionStorage.setItem('sd_cart', JSON.stringify(state.cart)); }
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
@@ -119,7 +121,9 @@
       const q = state.query.toLowerCase();
       const shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
       const featured = shops.slice(0, 4);
+      const live = TrackUI.liveOrder(API.orders);
       return `${header()}
+        ${TrackUI.banner(live)}
         <div class="cats">
           ${[['All','🍽️'],['Sri Lankan','🍛'],['Fast Food','🍔'],['Pizza','🍕'],['Coffee','☕'],['Dessert','🧁'],['Bakery','🎂']].map(([c,e]) =>
             `<button class="cat ${state.category===c?'active':''}" data-cat="${c}"><div class="cico">${e}</div><span>${c}</span></button>`
@@ -246,52 +250,10 @@
         ${nav()}`;
     }
 
-    const ICO_BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
-    const ICO_MORE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#111"><circle cx="12" cy="6" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="18" r="1.7"/></svg>';
-    const ICO_PHONE = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
-
-    function paintTrackCard(root, o) {
-      const name = root.querySelector('[data-rider]');
-      if (name) name.textContent = o.riderName || 'Assigning courier…';
-      const call = root.querySelector('[data-call]');
-      if (call) {
-        call.classList.toggle('hidden', !o.riderPhone);
-        if (o.riderPhone) call.href = 'tel:+94' + String(o.riderPhone).replace(/^0/, '');
-      }
-      root.querySelector('[data-online]')?.classList.toggle('hidden', !o.riderName);
-      const img = root.querySelector('[data-avatar]');
-      if (img) img.style.filter = o.riderName ? 'none' : 'grayscale(1)';
-    }
-
     function trackView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       if (!o) return `<div class="pad">Order not found.</div>${nav()}`;
-      const tel = o.riderPhone ? 'tel:+94' + String(o.riderPhone).replace(/^0/, '') : '#';
-      return `<div class="track-screen" data-track-root="${esc(o.id)}">
-        <div id="map" class="map"></div>
-        <div class="track-top">
-          <button class="fab" type="button" data-tab="orders" aria-label="Back">${ICO_BACK}</button>
-          <h1>Order Track</h1>
-          <button class="fab" type="button" data-more aria-label="More">${ICO_MORE}</button>
-        </div>
-        <div class="track-more hidden" data-more-panel>
-          <b>${esc(o.shopName)}</b>
-          <p class="muted">${esc(o.items.map((i) => i.name + ' ×' + i.qty).join(', '))}</p>
-          <p>${lkr(o.totalAmount)} · ${esc(API.statusLabel(o.status))}</p>
-          <button class="btn sm ghost" data-chat="${esc(o.id)}">Message courier</button>
-        </div>
-        <div class="track-card">
-          <div class="avatar-wrap">
-            <img data-avatar src="/img/courier-avatar.jpg" alt="" />
-            <span class="online ${o.riderName ? '' : 'hidden'}" data-online></span>
-          </div>
-          <div class="grow">
-            <b data-rider>${esc(o.riderName || 'Assigning courier…')}</b>
-            <div class="stars">★★★★★</div>
-          </div>
-          <a class="call ${o.riderPhone ? '' : 'hidden'}" data-call href="${tel}" aria-label="Call">${ICO_PHONE}</a>
-        </div>
-      </div>`;
+      return TrackUI.screen(o, 'customer');
     }
 
     function chatView() {
@@ -336,18 +298,35 @@
       </div>`;
     }
 
+    function openTrack(id, lock) {
+      state.trackId = id;
+      state.screen = 'track';
+      state.lockTrack = lock !== false;
+      render();
+    }
+    function leaveTrack() {
+      state.lockTrack = false;
+      state.screen = 'home';
+      state.tab = 'home';
+      render();
+    }
     function render() {
       const root = document.getElementById('root');
       if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (state.lockTrack && state.trackId) {
+        const live = API.orders.find((x) => x.id === state.trackId);
+        if (live && live.status !== 'cancelled') state.screen = 'track';
+      }
       if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bind(); return; }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bind(); return; }
       if (state.screen === 'shop') { root.innerHTML = shopView(); bind(); return; }
       if (state.screen === 'track') {
         const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
         const o = API.orders.find((x) => x.id === state.trackId);
-        if (existing && o && state.mapHandle) {
+        const hasRider = o && o.riderName ? '1' : '0';
+        if (existing && o && state.mapHandle && existing.dataset.hasRider === hasRider) {
           state.mapHandle.update(o);
-          paintTrackCard(existing, o);
+          TrackUI.paint(existing, o, 'customer');
           return;
         }
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
@@ -403,17 +382,18 @@
             paymentMethod: state.payment, deliveryLat: 6.9271, deliveryLng: 79.8612, items: state.cart,
           });
           state.cart = []; saveCart();
-          state.trackId = order.id; state.screen = 'track'; state.tab = 'orders';
-          render();
+          openTrack(order.id, true);
         } catch (e) { alert(e.message); place.disabled = false; }
       };
-      root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.track; state.screen = 'track'; render(); });
-      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; render(); });
+      root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; state.lockTrack = false; render(); });
       const moreBtn = root.querySelector('[data-more]');
       const morePanel = root.querySelector('[data-more-panel]');
       if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
       const backTrack = root.querySelector('[data-back-track]');
-      if (backTrack) backTrack.onclick = () => { state.screen = 'track'; render(); };
+      if (backTrack) backTrack.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); };
+      root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = leaveTrack);
+      root.querySelectorAll('[data-done]').forEach((b) => b.onclick = leaveTrack);
       const form = document.getElementById('chatForm');
       if (form) form.onsubmit = async (e) => {
         e.preventDefault();

@@ -99,7 +99,10 @@ class OrderTrackingScreen extends StatelessWidget {
                 left: 16,
                 right: 16,
                 bottom: 24,
-                child: Material(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                Material(
                   color: Colors.white,
                   elevation: 10,
                   shadowColor: Colors.black26,
@@ -146,7 +149,10 @@ class OrderTrackingScreen extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                current.riderName ?? 'Assigning courier…',
+                                current.riderName ??
+                                    (current.status == OrderStatus.delivered
+                                        ? 'Order delivered'
+                                        : 'Assigning courier…'),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -154,6 +160,11 @@ class OrderTrackingScreen extends StatelessWidget {
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: -0.3,
                                 ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                current.status.label,
+                                style: const TextStyle(color: Color(0xFF6B6B6B), fontSize: 13),
                               ),
                               const SizedBox(height: 6),
                               const Row(
@@ -175,6 +186,24 @@ class OrderTrackingScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                ),
+                if (current.status == OrderStatus.delivered) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Done'),
+                    ),
+                  ),
+                ],
+                  ],
                 ),
               ),
             ],

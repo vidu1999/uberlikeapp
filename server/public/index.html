@@ -15,6 +15,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
+  <script src="/js/track-ui.js"></script>
   <script>
     const state = {
       page: 'landing',
@@ -27,6 +28,7 @@
       note: '',
       payment: 'Cash on delivery',
       mapHandle: null,
+      lockTrack: false,
     };
     function saveCart() { localStorage.setItem('ue_cart', JSON.stringify(state.cart)); }
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
@@ -120,7 +122,9 @@
       let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
       if (state.category !== 'All') shops = shops.filter((s) => s.category === state.category);
       const cats = ['All', ...new Set(API.shops.map((s) => s.category))];
+      const live = TrackUI.liveOrder(API.orders);
       return `${nav(true)}
+        ${live ? TrackUI.banner(live) : ''}
         <div class="filters">
           ${cats.map((c) => `<button class="chip ${state.category===c?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
         </div>
@@ -210,54 +214,18 @@
       </div>`;
     }
 
-    const ICO_BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
-    const ICO_MORE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#111"><circle cx="12" cy="6" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="18" r="1.7"/></svg>';
-    const ICO_PHONE = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
-
-    function paintTrackCard(root, o) {
-      const name = root.querySelector('[data-rider]');
-      if (name) name.textContent = o.riderName || 'Assigning courier…';
-      const call = root.querySelector('[data-call]');
-      if (call) {
-        call.classList.toggle('hidden', !o.riderPhone);
-        if (o.riderPhone) call.href = 'tel:+94' + String(o.riderPhone).replace(/^0/, '');
-      }
-      root.querySelector('[data-online]')?.classList.toggle('hidden', !o.riderName);
-    }
-
     function track() {
       const o = API.orders.find((x) => x.id === state.trackId);
       if (!o) return `${nav(true)}<div class="rest-body">Order not found.</div>`;
-      const tel = o.riderPhone ? 'tel:+94' + String(o.riderPhone).replace(/^0/, '') : '#';
-      return `<div class="track-screen" data-track-root="${esc(o.id)}">
-        <div id="map" class="map"></div>
-        <div class="track-top">
-          <button class="fab" type="button" data-page="feed" aria-label="Back">${ICO_BACK}</button>
-          <h1>Order Track</h1>
-          <button class="fab" type="button" data-more aria-label="More">${ICO_MORE}</button>
-        </div>
-        <div class="track-more hidden" data-more-panel>
-          <b>${esc(o.shopName)}</b>
-          <p class="muted">${esc(o.items.map((i) => i.name + ' ×' + i.qty).join(', '))}</p>
-          <p>${lkr(o.totalAmount)} · ${esc(o.paymentMethod)}</p>
-          <p class="muted">Open the <a href="/shop?demo=1">restaurant</a> app to accept, then the <a href="/rider?demo=1">courier</a> app to pick up.</p>
-        </div>
-        <div class="track-card">
-          <div class="avatar-wrap">
-            <img data-avatar src="/img/courier-avatar.jpg" alt="" />
-            <span class="online ${o.riderName ? '' : 'hidden'}" data-online></span>
-          </div>
-          <div class="grow">
-            <b data-rider>${esc(o.riderName || 'Assigning courier…')}</b>
-            <div class="stars">★★★★★</div>
-          </div>
-          <a class="call ${o.riderPhone ? '' : 'hidden'}" data-call href="${tel}" aria-label="Call">${ICO_PHONE}</a>
-        </div>
-      </div>`;
+      return TrackUI.screen(o, 'web');
     }
 
     function render() {
       const root = document.getElementById('root');
+      if (state.lockTrack && state.trackId) {
+        const live = API.orders.find((x) => x.id === state.trackId);
+        if (live && live.status !== 'cancelled') state.page = 'track';
+      }
       if (state.page === 'landing') { root.innerHTML = landing(); bind(); return; }
       if (state.page === 'shop') { root.innerHTML = restaurant(); bind(); return; }
       if (state.page === 'cart') { root.innerHTML = cartPage(); bind(); return; }
@@ -265,9 +233,10 @@
       if (state.page === 'track') {
         const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
         const o = API.orders.find((x) => x.id === state.trackId);
-        if (existing && o && state.mapHandle) {
+        const hasRider = o && o.riderName ? '1' : '0';
+        if (existing && o && state.mapHandle && existing.dataset.hasRider === hasRider) {
           state.mapHandle.update(o);
-          paintTrackCard(existing, o);
+          TrackUI.paint(existing, o, 'web');
           return;
         }
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
@@ -284,7 +253,7 @@
 
     function bind() {
       document.querySelectorAll('[data-page]').forEach((el) => {
-        el.onclick = (e) => { e.preventDefault(); state.page = el.dataset.page; render(); };
+        el.onclick = (e) => { e.preventDefault(); state.lockTrack = false; state.page = el.dataset.page; render(); };
       });
       const find = document.getElementById('find');
       if (find) find.onclick = () => {
@@ -319,13 +288,22 @@
             paymentMethod: state.payment, deliveryLat: 6.9271, deliveryLng: 79.8612, items: state.cart,
           });
           state.cart = []; saveCart();
-          state.trackId = order.id; state.page = 'track';
+          state.trackId = order.id; state.page = 'track'; state.lockTrack = true;
           render();
         } catch (err) { alert(err.message); place.disabled = false; }
       };
       const moreBtn = document.querySelector('[data-more]');
       const morePanel = document.querySelector('[data-more-panel]');
       if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
+      document.querySelectorAll('[data-track]').forEach((b) => {
+        b.onclick = () => { state.trackId = b.dataset.track; state.page = 'track'; state.lockTrack = true; render(); };
+      });
+      document.querySelectorAll('[data-track-back]').forEach((b) => {
+        b.onclick = () => { state.lockTrack = false; state.page = 'feed'; render(); };
+      });
+      document.querySelectorAll('[data-done]').forEach((b) => {
+        b.onclick = () => { state.lockTrack = false; state.page = 'feed'; render(); };
+      });
     }
 
     API.on(() => render());

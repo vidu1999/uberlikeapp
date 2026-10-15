@@ -3,17 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Uber Eats Manager</title>
+  <title>Shop — Uber Eats Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/track.css" />
 </head>
 <body>
   <div class="app" id="root"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/maps.js"></script>
+  <script src="/js/track-ui.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
-    const state = { tab: 'orders', filter: 'new' };
+    const state = { tab: 'orders', filter: 'new', trackId: null, mapHandle: null };
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
@@ -46,7 +51,9 @@
         if (state.filter === 'ready') return o.status === 'ready';
         return true;
       });
+      const live = orders.find((o) => o.status === 'on_the_way');
       return `<div class="ue-top"><div class="where">Restaurant dashboard<small>${esc(API.user?.name)} · Colombo</small></div></div>
+        ${live ? TrackUI.banner(live) : ''}
         <div class="stats">
           <div class="stat"><b>${pending}</b><span>New</span></div>
           <div class="stat"><b>${preparing}</b><span>Preparing</span></div>
@@ -75,9 +82,9 @@
                 <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
               ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
               ${o.status==='ready' ? `<span class="muted">Waiting for courier…</span>` : ''}
-              ${o.status==='on_the_way' || o.status==='delivered' ? `<span class="muted">${esc(o.riderName || 'Courier')} · ${API.statusLabel(o.status)}</span>` : ''}
+              ${o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
             </div>
-          </div>`).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the customer app.</div>'}
+          </div>`).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the User app.</div>'}
         ${nav()}`;
     }
     function menuView() {
@@ -113,6 +120,26 @@
     function render() {
       const root = document.getElementById('root');
       if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (state.trackId) {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (!o || o.status === 'cancelled') { state.trackId = null; }
+        else {
+          const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
+          const hasRider = o.riderName ? '1' : '0';
+          if (existing && state.mapHandle && existing.dataset.hasRider === hasRider) {
+            state.mapHandle.update(o);
+            TrackUI.paint(existing, o, 'shop');
+            return;
+          }
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+          root.innerHTML = TrackUI.screen(o, 'shop');
+          bind();
+          const el = document.getElementById('map');
+          if (el) state.mapHandle = mountTrackingMap(el, o);
+          return;
+        }
+      }
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
       if (state.tab === 'menu') root.innerHTML = menuView();
       else if (state.tab === 'account') root.innerHTML = accountView();
       else root.innerHTML = ordersView();
@@ -125,10 +152,16 @@
         try { await API.login('shop', document.getElementById('phone').value, document.getElementById('pin').value); render(); }
         catch (e) { alert(e.message); }
       };
-      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; render(); });
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.trackId = null; render(); });
       root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
       root.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act }));
       root.querySelectorAll('[data-toggle]').forEach((b) => b.onclick = () => API.toggleItem(b.dataset.toggle, b.dataset.on === '1'));
+      root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.track; render(); });
+      root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
+      root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
+      const moreBtn = root.querySelector('[data-more]');
+      const morePanel = root.querySelector('[data-more-panel]');
+      if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
     }
