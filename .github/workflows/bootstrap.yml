@@ -1,5 +1,7 @@
 name: Bootstrap Android
-on: workflow_dispatch
+on:
+  push:
+    branches: [arena/72bd113d-uberlikeapp]
 
 jobs:
   bootstrap:
