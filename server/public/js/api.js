@@ -119,7 +119,7 @@
   };
 
   API.rs = function (n) {
-    return 'Rs. ' + Math.round(Number(n) || 0).toLocaleString('en-LK');
+    return 'LKR ' + Math.round(Number(n) || 0).toLocaleString('en-LK');
   };
 
   try {

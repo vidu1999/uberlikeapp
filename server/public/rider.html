@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>SwiftDrop · Rider</title>
+  <title>Uber Eats Courier</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css" />
-  <style>:root { --accent:#2979ff; --accent-2:#fff; } .logo { background:#2979ff; color:#fff; } .emoji { background:#eff6ff; }</style>
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -17,13 +16,12 @@
   <script src="/js/maps.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
-    const state = { tab: 'jobs', online: true, activeId: null, chat: false, mapHandle: null };
+    const state = { tab: 'jobs', activeId: null, chat: false, mapHandle: null };
     const gps = {};
-
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
-
+    function lkr(n) { return 'LKR ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function startGps(order) {
       const shop = API.shopOf(order.shopId);
       if (gps[order.id]) clearInterval(gps[order.id].timer);
@@ -37,9 +35,7 @@
           riderLat: lat, riderLng: lng, status: 'on_the_way',
           riderId: 'RIDER_77', riderName: 'Kamal Perera', riderPhone: '0775556666',
         });
-        if (Math.abs(lat - destLat) < 0.0004 && Math.abs(lng - destLng) < 0.0004) {
-          clearInterval(gps[order.id].timer);
-        }
+        if (Math.abs(lat - destLat) < 0.0004 && Math.abs(lng - destLng) < 0.0004) clearInterval(gps[order.id].timer);
       };
       gps[order.id] = { timer: setInterval(tick, 2000) };
       API.patch(order.id, {
@@ -47,141 +43,97 @@
         riderPhone: '0775556666', riderLat: lat, riderLng: lng,
       });
     }
-
-    function loginView() {
-      return `
-        <div class="login">
-          <div class="logo" style="width:52px;height:52px">R</div>
-          <h1>Ride. Earn. Deliver.</h1>
-          <p class="sub" style="color:#94a3b8">Live jobs around Colombo</p>
-          <div class="card">
-            <div class="field"><label>Phone</label><input id="phone" value="0775556666" /></div>
-            <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
-            <button class="btn full dark" id="loginBtn">Go online</button>
-          </div>
-        </div>`;
+    function nav() {
+      return `<nav class="nav" style="grid-template-columns:repeat(3,1fr)">
+        <button data-tab="jobs" class="${state.tab==='jobs'?'active':''}">Jobs</button>
+        <button data-tab="earn" class="${state.tab==='earn'?'active':''}">Earnings</button>
+        <button data-tab="account" class="${state.tab==='account'?'active':''}">Account</button>
+      </nav>`;
     }
-
+    function loginView() {
+      return `<div class="login">
+        <div class="wordmark">Uber <em>Eats</em></div>
+        <h1>Deliver with Uber</h1>
+        <p class="sub">Go online for live jobs around Colombo</p>
+        <div class="field"><label>Mobile</label><input id="phone" value="0775556666" /></div>
+        <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
+        <button class="btn full green" id="loginBtn">GO</button>
+      </div>`;
+    }
     function jobsView() {
       const jobs = API.orders.filter((o) => ['ready', 'on_the_way'].includes(o.status));
       const active = jobs.find((o) => o.id === state.activeId) || jobs.find((o) => o.status === 'on_the_way');
-      const earned = API.orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + 150, 0);
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">R</div><div><h1>Rider</h1><p>${esc(API.user?.name)} · ${esc(API.user?.vehicle || '')}</p></div></div>
-          <span class="pill">${state.online ? 'Online' : 'Offline'}</span>
-        </header>
-        <main class="view">
-          ${active ? `<div id="map" class="map"></div>` : ''}
+      const earned = API.orders.filter((o) => o.status === 'delivered').length * 150;
+      return `${active ? `<div id="map" class="map"></div>` : ''}
+        <div class="${active ? 'sheet' : ''}" style="${active ? '' : 'padding-top:12px'}">
+          ${active ? '<div class="grab"></div>' : `<div class="ue-top"><div class="where">Online<small>${esc(API.user?.name)} · ${esc(API.user?.vehicle || '')}</small></div></div>`}
           <div class="stats">
-            <div class="stat"><b>${jobs.length}</b><span>Open jobs</span></div>
-            <div class="stat"><b>${API.rs(earned)}</b><span>Today (est.)</span></div>
+            <div class="stat"><b>${jobs.length}</b><span>Open</span></div>
+            <div class="stat"><b>${lkr(earned)}</b><span>Today</span></div>
             <div class="stat"><b>4.9★</b><span>Rating</span></div>
           </div>
           ${jobs.map((o) => `
-            <div class="card">
+            <div class="ticket">
               <div class="row">
                 <div class="grow">
                   <b>${esc(o.shopName)} → ${esc(o.customerName)}</b>
                   <div class="muted">${esc(o.address)}</div>
-                  <div class="muted">${esc(o.items.map((i)=>i.name).join(', '))}</div>
                 </div>
                 <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
               </div>
               <div class="row" style="margin-top:10px">
-                <div class="price grow">${API.rs(o.totalAmount)} · you earn Rs. 150</div>
-                ${o.status==='ready' ? `<button class="btn sm" data-pick="${esc(o.id)}">Pick up</button>` : ''}
+                <div class="price grow">You earn LKR 150</div>
+                ${o.status==='ready' ? `<button class="btn sm green" data-pick="${esc(o.id)}">Accept</button>` : ''}
                 ${o.status==='on_the_way' ? `
                   <button class="btn sm ghost" data-chat="${esc(o.id)}">Chat</button>
-                  <a class="btn sm ghost" href="tel:+94${(o.customerPhone||'0771234567').replace(/^0,'')}">Call</a>
-                  <button class="btn sm dark" data-drop="${esc(o.id)}">Delivered</button>` : ''}
+                  <button class="btn sm" data-drop="${esc(o.id)}">Complete</button>` : ''}
               </div>
-            </div>`).join('') || '<div class="card">No jobs yet. In the Shop app, accept an order and mark it ready.</div>'}
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="jobs" class="active">🛵<span>Jobs</span></button>
-          <button data-tab="earn">💸<span>Earnings</span></button>
-          <button data-tab="account">👤<span>Account</span></button>
-        </nav>`;
+            </div>`).join('') || '<div class="pad muted">No trips yet. In Manager, accept an order and tap Food is ready.</div>'}
+        </div>
+        ${nav()}`;
     }
-
     function earnView() {
       const done = API.orders.filter((o) => o.status === 'delivered');
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">R</div><div><h1>Earnings</h1><p>Rs. 150 per drop</p></div></div>
-        </header>
-        <main class="view">
-          <div class="banner" style="background:linear-gradient(135deg,#0b1b3a,#2979ff)">
-            <b>${API.rs(done.length * 150)}</b>
-            <span>${done.length} completed deliveries</span>
-          </div>
-          ${done.map((o) => `<div class="card row">
-            <div class="grow"><b>${esc(o.id)}</b><div class="muted">${esc(o.shopName)} → ${esc(o.customerName)}</div></div>
-            <b>+ Rs. 150</b>
-          </div>`).join('') || '<div class="card">Complete a delivery to see earnings.</div>'}
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="jobs">🛵<span>Jobs</span></button>
-          <button data-tab="earn" class="active">💸<span>Earnings</span></button>
-          <button data-tab="account">👤<span>Account</span></button>
-        </nav>`;
+      return `<div class="ue-top"><div class="where">Earnings</div></div>
+        <div class="banner" style="height:120px">
+          <div class="copy"><b>${lkr(done.length * 150)}</b><span>${done.length} completed trips</span></div>
+        </div>
+        ${done.map((o) => `<div class="ticket"><div class="row"><div class="grow"><b>${esc(o.id)}</b><div class="muted">${esc(o.shopName)}</div></div><b>+ LKR 150</b></div></div>`).join('') || '<div class="pad muted">Complete a trip to see earnings.</div>'}
+        ${nav()}`;
     }
-
     function accountView() {
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">R</div><div><h1>Rider account</h1><p>${esc(API.user?.vehicle)}</p></div></div>
-        </header>
-        <main class="view">
-          <div class="card row">
-            <div class="avatar">🛵</div>
-            <div class="grow"><b>${esc(API.user?.name)}</b><div class="muted">${esc(API.user?.phone)} · 4.9 ★</div></div>
-          </div>
-          <div class="card"><div class="muted">Vehicle</div><b>${esc(API.user?.vehicle)}</b></div>
-          <button class="btn full ghost" id="logout">Log out</button>
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="jobs">🛵<span>Jobs</span></button>
-          <button data-tab="earn">💸<span>Earnings</span></button>
-          <button data-tab="account" class="active">👤<span>Account</span></button>
-        </nav>`;
+      return `<div class="ue-top"><div class="where">Courier</div></div>
+        <div class="pad">
+          <div class="courier"><img src="/img/courier.jpg" alt="" /><div class="grow"><b>${esc(API.user?.name)}</b><div class="muted">${esc(API.user?.phone)} · 4.9 ★</div></div></div>
+          <p class="muted">${esc(API.user?.vehicle)}</p>
+          <button class="btn ghost full" id="logout">Sign out</button>
+        </div>${nav()}`;
     }
-
     function chatView() {
       const o = API.orders.find((x) => x.id === state.activeId);
       const msgs = API.messages[state.activeId] || [];
-      return `
-        <header class="top">
-          <div class="brand">
-            <button class="btn ghost sm" id="backJobs">←</button>
-            <div><h1>Chat</h1><p>${esc(o?.customerName || '')}</p></div>
-          </div>
-        </header>
+      return `<div class="ue-top"><button class="back" style="position:static" id="backJobs">←</button><b style="margin-left:8px">${esc(o?.customerName || '')}</b></div>
         <div class="chat" style="flex:1;min-height:0">
           <div class="bubbles" id="bubbles">
             ${msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
           </div>
           <form class="composer" id="chatForm">
             <input name="text" placeholder="Message the customer…" autocomplete="off" />
-            <button class="btn sm dark" type="submit">Send</button>
+            <button class="btn sm" type="submit">Send</button>
           </form>
         </div>`;
     }
-
     function render(force) {
       const root = document.getElementById('root');
       if (!API.user) { root.innerHTML = loginView(); bind(); return; }
-      if (state.chat) { root.innerHTML = chatView(); const b = document.getElementById('bubbles'); if (b) b.scrollTop = b.scrollHeight; bind(); return; }
+      if (state.chat) { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bind(); return; }
       if (state.tab === 'earn') { if (state.mapHandle) { try{state.mapHandle.destroy();}catch(_){} state.mapHandle=null; } root.innerHTML = earnView(); bind(); return; }
       if (state.tab === 'account') { if (state.mapHandle) { try{state.mapHandle.destroy();}catch(_){} state.mapHandle=null; } root.innerHTML = accountView(); bind(); return; }
-
       const jobs = API.orders.filter((o) => ['ready', 'on_the_way'].includes(o.status));
       const active = jobs.find((o) => o.id === state.activeId) || jobs.find((o) => o.status === 'on_the_way');
       const key = jobs.map((o) => o.id + ':' + o.status).join('|');
       if (!force && root.dataset.key === key && state.mapHandle && active && !state.chat) {
-        state.mapHandle.update(active);
-        return;
+        state.mapHandle.update(active); return;
       }
       if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
       root.dataset.key = key;
@@ -190,7 +142,6 @@
       const el = document.getElementById('map');
       if (el && active) state.mapHandle = mountTrackingMap(el, active);
     }
-
     function bind() {
       const root = document.getElementById('root');
       const loginBtn = document.getElementById('loginBtn');
@@ -201,8 +152,7 @@
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.chat = false; render(true); });
       root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => {
         const o = API.orders.find((x) => x.id === b.dataset.pick);
-        state.activeId = o.id;
-        startGps(o);
+        state.activeId = o.id; startGps(o);
       });
       root.querySelectorAll('[data-drop]').forEach((b) => b.onclick = () => {
         const id = b.dataset.drop;
@@ -223,7 +173,6 @@
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_rider'); render(true); };
     }
-
     API.on(() => {
       if (demo && !API.user && API.shops.length) { API.login('rider', '0775556666', '1234'); return; }
       render();

@@ -11,12 +11,12 @@ const PUBLIC = path.join(__dirname, 'public');
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 const shops = [
-  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 312, isOpen: true, lat: 6.9278, lng: 79.8502, emoji: '🎂', eta: '20 min', address: 'Galle Road, Colombo 03' },
-  { id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, reviews: 890, isOpen: true, lat: 6.9210, lng: 79.8601, emoji: '🍔', eta: '25 min', address: 'Bambalapitiya' },
-  { id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, reviews: 540, isOpen: true, lat: 6.9340, lng: 79.8475, emoji: '🍕', eta: '30 min', address: 'Kollupitiya' },
-  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Beverages', rating: 4.7, reviews: 210, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕', eta: '15 min', address: 'Wellawatte' },
-  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛', eta: '22 min', address: 'Pettah' },
-  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 6.9155, lng: 79.8490, emoji: '🧁', eta: '18 min', address: 'Dehiwala' },
+  { id: 'SHOP_1', name: 'Kandy Bakers', category: 'Bakery', rating: 4.8, reviews: 312, isOpen: true, lat: 6.9278, lng: 79.8502, emoji: '🎂', eta: '20–35 min', fee: 0, address: 'Galle Road, Colombo 03', image: '/img/shop-bakery.jpg', promo: 'Buy 1, Get 1 Free' },
+  { id: 'SHOP_2', name: 'Burger House', category: 'Fast Food', rating: 4.5, reviews: 890, isOpen: true, lat: 6.9210, lng: 79.8601, emoji: '🍔', eta: '25–40 min', fee: 250, address: 'Bambalapitiya', image: '/img/shop-burger.jpg' },
+  { id: 'SHOP_3', name: 'Pizza Town', category: 'Pizza', rating: 4.6, reviews: 540, isOpen: true, lat: 6.9340, lng: 79.8475, emoji: '🍕', eta: '30–45 min', fee: 0, address: 'Kollupitiya', image: '/img/shop-pizza.jpg', promo: 'LKR 0 Delivery Fee' },
+  { id: 'SHOP_4', name: 'Coffee Lab', category: 'Coffee', rating: 4.7, reviews: 210, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕', eta: '15–25 min', fee: 0, address: 'Wellawatte', image: '/img/shop-coffee.jpg' },
+  { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛', eta: '22–35 min', fee: 0, address: 'Pettah', image: '/img/shop-curry.jpg', promo: 'Top Eats' },
+  { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 6.9155, lng: 79.8490, emoji: '🧁', eta: '18–30 min', fee: 250, address: 'Dehiwala', image: '/img/shop-dessert.jpg' },
 ];
 
 let items = [
@@ -32,7 +32,7 @@ let items = [
   { id: 'I10', shopId: 'SHOP_4', name: 'Iced Coffee', category: 'Beverages', price: 600, isAvailable: true, desc: 'Cold brew, milk, ice' },
   { id: 'I11', shopId: 'SHOP_4', name: 'Cappuccino', category: 'Beverages', price: 550, isAvailable: true, desc: 'Double shot, foam art' },
   { id: 'I12', shopId: 'SHOP_5', name: 'Chicken Rice & Curry', category: 'Sri Lankan', price: 850, isAvailable: true, desc: '4 curries + papadam' },
-  { id: 'I13', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950, isAvailable: true, desc: 'Chicken kottu, egg' },
+  { id: 'I13', shopId: 'SHOP_5', name: 'Kottu Roti', category: 'Sri Lankan', price: 950, isAvailable: true, desc: 'Chicken kottu, egg', image: '/img/kottu.jpg' },
   { id: 'I14', shopId: 'SHOP_5', name: 'Hoppers (3)', category: 'Sri Lankan', price: 400, isAvailable: true, desc: 'Plain hoppers, lunu miris' },
   { id: 'I15', shopId: 'SHOP_5', name: 'Pol Sambol Rice', category: 'Sri Lankan', price: 650, isAvailable: true, desc: 'Coconut sambol + dhal' },
   { id: 'I16', shopId: 'SHOP_6', name: 'Watalappan', category: 'Dessert', price: 450, isAvailable: true, desc: 'Jaggery coconut pudding' },

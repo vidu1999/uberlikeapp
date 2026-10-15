@@ -3,67 +3,63 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SwiftDrop · User + Shop + Rider</title>
+  <title>Uber Eats Colombo — Customer, Manager, Courier</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/app.css" />
 </head>
 <body class="studio-body">
   <div class="studio">
     <div class="studio-head">
       <div>
-        <p style="color:#86efac;font-weight:800;letter-spacing:.12em;font-size:12px;margin:0 0 8px">100% LIVE MULTI-APP PRODUCT</p>
-        <h1>SwiftDrop — three apps, one city.</h1>
-        <p>Customer, kitchen, and rider share one backend. Place an order on the left, cook it in the middle, deliver it on the right. The map, chat, and status update in real time.</p>
+        <div class="wordmark" style="color:#fff">Uber <em>Eats</em></div>
+        <h1>Order delivery near you.</h1>
+        <p>Three live apps, one Colombo backend — customer feed, restaurant manager, and courier. Same green, same cards, same tracking sheet as Uber Eats.</p>
       </div>
       <div>
-        <button class="btn dark" id="reset">Reset demo</button>
-        <a class="btn" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
+        <button class="btn" id="reset">Reset demo</button>
+        <a class="btn green" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
       </div>
     </div>
     <div class="howto">
-      <div><b>1. User</b>Open a shop, add to cart, checkout</div>
-      <div><b>2. Shop</b>Accept & cook, then mark ready</div>
-      <div><b>3. Rider</b>Pick up — GPS starts streaming</div>
-      <div><b>4. Track</b>User map + chat follow the bike</div>
-      <div><b>5. Done</b>Rider taps Delivered. Rate the drop.</div>
+      <div><b>1. Customer</b>Open a restaurant, add dishes, checkout</div>
+      <div><b>2. Manager</b>Accept the ticket, then Food is ready</div>
+      <div><b>3. Courier</b>Accept the trip — GPS streams</div>
+      <div><b>4. Track</b>Customer map + chat follow the bag</div>
+      <div><b>5. Complete</b>Courier taps Complete</div>
     </div>
     <div class="phones">
       <div class="phone-wrap">
-        <div class="phone-label"><span>🟢 User</span><a href="/user?demo=1" target="_blank" style="color:#86efac">Open ↗</a></div>
-        <div class="phone"><iframe src="/user?demo=1" title="User app"></iframe></div>
+        <div class="phone-label"><span>Customer</span><a href="/user?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/user?demo=1" title="Customer"></iframe></div>
       </div>
       <div class="phone-wrap">
-        <div class="phone-label"><span>🟠 Shop</span><a href="/shop?demo=1" target="_blank" style="color:#fdba74">Open ↗</a></div>
-        <div class="phone"><iframe src="/shop?demo=1" title="Shop app"></iframe></div>
+        <div class="phone-label"><span>Restaurant</span><a href="/shop?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/shop?demo=1" title="Manager"></iframe></div>
       </div>
       <div class="phone-wrap">
-        <div class="phone-label"><span>🔵 Rider</span><a href="/rider?demo=1" target="_blank" style="color:#93c5fd">Open ↗</a></div>
-        <div class="phone"><iframe src="/rider?demo=1" title="Rider app"></iframe></div>
+        <div class="phone-label"><span>Courier</span><a href="/rider?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/rider?demo=1" title="Courier"></iframe></div>
       </div>
     </div>
     <div class="panel">
       <h3>Connect the Android APKs</h3>
-      <p class="muted" style="margin-top:0">Install all three APKs on one phone (different package names). Paste this URL into each app’s cloud icon.</p>
+      <p class="muted" style="margin-top:0">Install all three on one phone. Paste this URL into each app (cloud icon).</p>
       <div class="urlbox" style="margin:14px 0">
         <code id="apiUrl"></code>
-        <button class="btn" id="copy">Copy server URL</button>
+        <button class="btn green" id="copy">Copy</button>
       </div>
-      <p class="muted">Demo PIN for every role is <b>1234</b> · User 0771234567 · Shop 0772223333 · Rider 0775556666</p>
-      <p class="muted"><a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/user.apk" style="color:#86efac">user.apk</a> ·
-        <a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk" style="color:#fdba74">shop.apk</a> ·
-        <a href="https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk" style="color:#93c5fd">rider.apk</a></p>
+      <p class="muted">PIN <b>1234</b> · Customer 0771234567 · Restaurant 0772223333 · Courier 0775556666</p>
       <h3 style="margin-top:18px">Live activity</h3>
       <div class="feed" id="feed"><div>Waiting for orders…</div></div>
     </div>
   </div>
   <script src="/js/api.js"></script>
   <script>
-    const apiUrl = location.origin;
-    document.getElementById('apiUrl').textContent = apiUrl;
+    document.getElementById('apiUrl').textContent = location.origin;
     document.getElementById('copy').onclick = async () => {
-      try { await navigator.clipboard.writeText(apiUrl); document.getElementById('copy').textContent = 'Copied'; }
-      catch (_) { prompt('Copy this URL', apiUrl); }
+      try { await navigator.clipboard.writeText(location.origin); document.getElementById('copy').textContent = 'Copied'; }
+      catch (_) { prompt('Copy', location.origin); }
     };
     document.getElementById('reset').onclick = () => API.reset();
     const feed = document.getElementById('feed');

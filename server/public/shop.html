@@ -3,11 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>SwiftDrop · Shop</title>
+  <title>Uber Eats Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/app.css" />
-  <style>:root { --accent: #ff6d00; --accent-2: #3b1400; } .logo { background:#ff6d00; color:#3b1400; } .emoji { background:#fff7ed; }</style>
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -15,131 +14,102 @@
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
     const state = { tab: 'orders', filter: 'new' };
-
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
-
-    function loginView() {
-      return `
-        <div class="login">
-          <div class="logo" style="width:52px;height:52px">S</div>
-          <h1>Kitchen board</h1>
-          <p class="sub" style="color:#94a3b8">Accept orders · cook · hand to rider</p>
-          <div class="card">
-            <div class="field"><label>Phone</label><input id="phone" value="0772223333" /></div>
-            <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
-            <button class="btn full dark" id="loginBtn">Enter kitchen</button>
-          </div>
-        </div>`;
+    function lkr(n) { return 'LKR ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function nav() {
+      return `<nav class="nav" style="grid-template-columns:repeat(3,1fr)">
+        <button data-tab="orders" class="${state.tab==='orders'?'active':''}">Orders</button>
+        <button data-tab="menu" class="${state.tab==='menu'?'active':''}">Menu</button>
+        <button data-tab="account" class="${state.tab==='account'?'active':''}">Account</button>
+      </nav>`;
     }
-
+    function loginView() {
+      return `<div class="login">
+        <div class="wordmark">Uber <em>Eats</em> Manager</div>
+        <h1>Kitchen</h1>
+        <p class="sub">Accept orders · prepare · hand to courier</p>
+        <div class="field"><label>Mobile</label><input id="phone" value="0772223333" /></div>
+        <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
+        <button class="btn full" id="loginBtn">Open restaurant</button>
+      </div>`;
+    }
     function ordersView() {
       const orders = API.orders;
       const pending = orders.filter((o) => o.status === 'pending').length;
       const preparing = orders.filter((o) => o.status === 'preparing').length;
       const ready = orders.filter((o) => o.status === 'ready').length;
-      const filter = state.filter;
       const list = orders.filter((o) => {
-        if (filter === 'new') return o.status === 'pending';
-        if (filter === 'prep') return o.status === 'preparing';
-        if (filter === 'ready') return o.status === 'ready';
+        if (state.filter === 'new') return o.status === 'pending';
+        if (state.filter === 'prep') return o.status === 'preparing';
+        if (state.filter === 'ready') return o.status === 'ready';
         return true;
       });
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">S</div><div><h1>Kitchen</h1><p>${esc(API.user?.name)}</p></div></div>
-          <span class="pill">${pending} new</span>
-        </header>
-        <main class="view">
-          <div class="stats">
-            <div class="stat"><b>${pending}</b><span>New</span></div>
-            <div class="stat"><b>${preparing}</b><span>Cooking</span></div>
-            <div class="stat"><b>${ready}</b><span>Ready</span></div>
-          </div>
-          <div class="chips">
-            <button class="chip ${filter==='new'?'active':''}" data-filter="new">New</button>
-            <button class="chip ${filter==='prep'?'active':''}" data-filter="prep">Preparing</button>
-            <button class="chip ${filter==='ready'?'active':''}" data-filter="ready">Ready</button>
-            <button class="chip ${filter==='all'?'active':''}" data-filter="all">All</button>
-          </div>
-          ${list.map((o) => `
-            <div class="card">
-              <div class="row">
-                <div class="grow">
-                  <b>${esc(o.shopName)} · ${esc(o.id)}</b>
-                  <div class="muted">${esc(o.customerName)} · ${esc(o.customerPhone || '')}</div>
-                </div>
-                <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
-              </div>
-              <div style="margin:10px 0">${o.items.map((i)=>`<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
-              ${o.note ? `<div class="muted">Note: ${esc(o.note)}</div>` : ''}
-              <div class="row" style="margin-top:8px">
-                <div class="price grow">${API.rs(o.totalAmount)}</div>
-                ${o.status==='pending' ? `<button class="btn sm" data-act="preparing" data-id="${esc(o.id)}">Accept & cook</button>
-                  <button class="btn sm red" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
-                ${o.status==='preparing' ? `<button class="btn sm dark" data-act="ready" data-id="${esc(o.id)}">Mark ready</button>` : ''}
-                ${o.status==='ready' ? `<span class="muted">Waiting for rider…</span>` : ''}
-                ${o.status==='on_the_way' || o.status==='delivered' ? `<span class="muted">${esc(o.riderName || 'Rider')} · ${API.statusLabel(o.status)}</span>` : ''}
-              </div>
-            </div>`).join('') || '<div class="card">No orders in this tab. Place one in the User app.</div>'}
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="orders" class="${state.tab==='orders'?'active':''}">🧾<span>Orders</span></button>
-          <button data-tab="menu" class="${state.tab==='menu'?'active':''}">🍽️<span>Menu</span></button>
-          <button data-tab="account" class="${state.tab==='account'?'active':''}">👤<span>Account</span></button>
-        </nav>`;
-    }
-
-    function menuView() {
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">S</div><div><h1>Menu</h1><p>Toggle sold-out items</p></div></div>
-        </header>
-        <main class="view">
-          ${API.items.map((it) => {
-            const shop = API.shopOf(it.shopId);
-            return `<div class="card row">
+      return `<div class="ue-top"><div class="where">Restaurant dashboard<small>${esc(API.user?.name)} · Colombo</small></div></div>
+        <div class="stats">
+          <div class="stat"><b>${pending}</b><span>New</span></div>
+          <div class="stat"><b>${preparing}</b><span>Preparing</span></div>
+          <div class="stat"><b>${ready}</b><span>Ready</span></div>
+        </div>
+        <div class="chips">
+          <button class="chip ${state.filter==='new'?'active':''}" data-filter="new">New</button>
+          <button class="chip ${state.filter==='prep'?'active':''}" data-filter="prep">Preparing</button>
+          <button class="chip ${state.filter==='ready'?'active':''}" data-filter="ready">Ready</button>
+          <button class="chip ${state.filter==='all'?'active':''}" data-filter="all">All</button>
+        </div>
+        ${list.map((o) => `
+          <div class="ticket">
+            <div class="row">
               <div class="grow">
-                <b>${esc(it.name)}</b>
-                <div class="muted">${esc(shop.name)} · ${API.rs(it.price)}</div>
+                <b>${esc(o.id)}</b>
+                <div class="muted">${esc(o.shopName)} · ${esc(o.customerName)}</div>
               </div>
-              <button class="btn sm ${it.isAvailable?'dark':'warn'}" data-toggle="${it.id}" data-on="${it.isAvailable?0:1}">
-                ${it.isAvailable ? 'Available' : 'Sold out'}
-              </button>
-            </div>`;
-          }).join('')}
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="orders" class="${state.tab==='orders'?'active':''}">🧾<span>Orders</span></button>
-          <button data-tab="menu" class="active">🍽️<span>Menu</span></button>
-          <button data-tab="account">👤<span>Account</span></button>
-        </nav>`;
+              <span class="status ${o.status}">${API.statusLabel(o.status)}</span>
+            </div>
+            <div style="margin:10px 0">${o.items.map((i)=>`<div>${esc(i.name)} ×${i.qty}</div>`).join('')}</div>
+            ${o.note ? `<div class="muted">Note: ${esc(o.note)}</div>` : ''}
+            <div class="row" style="margin-top:10px">
+              <div class="price grow">${lkr(o.totalAmount)}</div>
+              ${o.status==='pending' ? `<button class="btn sm" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
+                <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
+              ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
+              ${o.status==='ready' ? `<span class="muted">Waiting for courier…</span>` : ''}
+              ${o.status==='on_the_way' || o.status==='delivered' ? `<span class="muted">${esc(o.riderName || 'Courier')} · ${API.statusLabel(o.status)}</span>` : ''}
+            </div>
+          </div>`).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the customer app.</div>'}
+        ${nav()}`;
     }
-
+    function menuView() {
+      return `<div class="ue-top"><div class="where">Menu<small>Mark items sold out</small></div></div>
+        ${API.items.map((it) => {
+          const shop = API.shopOf(it.shopId);
+          return `<div class="item">
+            <div class="grow">
+              <b>${esc(it.name)}</b>
+              <p>${esc(shop.name)} · ${lkr(it.price)}</p>
+              <button class="add" data-toggle="${it.id}" data-on="${it.isAvailable?0:1}">${it.isAvailable ? 'Available' : 'Sold out'}</button>
+            </div>
+            <img src="${shop.image || '/img/shop-curry.jpg'}" alt="" />
+          </div>`;
+        }).join('')}
+        ${nav()}`;
+    }
     function accountView() {
       const today = API.orders.filter((o) => o.status !== 'cancelled');
       const sales = today.reduce((s, o) => s + o.totalAmount, 0);
-      return `
-        <header class="top">
-          <div class="brand"><div class="logo">S</div><div><h1>Shop account</h1><p>${esc(API.user?.name)}</p></div></div>
-        </header>
-        <main class="view">
-          <div class="stats">
-            <div class="stat"><b>${today.length}</b><span>Orders</span></div>
-            <div class="stat"><b>${API.rs(sales)}</b><span>Volume</span></div>
-            <div class="stat"><b>Open</b><span>Kitchen</span></div>
-          </div>
-          <div class="card"><div class="muted">Staff</div><b>${esc(API.user?.name)}</b><div class="muted">${esc(API.user?.phone)}</div></div>
-          <button class="btn full ghost" id="logout">Log out</button>
-        </main>
-        <nav class="nav" style="grid-template-columns:repeat(3,1fr)">
-          <button data-tab="orders">🧾<span>Orders</span></button>
-          <button data-tab="menu">🍽️<span>Menu</span></button>
-          <button data-tab="account" class="active">👤<span>Account</span></button>
-        </nav>`;
+      return `<div class="ue-top"><div class="where">Account</div></div>
+        <div class="stats">
+          <div class="stat"><b>${today.length}</b><span>Orders</span></div>
+          <div class="stat"><b>${lkr(sales)}</b><span>Volume</span></div>
+          <div class="stat"><b>Open</b><span>Kitchen</span></div>
+        </div>
+        <div class="pad">
+          <b>${esc(API.user?.name)}</b>
+          <p class="muted">${esc(API.user?.phone)}</p>
+          <button class="btn ghost full" id="logout">Sign out</button>
+        </div>${nav()}`;
     }
-
     function render() {
       const root = document.getElementById('root');
       if (!API.user) { root.innerHTML = loginView(); bind(); return; }
@@ -148,7 +118,6 @@
       else root.innerHTML = ordersView();
       bind();
     }
-
     function bind() {
       const root = document.getElementById('root');
       const loginBtn = document.getElementById('loginBtn');
@@ -163,7 +132,6 @@
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
     }
-
     API.on(() => {
       if (demo && !API.user && API.shops.length) { API.login('shop', '0772223333', '1234'); return; }
       render();
