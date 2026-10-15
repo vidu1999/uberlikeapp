@@ -1,0 +1,46 @@
+name: Build APKs
+on:
+  push:
+    branches: [arena/72bd113d-uberlikeapp]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/72bd113d-uberlikeapp
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+      - name: Generate android platform files
+        run: |
+          flutter create --platforms=android --project-name uberlikeapp bootstrap_tmp
+          cp -r bootstrap_tmp/android .
+          rm -rf bootstrap_tmp
+      - name: Pub get
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze || true
+      - name: Build user APK
+        run: |
+          flutter build apk --release --target=lib/main_user.dart
+          mkdir -p build && cp build/app/outputs/flutter-apk/app-release.apk build/user.apk
+      - name: Build shop APK
+        run: |
+          flutter build apk --release --target=lib/main_shop.dart
+          cp build/app/outputs/flutter-apk/app-release.apk build/shop.apk
+      - name: Build rider APK
+        run: |
+          flutter build apk --release --target=lib/main_rider.dart
+          cp build/app/outputs/flutter-apk/app-release.apk build/rider.apk
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: uberlikeapp-apks
+          path: |
+            build/user.apk
+            build/shop.apk
+            build/rider.apk
