@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import pathlib
+import re
 import shutil
 import sys
 
@@ -12,17 +13,25 @@ IDS = {
 app_id, label = IDS[ROLE]
 shutil.rmtree("android", ignore_errors=True)
 shutil.copytree("android.bak", "android")
+
 gp = pathlib.Path("android/gradle.properties")
 extra = "\norg.gradle.jvmargs=-Xmx4G\n"
 gp.write_text((gp.read_text(encoding="utf-8") if gp.exists() else "") + extra, encoding="utf-8")
+
 for p in pathlib.Path("android").rglob("*"):
-    if not p.is_file() or p.suffix not in {".gradle", ".kts", ".xml", ".properties"}:
+    if not p.is_file():
+        continue
+    if p.suffix not in {".gradle", ".kts", ".xml"}:
         continue
     t = p.read_text(encoding="utf-8", errors="ignore")
-    n = t.replace("com.example.uberlikeapp", app_id).replace("com.uberlike.uberlikeapp", app_id)
-    n = n.replace('android:label="uberlikeapp"', f'android:label="{label}"')
-    if p.name == "AndroidManifest.xml" and "usesCleartextTraffic" not in n:
-        n = n.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
+    n = t
+    if p.suffix in {".gradle", ".kts"}:
+        n = re.sub(r'applicationId\s*=\s*"[^"]+"', f'applicationId = "{app_id}"', n)
+        n = re.sub(r'applicationId\s+"[^"]+"', f'applicationId "{app_id}"', n)
+    if p.name == "AndroidManifest.xml":
+        n = n.replace('android:label="uberlikeapp"', f'android:label="{label}"')
+        if "usesCleartextTraffic" not in n:
+            n = re.sub(r"<application\b", '<application android:usesCleartextTraffic="true"', n, count=1)
     if n != t:
         p.write_text(n, encoding="utf-8")
 print("patched", ROLE, app_id, label)

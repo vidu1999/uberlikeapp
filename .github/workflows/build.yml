@@ -25,26 +25,32 @@ jobs:
       - name: Pub get
         run: flutter pub get
       - name: Analyze
-        run: flutter analyze || true
-      - name: Build user APK
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Build APKs
         run: |
-          python3 .github/scripts/patch_android.py user
-          flutter build apk --release --target=lib/main_user.dart
+          set -euo pipefail
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/user.apk
-      - name: Build shop APK
-        run: |
-          python3 .github/scripts/patch_android.py shop
-          flutter build apk --release --target=lib/main_shop.dart
-          cp build/app/outputs/flutter-apk/app-release.apk dist/shop.apk
-      - name: Build rider APK
-        run: |
-          python3 .github/scripts/patch_android.py rider
-          flutter build apk --release --target=lib/main_rider.dart
-          cp build/app/outputs/flutter-apk/app-release.apk dist/rider.apk
+          for ROLE in user shop rider; do
+            python3 .github/scripts/patch_android.py "$ROLE"
+            flutter build apk --release --target="lib/main_${ROLE}.dart" 2>&1 | tee "${ROLE}-build.log"
+            cp build/app/outputs/flutter-apk/app-release.apk "dist/${ROLE}.apk"
+          done
           ls -lh dist
       - name: Upload APKs
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: swiftdrop-apks
           path: dist/*.apk
+      - name: Annotate failure
+        if: failure()
+        run: |
+          for f in *-build.log; do
+            [ -f "$f" ] || continue
+            echo "::group::$f"
+            tail -n 100 "$f"
+            echo "::endgroup::"
+            grep -E "Error:|FAILURE|error •|Unhandled|Gradle task|Bad state|compilation" "$f" | tail -n 40 | while read -r line; do
+              echo "::error::$line"
+            done
+          done
