@@ -114,6 +114,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _demoEnter() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    final ok = await OrderRepository.instance.login(
+      _apiRole,
+      phone: _phone.text.trim(),
+      pin: '1234',
+    );
+    if (!mounted) return;
+    setState(() => busy = false);
+    if (!ok) {
+      setState(() => error = 'Demo login failed. Check phone: 0771234567 / 0772223333 / 0775556666');
+    }
+  }
+
   Future<void> _verify() async {
     if (_code.length != 4) {
       setState(() => error = 'Enter the 4-digit WhatsApp code');
@@ -244,6 +261,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ? (codeStep ? 'Checking…' : 'Sending WhatsApp…')
                     : (codeStep ? 'Verify & enter' : 'Continue')),
               ),
+              if (!codeStep) ...[
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: busy ? null : _demoEnter,
+                  child: const Text('Enter demo · PIN 1234'),
+                ),
+              ],
               if (codeStep) ...[
                 const SizedBox(height: 8),
                 TextButton(
