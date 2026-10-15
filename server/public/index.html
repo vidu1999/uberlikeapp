@@ -3,72 +3,310 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Uber Eats Colombo — Customer, Manager, Courier</title>
+  <title>Uber Eats | Food Delivery in Colombo, Sri Lanka</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/app.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/web.css" />
 </head>
-<body class="studio-body">
-  <div class="studio">
-    <div class="studio-head">
-      <div>
-        <div class="wordmark" style="color:#fff">Uber <em>Eats</em></div>
-        <h1>Order delivery near you.</h1>
-        <p>Three live apps, one Colombo backend — customer feed, restaurant manager, and courier. Same green, same cards, same tracking sheet as Uber Eats.</p>
-      </div>
-      <div>
-        <button class="btn" id="reset">Reset demo</button>
-        <a class="btn green" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
-      </div>
-    </div>
-    <div class="howto">
-      <div><b>1. Customer</b>Open a restaurant, add dishes, checkout</div>
-      <div><b>2. Manager</b>Accept the ticket, then Food is ready</div>
-      <div><b>3. Courier</b>Accept the trip — GPS streams</div>
-      <div><b>4. Track</b>Customer map + chat follow the bag</div>
-      <div><b>5. Complete</b>Courier taps Complete</div>
-    </div>
-    <div class="phones">
-      <div class="phone-wrap">
-        <div class="phone-label"><span>Customer</span><a href="/user?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
-        <div class="phone"><iframe src="/user?demo=1" title="Customer"></iframe></div>
-      </div>
-      <div class="phone-wrap">
-        <div class="phone-label"><span>Restaurant</span><a href="/shop?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
-        <div class="phone"><iframe src="/shop?demo=1" title="Manager"></iframe></div>
-      </div>
-      <div class="phone-wrap">
-        <div class="phone-label"><span>Courier</span><a href="/rider?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
-        <div class="phone"><iframe src="/rider?demo=1" title="Courier"></iframe></div>
-      </div>
-    </div>
-    <div class="panel">
-      <h3>Connect the Android APKs</h3>
-      <p class="muted" style="margin-top:0">Install all three on one phone. Paste this URL into each app (cloud icon).</p>
-      <div class="urlbox" style="margin:14px 0">
-        <code id="apiUrl"></code>
-        <button class="btn green" id="copy">Copy</button>
-      </div>
-      <p class="muted">PIN <b>1234</b> · Customer 0771234567 · Restaurant 0772223333 · Courier 0775556666</p>
-      <h3 style="margin-top:18px">Live activity</h3>
-      <div class="feed" id="feed"><div>Waiting for orders…</div></div>
-    </div>
-  </div>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/maps.js"></script>
   <script>
-    document.getElementById('apiUrl').textContent = location.origin;
-    document.getElementById('copy').onclick = async () => {
-      try { await navigator.clipboard.writeText(location.origin); document.getElementById('copy').textContent = 'Copied'; }
-      catch (_) { prompt('Copy', location.origin); }
+    const state = {
+      page: 'landing',
+      address: '45 Galle Road, Colombo 03',
+      query: '',
+      category: 'All',
+      shopId: null,
+      trackId: null,
+      cart: JSON.parse(localStorage.getItem('ue_cart') || '[]'),
+      note: '',
+      payment: 'Cash on delivery',
+      mapHandle: null,
     };
-    document.getElementById('reset').onclick = () => API.reset();
-    const feed = document.getElementById('feed');
-    API.on(() => {
-      if (!API.orders.length) { feed.innerHTML = '<div>Waiting for orders…</div>'; return; }
-      feed.innerHTML = API.orders.slice(0, 10).map((o) =>
-        `<div><b>${o.id}</b> · ${o.shopName} → ${o.customerName} · ${API.statusLabel(o.status)} · ${API.rs(o.totalAmount)}</div>`
-      ).join('');
-    });
+    function saveCart() { localStorage.setItem('ue_cart', JSON.stringify(state.cart)); }
+    function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
+    function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function lkr(n) { return 'LKR ' + Math.round(Number(n) || 0).toLocaleString('en-LK'); }
+    function shopImg(s) { return (s && s.image) || '/img/shop-curry.jpg'; }
+    function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
+
+    function addToCart(item) {
+      state.cart = state.cart.filter((c) => c.shopId === item.shopId);
+      const hit = state.cart.find((c) => c.id === item.id);
+      if (hit) hit.qty += 1;
+      else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1 });
+      saveCart();
+      render();
+    }
+    function setQty(id, d) {
+      const hit = state.cart.find((c) => c.id === id);
+      if (!hit) return;
+      hit.qty += d;
+      if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
+      saveCart();
+      render();
+    }
+
+    function nav(feed) {
+      return `<header class="ue-nav">
+        <a class="logo" href="#" data-page="landing">Uber <em>Eats</em></a>
+        ${feed ? `<div class="loc">📍 ${esc(state.address.split(',')[0])} ▾</div>
+          <div class="search"><span>🔍</span><input id="q" placeholder="Food, groceries, drinks, etc" value="${esc(state.query)}" /></div>` : '<div class="grow"></div>'}
+        <div class="links">
+          <a class="btn ghost" href="/shop?demo=1">Add your restaurant</a>
+          <a class="btn ghost" href="/rider?demo=1">Deliver</a>
+          <button class="btn ghost" data-page="cart">Cart${cartCount() ? ' · ' + cartCount() : ''}</button>
+          <button class="btn" data-page="feed">Sign in</button>
+        </div>
+      </header>`;
+    }
+
+    function landing() {
+      return `${nav(false)}
+        <section class="hero" style="background-image:url('/img/hero-lk.jpg')">
+          <div class="hero-inner">
+            <h1>Order delivery near you</h1>
+            <div class="finder">
+              <input id="addr" value="${esc(state.address)}" placeholder="Enter delivery address" />
+              <select id="when"><option>Deliver now</option><option>Schedule</option></select>
+              <button class="btn" id="find">Find Food</button>
+            </div>
+            <p class="muted" style="color:#ddd;margin-top:14px">Or <a href="#" data-page="feed" style="color:#fff">Sign In</a> · PIN 1234</p>
+          </div>
+        </section>
+        <div class="cards3">
+          <a class="promo-card" href="/user?demo=1">
+            <img src="/img/shop-curry.jpg" alt="" />
+            <div><b>Feed yourself</b>Open the customer app — restaurants across Colombo.</div>
+          </a>
+          <a class="promo-card" href="/shop?demo=1">
+            <img src="/img/shop-pizza.jpg" alt="" />
+            <div><b>Your restaurant, delivered</b>Add your restaurant. Accept tickets live.</div>
+          </a>
+          <a class="promo-card" href="/rider?demo=1">
+            <img src="/img/courier.jpg" alt="" />
+            <div><b>Deliver with Uber Eats</b>Sign up to deliver. Go online for jobs.</div>
+          </a>
+        </div>
+        <div class="cities">
+          <h2>Cities near me</h2>
+          <div class="city-grid">
+            <a href="#" data-page="feed">Colombo</a>
+            <a href="#" data-page="feed">Kandy</a>
+            <a href="#" data-page="feed">Kurunegala</a>
+            <a href="#" data-page="feed">Galle</a>
+            <a href="#" data-page="feed">Negombo</a>
+            <a href="#" data-page="feed">Puttalam</a>
+          </div>
+        </div>
+        <footer class="foot">
+          <div class="wrap">
+            <div class="logo">Uber <em>Eats</em></div>
+            <div>Sri Lanka · LKR · <a href="/apps">Open 3 live apps</a></div>
+          </div>
+        </footer>`;
+    }
+
+    function feed() {
+      const q = state.query.toLowerCase();
+      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
+      if (state.category !== 'All') shops = shops.filter((s) => s.category === state.category);
+      const cats = ['All', ...new Set(API.shops.map((s) => s.category))];
+      return `${nav(true)}
+        <div class="filters">
+          ${cats.map((c) => `<button class="chip ${state.category===c?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
+        </div>
+        <h2 class="sec">Delivery in Colombo</h2>
+        <p class="muted wrap" style="padding:0 24px 16px">${shops.length} restaurants near ${esc(state.address)}</p>
+        <div class="grid">
+          ${shops.map((s) => `
+            <div class="store" data-shop="${s.id}">
+              <div class="hero">
+                <img src="${shopImg(s)}" alt="" />
+                <button class="heart">♡</button>
+                ${s.promo ? `<div class="promo">${esc(s.promo)}</div>` : ''}
+              </div>
+              <div class="rate">${s.rating}</div>
+              <div class="name">${esc(s.name)}</div>
+              <div class="fee">⬤ ${s.fee ? lkr(s.fee) + ' Delivery Fee' : 'LKR 0 Delivery Fee'} · ${esc(s.eta)}</div>
+              <div class="muted">${esc(s.category)} · ${esc(s.address)}</div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    function restaurant() {
+      const shop = API.shopOf(state.shopId);
+      const items = API.items.filter((i) => i.shopId === shop.id);
+      const sub = cartTotal();
+      const fee = sub > 2000 ? 0 : (shop.fee || 0);
+      return `${nav(true)}
+        <img class="rest-hero" src="${shopImg(shop)}" alt="" />
+        <div class="rest-body">
+          <button class="btn ghost" data-page="feed">← Back</button>
+          <h1 style="letter-spacing:-1px">${esc(shop.name)}</h1>
+          <p class="muted">${shop.rating} ★ (${shop.reviews}+) · ${esc(shop.category)} · ${esc(shop.eta)} · ${esc(shop.address)}</p>
+          <p class="fee">${shop.fee ? lkr(shop.fee) + ' Delivery Fee' : 'LKR 0 Delivery Fee'}</p>
+          ${items.map((it) => `
+            <div class="item">
+              <div class="grow">
+                <b>${esc(it.name)}</b>
+                <p class="muted">${esc(it.desc || it.category)}</p>
+                <div style="margin-top:8px"><b>${lkr(it.price)}</b>
+                  ${it.isAvailable ? ` <button class="add" data-add="${it.id}">Add</button>` : ' <span class="muted">Sold out</span>'}
+                </div>
+              </div>
+              <img src="${itemImg(it)}" alt="" />
+            </div>`).join('')}
+          ${cartCount() ? `<div class="cartbar" data-page="cart"><span>View cart · ${cartCount()}</span><span>${lkr(sub + fee)}</span></div>` : ''}
+        </div>`;
+    }
+
+    function cartPage() {
+      if (!state.cart.length) {
+        return `${nav(true)}<div class="rest-body"><h1>Cart</h1><p class="muted">Add items from a restaurant to start a cart.</p><button class="btn" data-page="feed">Find food</button></div>`;
+      }
+      const shop = API.shopOf(state.cart[0].shopId);
+      const sub = cartTotal();
+      const fee = sub > 2000 ? 0 : (shop.fee || 250);
+      return `${nav(true)}<div class="rest-body">
+        <h1>Cart</h1>
+        <p class="muted">${esc(shop.name)}</p>
+        ${state.cart.map((c) => `
+          <div class="item">
+            <div class="grow"><b>${esc(c.name)}</b><div class="muted">${lkr(c.price)}</div></div>
+            <div class="qty"><button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b><button data-qty="${c.id}" data-d="1">+</button></div>
+          </div>`).join('')}
+        <p class="muted">Subtotal ${lkr(sub)} · Delivery ${fee ? lkr(fee) : 'LKR 0'}</p>
+        <h2>Total ${lkr(sub + fee)}</h2>
+        <div style="height:8px"></div>
+        <button class="btn full" data-page="checkout">Go to checkout</button>
+      </div>`;
+    }
+
+    function checkout() {
+      const shop = state.cart[0] ? API.shopOf(state.cart[0].shopId) : {};
+      const sub = cartTotal();
+      const fee = sub > 2000 ? 0 : (shop.fee || 250);
+      return `${nav(true)}<div class="rest-body">
+        <h1>Checkout</h1>
+        <p class="muted">Pay ${lkr(sub + fee)} on delivery</p>
+        <p><label class="muted">Deliver to</label><br/>
+          <input id="caddr" value="${esc(state.address)}" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px" /></p>
+        <p><label class="muted">Note</label><br/>
+          <input id="cnote" value="${esc(state.note)}" placeholder="Gate code, extra chilli…" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px" /></p>
+        <p><label class="muted">Payment</label><br/>
+          <select id="cpay" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd">
+            <option>Cash on delivery</option><option>Card on delivery</option>
+          </select></p>
+        <button class="btn full green" id="place">Place order</button>
+      </div>`;
+    }
+
+    function track() {
+      const o = API.orders.find((x) => x.id === state.trackId);
+      if (!o) return `${nav(true)}<div class="rest-body">Order not found.</div>`;
+      const step = { pending:1, preparing:2, ready:3, on_the_way:4, delivered:5 }[o.status] || 1;
+      return `${nav(true)}
+        <div id="map" class="map"></div>
+        <div class="sheet" data-track-root="${esc(o.id)}">
+          <p class="muted" style="margin:0">Estimated arrival</p>
+          <h2 class="eta" data-eta>${o.status==='delivered'?'Delivered':'12–15 min'}</h2>
+          <div class="dots">${[1,2,3,4,5].map((i)=>`<i class="${i<=step?'on':''}"></i>`).join('')}</div>
+          <div class="courier">
+            <img src="/img/courier.jpg" alt="" />
+            <div>
+              <b data-rider>${esc(o.riderName || 'Finding a courier…')}</b>
+              <div class="muted">Uber Eats · 4.9 ★</div>
+            </div>
+          </div>
+          <p class="muted">${esc(o.shopName)} · ${esc(o.items.map((i)=>i.name).join(', '))}</p>
+          <p><b>${lkr(o.totalAmount)}</b> · ${esc(o.paymentMethod)}</p>
+          <p class="muted">Open the <a href="/shop?demo=1">restaurant</a> app to accept, then the <a href="/rider?demo=1">courier</a> app to pick up.</p>
+        </div>`;
+    }
+
+    function render() {
+      const root = document.getElementById('root');
+      if (state.page === 'landing') { root.innerHTML = landing(); bind(); return; }
+      if (state.page === 'shop') { root.innerHTML = restaurant(); bind(); return; }
+      if (state.page === 'cart') { root.innerHTML = cartPage(); bind(); return; }
+      if (state.page === 'checkout') { root.innerHTML = checkout(); bind(); return; }
+      if (state.page === 'track') {
+        const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (existing && o && state.mapHandle) {
+          state.mapHandle.update(o);
+          const eta = existing.querySelector('[data-eta]');
+          if (eta) eta.textContent = o.status === 'delivered' ? 'Delivered' : '12–15 min';
+          const rider = existing.querySelector('[data-rider]');
+          if (rider) rider.textContent = o.riderName || 'Finding a courier…';
+          const step = { pending:1, preparing:2, ready:3, on_the_way:4, delivered:5 }[o.status] || 1;
+          existing.querySelectorAll('.dots i').forEach((el, i) => el.classList.toggle('on', i < step));
+          return;
+        }
+        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+        root.innerHTML = track();
+        bind();
+        const el = document.getElementById('map');
+        if (el && o) state.mapHandle = mountTrackingMap(el, o);
+        return;
+      }
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+      root.innerHTML = feed();
+      bind();
+    }
+
+    function bind() {
+      document.querySelectorAll('[data-page]').forEach((el) => {
+        el.onclick = (e) => { e.preventDefault(); state.page = el.dataset.page; render(); };
+      });
+      const find = document.getElementById('find');
+      if (find) find.onclick = () => {
+        const a = document.getElementById('addr');
+        if (a) state.address = a.value || state.address;
+        state.page = 'feed';
+        render();
+        if (!API.user) API.login('customer', '0771234567', '1234');
+      };
+      const q = document.getElementById('q');
+      if (q) q.oninput = (e) => { state.query = e.target.value; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      document.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render(); });
+      document.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { state.shopId = b.dataset.shop; state.page = 'shop'; render(); });
+      document.querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        const item = API.items.find((i) => i.id === b.dataset.add);
+        if (item) addToCart(item);
+      });
+      document.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
+      const place = document.getElementById('place');
+      if (place) place.onclick = async () => {
+        state.address = document.getElementById('caddr').value;
+        state.note = document.getElementById('cnote').value;
+        state.payment = document.getElementById('cpay').value;
+        if (!state.cart.length) return;
+        if (!API.user) await API.login('customer', '0771234567', '1234');
+        place.disabled = true; place.textContent = 'Placing…';
+        try {
+          const order = await API.placeOrder({
+            shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
+            customerPhone: API.user.phone, address: state.address, note: state.note,
+            paymentMethod: state.payment, deliveryLat: 6.9271, deliveryLng: 79.8612, items: state.cart,
+          });
+          state.cart = []; saveCart();
+          state.trackId = order.id; state.page = 'track';
+          render();
+        } catch (err) { alert(err.message); place.disabled = false; }
+      };
+    }
+
+    API.on(() => render());
   </script>
 </body>
 </html>

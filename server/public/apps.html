@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uber Eats Colombo — Customer, Manager, Courier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="studio-body">
+  <div class="studio">
+    <div class="studio-head">
+      <div>
+        <div class="wordmark" style="color:#fff">Uber <em>Eats</em></div>
+        <h1>Order delivery near you.</h1>
+        <p>Three live apps, one Colombo backend — customer feed, restaurant manager, and courier. Same green, same cards, same tracking sheet as Uber Eats.</p>
+      </div>
+      <div>
+        <button class="btn" id="reset">Reset demo</button>
+        <a class="btn green" href="/" style="text-decoration:none;display:inline-block;margin-left:8px">Uber Eats site</a>
+        <a class="btn" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
+      </div>
+    </div>
+    <div class="howto">
+      <div><b>1. Customer</b>Open a restaurant, add dishes, checkout</div>
+      <div><b>2. Manager</b>Accept the ticket, then Food is ready</div>
+      <div><b>3. Courier</b>Accept the trip — GPS streams</div>
+      <div><b>4. Track</b>Customer map + chat follow the bag</div>
+      <div><b>5. Complete</b>Courier taps Complete</div>
+    </div>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone-label"><span>Customer</span><a href="/user?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/user?demo=1" title="Customer"></iframe></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label"><span>Restaurant</span><a href="/shop?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/shop?demo=1" title="Manager"></iframe></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label"><span>Courier</span><a href="/rider?demo=1" target="_blank" style="color:#06C167">Open ↗</a></div>
+        <div class="phone"><iframe src="/rider?demo=1" title="Courier"></iframe></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Connect the Android APKs</h3>
+      <p class="muted" style="margin-top:0">Install all three on one phone. Paste this URL into each app (cloud icon).</p>
+      <div class="urlbox" style="margin:14px 0">
+        <code id="apiUrl"></code>
+        <button class="btn green" id="copy">Copy</button>
+      </div>
+      <p class="muted">PIN <b>1234</b> · Customer 0771234567 · Restaurant 0772223333 · Courier 0775556666</p>
+      <h3 style="margin-top:18px">Live activity</h3>
+      <div class="feed" id="feed"><div>Waiting for orders…</div></div>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script>
+    document.getElementById('apiUrl').textContent = location.origin;
+    document.getElementById('copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(location.origin); document.getElementById('copy').textContent = 'Copied'; }
+      catch (_) { prompt('Copy', location.origin); }
+    };
+    document.getElementById('reset').onclick = () => API.reset();
+    const feed = document.getElementById('feed');
+    API.on(() => {
+      if (!API.orders.length) { feed.innerHTML = '<div>Waiting for orders…</div>'; return; }
+      feed.innerHTML = API.orders.slice(0, 10).map((o) =>
+        `<div><b>${o.id}</b> · ${o.shopName} → ${o.customerName} · ${API.statusLabel(o.status)} · ${API.rs(o.totalAmount)}</div>`
+      ).join('');
+    });
+  </script>
+</body>
+</html>

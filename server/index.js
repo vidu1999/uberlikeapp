@@ -17,6 +17,10 @@ const shops = [
   { id: 'SHOP_4', name: 'Coffee Lab', category: 'Coffee', rating: 4.7, reviews: 210, isOpen: true, lat: 6.9188, lng: 79.8544, emoji: '☕', eta: '15–25 min', fee: 0, address: 'Wellawatte', image: '/img/shop-coffee.jpg' },
   { id: 'SHOP_5', name: 'Rice & Curry', category: 'Sri Lankan', rating: 4.9, reviews: 1024, isOpen: true, lat: 6.9312, lng: 79.8660, emoji: '🍛', eta: '22–35 min', fee: 0, address: 'Pettah', image: '/img/shop-curry.jpg', promo: 'Top Eats' },
   { id: 'SHOP_6', name: 'Sweet Palace', category: 'Dessert', rating: 4.4, reviews: 156, isOpen: true, lat: 6.9155, lng: 79.8490, emoji: '🧁', eta: '18–30 min', fee: 250, address: 'Dehiwala', image: '/img/shop-dessert.jpg' },
+  { id: 'SHOP_7', name: 'Street Burger SL', category: 'Fast Food', rating: 4.6, reviews: 430, isOpen: true, lat: 6.9102, lng: 79.8522, emoji: '🍔', eta: '20–30 min', fee: 0, address: 'Bambalapitiya', image: '/img/shop-burger.jpg', promo: 'LKR 0 Delivery Fee' },
+  { id: 'SHOP_8', name: 'Hopper House', category: 'Sri Lankan', rating: 4.8, reviews: 670, isOpen: true, lat: 6.9244, lng: 79.8488, emoji: '🥞', eta: '18–28 min', fee: 0, address: 'Colombo 07', image: '/img/shop-hoppers.jpg', promo: 'Top Eats' },
+  { id: 'SHOP_9', name: 'Dragon Noodles', category: 'Chinese', rating: 4.3, reviews: 290, isOpen: true, lat: 6.9360, lng: 79.8440, emoji: '🍜', eta: '30–45 min', fee: 250, address: 'Slave Island', image: '/img/shop-noodles.jpg' },
+  { id: 'SHOP_10', name: 'Fresh Mart', category: 'Grocery', rating: 4.5, reviews: 1200, isOpen: true, lat: 6.9020, lng: 79.8605, emoji: '🛒', eta: '25–40 min', fee: 0, address: 'Nugegoda', image: '/img/shop-grocery.jpg', promo: 'Grocery' },
 ];
 
 let items = [
@@ -37,6 +41,15 @@ let items = [
   { id: 'I15', shopId: 'SHOP_5', name: 'Pol Sambol Rice', category: 'Sri Lankan', price: 650, isAvailable: true, desc: 'Coconut sambol + dhal' },
   { id: 'I16', shopId: 'SHOP_6', name: 'Watalappan', category: 'Dessert', price: 450, isAvailable: true, desc: 'Jaggery coconut pudding' },
   { id: 'I17', shopId: 'SHOP_6', name: 'Chocolate Mousse', category: 'Dessert', price: 520, isAvailable: true, desc: 'Dark chocolate cup' },
+  { id: 'I18', shopId: 'SHOP_7', name: 'Street Smash Burger', category: 'Fast Food', price: 990, isAvailable: true, desc: 'Smashed beef, pickles, sauce' },
+  { id: 'I19', shopId: 'SHOP_7', name: 'Loaded Fries', category: 'Fast Food', price: 650, isAvailable: true, desc: 'Cheese, chilli, mayo' },
+  { id: 'I20', shopId: 'SHOP_8', name: 'Egg Hopper (2)', category: 'Sri Lankan', price: 480, isAvailable: true, desc: 'Crispy edge, runny yolk' },
+  { id: 'I21', shopId: 'SHOP_8', name: 'String Hoppers & Curry', category: 'Sri Lankan', price: 720, isAvailable: true, desc: 'Chicken curry, pol sambol' },
+  { id: 'I22', shopId: 'SHOP_9', name: 'Devilled Noodles', category: 'Chinese', price: 1100, isAvailable: true, desc: 'Wok-tossed, extra chilli' },
+  { id: 'I23', shopId: 'SHOP_9', name: 'Chicken Fried Rice', category: 'Chinese', price: 950, isAvailable: true, desc: 'Egg, spring onion' },
+  { id: 'I24', shopId: 'SHOP_10', name: 'Fresh Milk 1L', category: 'Grocery', price: 420, isAvailable: true, desc: 'Chilled full cream' },
+  { id: 'I25', shopId: 'SHOP_10', name: 'Banana (1kg)', category: 'Grocery', price: 280, isAvailable: true, desc: 'Embul bananas' },
+  { id: 'I26', shopId: 'SHOP_10', name: 'White Bread', category: 'Grocery', price: 190, isAvailable: true, desc: 'Fresh morning loaf' },
 ];
 
 const accounts = [
@@ -431,6 +444,7 @@ function handleStatic(req, res, url) {
   if (p === '/user' || p === '/user/') p = '/user.html';
   if (p === '/shop' || p === '/shop/') p = '/shop.html';
   if (p === '/rider' || p === '/rider/') p = '/rider.html';
+  if (p === '/apps' || p === '/apps/') p = '/apps.html';
   const safe = path.normalize(p).replace(/^(\.\.[/\\])+/, '');
   const file = path.join(PUBLIC, safe);
   if (!file.startsWith(PUBLIC)) {
