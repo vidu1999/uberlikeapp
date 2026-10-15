@@ -245,6 +245,8 @@ async function handleApi(req, res, url) {
     json(res, 200, {
       ok: true,
       orders: orders.length,
+      shops: shops.length,
+      items: items.length,
       clients: sseClients.size,
       db: dbReady.db,
       cloud: dbReady.cloud,

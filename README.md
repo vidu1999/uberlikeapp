@@ -36,7 +36,7 @@ Paste the studio URL into each APK (cloud icon) so they share orders.
 
 ## Database (Supabase or Firebase)
 
-Orders, WhatsApp OTP accounts, and kitchen state persist locally by default (`server/data.json`). Connect a **free** cloud database with `.env`:
+Shops, menu items, accounts, orders, and WhatsApp OTP users persist locally by default (`server/data.json`). Connect a **free** cloud database with `.env`:
 
 ```bash
 cp .env.example .env
@@ -45,7 +45,9 @@ cp .env.example .env
 **Supabase (Postgres, recommended)**  
 1. Create a free project at [supabase.com](https://supabase.com)  
 2. SQL Editor → paste `server/schema.sql` → Run  
-3. Settings → API → set `SUPABASE_URL` and `SUPABASE_KEY` (service_role)
+   That file **creates tables and inserts demo data**: 11 shops (Kandy Bakers, Burger King, Pizza Hut, Ceylon Tea House, …), 33 menu items, 4 demo accounts, and orders `ORD-1001`–`ORD-1004`.  
+3. Settings → API → set `SUPABASE_URL` and `SUPABASE_KEY` (service_role)  
+4. Table Editor should show `shops`, `menu_items`, `accounts`, `orders`, `messages`
 
 **Firebase Realtime Database**  
 1. Create a project at [Firebase Console](https://console.firebase.google.com)  

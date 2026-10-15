@@ -58,7 +58,6 @@ const accounts = [
 ];
 
 function demoOrders() {
-  const now = Date.now();
   return [
     {
       id: 'ORD-1001',
@@ -83,8 +82,8 @@ function demoOrders() {
       deliveryLng: 80.4108,
       riderLat: null,
       riderLng: null,
-      timestamp: new Date(now - 36 * 60000).toISOString(),
-      updatedAt: new Date().toISOString(),
+      timestamp: '2026-10-16T06:24:00.000Z',
+      updatedAt: '2026-10-16T06:40:00.000Z',
     },
     {
       id: 'ORD-1002',
@@ -109,8 +108,8 @@ function demoOrders() {
       deliveryLng: 80.4108,
       riderLat: 8.348,
       riderLng: 80.404,
-      timestamp: new Date(now - 22 * 60000).toISOString(),
-      updatedAt: new Date().toISOString(),
+      timestamp: '2026-10-16T06:38:00.000Z',
+      updatedAt: '2026-10-16T06:50:00.000Z',
     },
     {
       id: 'ORD-1003',
@@ -135,8 +134,8 @@ function demoOrders() {
       deliveryLng: 80.42,
       riderLat: null,
       riderLng: null,
-      timestamp: new Date(now - 18 * 60000).toISOString(),
-      updatedAt: new Date().toISOString(),
+      timestamp: '2026-10-16T06:42:00.000Z',
+      updatedAt: '2026-10-16T06:52:00.000Z',
     },
     {
       id: 'ORD-1004',
@@ -161,8 +160,8 @@ function demoOrders() {
       deliveryLng: 80.42,
       riderLat: 8.345,
       riderLng: 80.408,
-      timestamp: new Date(now - 8 * 60000).toISOString(),
-      updatedAt: new Date().toISOString(),
+      timestamp: '2026-10-16T06:52:00.000Z',
+      updatedAt: '2026-10-16T06:58:00.000Z',
     },
   ];
 }
@@ -173,4 +172,21 @@ const APKS = {
   user: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/user.apk',
 };
 
-module.exports = { shops, items, accounts, demoOrders, APKS };
+function fullSnapshot() {
+  const orders = demoOrders();
+  const messages = {};
+  for (const o of orders) {
+    messages[o.id] = [
+      {
+        id: 'm0',
+        from: 'QuickBite',
+        role: 'system',
+        text: 'Demo order loaded from Supabase.',
+        ts: 1760616000000,
+      },
+    ];
+  }
+  return { shops, items, accounts, orders, messages, seq: 1004 };
+}
+
+module.exports = { shops, items, accounts, demoOrders, APKS, fullSnapshot };

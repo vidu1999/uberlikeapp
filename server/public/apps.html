@@ -70,8 +70,8 @@
       if (!el) return;
       const name = h.db === 'supabase' ? 'Supabase' : h.db === 'firebase' ? 'Firebase' : 'Local JSON';
       el.textContent = h.cloud
-        ? name + ' · connected · orders persist in the cloud'
-        : name + (h.error ? ' · ' + h.error : ' · add .env keys to use Supabase or Firebase');
+        ? name + ' · connected · ' + (h.shops || 0) + ' shops · ' + (h.orders || 0) + ' orders'
+        : name + (h.error ? ' · ' + h.error : ' · add .env keys, then run server/schema.sql in Supabase (includes demo data)');
     }).catch(() => {});
     const feed = document.getElementById('feed');
     API.on(() => {
