@@ -16,6 +16,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
+  <script src="/js/otp-login.js"></script>
   <script>
     const state = {
       page: 'landing',
@@ -29,6 +30,7 @@
       payment: 'Cash on delivery',
       mapHandle: null,
       lockTrack: false,
+      afterOtp: 'feed',
     };
     function saveCart() { localStorage.setItem('ue_cart', JSON.stringify(state.cart)); }
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
@@ -226,6 +228,12 @@
         const live = API.orders.find((x) => x.id === state.trackId);
         if (live && live.status !== 'cancelled') state.page = 'track';
       }
+      if (state.page === 'otp') {
+        if (root.querySelector('[data-otp-root]')) return;
+        root.innerHTML = OtpLogin.render({ role: 'customer', phone: '0771234567', title: 'Enter your mobile number', sub: 'We’ll SMS a 4-digit code to this number. Then you enter Uber Eats.' });
+        OtpLogin.bind({ role: 'customer', onReady: () => { state.page = state.afterOtp || 'feed'; render(); } });
+        return;
+      }
       if (state.page === 'landing') { root.innerHTML = landing(); bind(); return; }
       if (state.page === 'shop') { root.innerHTML = restaurant(); bind(); return; }
       if (state.page === 'cart') { root.innerHTML = cartPage(); bind(); return; }
@@ -253,15 +261,27 @@
 
     function bind() {
       document.querySelectorAll('[data-page]').forEach((el) => {
-        el.onclick = (e) => { e.preventDefault(); state.lockTrack = false; state.page = el.dataset.page; render(); };
+        el.onclick = (e) => {
+          e.preventDefault();
+          const page = el.dataset.page;
+          if (!API.user && ['feed', 'cart', 'checkout', 'shop'].includes(page)) {
+            state.afterOtp = page === 'shop' ? 'feed' : page;
+            state.page = 'otp';
+            render();
+            return;
+          }
+          state.lockTrack = false;
+          state.page = page;
+          render();
+        };
       });
       const find = document.getElementById('find');
       if (find) find.onclick = () => {
         const a = document.getElementById('addr');
         if (a) state.address = a.value || state.address;
+        if (!API.user) { state.afterOtp = 'feed'; state.page = 'otp'; render(); return; }
         state.page = 'feed';
         render();
-        if (!API.user) API.login('customer', '0771234567', '1234');
       };
       const q = document.getElementById('q');
       if (q) q.oninput = (e) => { state.query = e.target.value; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
@@ -279,7 +299,7 @@
         state.note = document.getElementById('cnote').value;
         state.payment = document.getElementById('cpay').value;
         if (!state.cart.length) return;
-        if (!API.user) await API.login('customer', '0771234567', '1234');
+        if (!API.user) { state.afterOtp = 'checkout'; state.page = 'otp'; render(); return; }
         place.disabled = true; place.textContent = 'Placing…';
         try {
           const order = await API.placeOrder({

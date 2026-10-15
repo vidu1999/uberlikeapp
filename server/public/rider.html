@@ -16,6 +16,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
+  <script src="/js/otp-login.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
     const state = { tab: 'jobs', activeId: null, chat: false, mapHandle: null };
@@ -54,14 +55,12 @@
       </nav>`;
     }
     function loginView() {
-      return `<div class="login">
-        <div class="wordmark">Uber <em>Eats</em></div>
-        <h1>Deliver with Uber</h1>
-        <p class="sub">Go online for live jobs around Colombo</p>
-        <div class="field"><label>Mobile</label><input id="phone" value="0775556666" /></div>
-        <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
-        <button class="btn full green" id="loginBtn">GO</button>
-      </div>`;
+      return OtpLogin.render({
+        role: 'rider',
+        title: 'Deliver sign in',
+        sub: 'SMS a 4-digit code to this number, then go online.',
+        phone: '0775556666',
+      });
     }
     function activeJob() {
       const jobs = API.orders.filter((o) => o.status === 'on_the_way');
@@ -125,7 +124,12 @@
     }
     function render(force) {
       const root = document.getElementById('root');
-      if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (!API.user) {
+        if (root.querySelector('[data-otp-root]')) return;
+        root.innerHTML = loginView();
+        OtpLogin.bind({ role: 'rider', onReady: () => render(true) });
+        return;
+      }
       const active = activeJob();
       if (active) state.activeId = active.id;
       if (state.chat) { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bind(); return; }
@@ -151,11 +155,7 @@
     }
     function bind() {
       const root = document.getElementById('root');
-      const loginBtn = document.getElementById('loginBtn');
-      if (loginBtn) loginBtn.onclick = async () => {
-        try { await API.login('rider', document.getElementById('phone').value, document.getElementById('pin').value); render(true); }
-        catch (e) { alert(e.message); }
-      };
+
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.chat = false; render(true); });
       root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => {
         const o = API.orders.find((x) => x.id === b.dataset.pick);
@@ -186,7 +186,7 @@
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_rider'); render(true); };
     }
     API.on(() => {
-      if (demo && !API.user && API.shops.length) { API.login('rider', '0775556666', '1234'); return; }
+      if (!API.user && document.querySelector('[data-otp-root]')) return;
       render();
     });
   </script>

@@ -144,6 +144,29 @@ button, input, select { font-family: inherit; }
 .courier { display: flex; align-items: center; gap: 12px; }
 .courier img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
 
+.otp-login { max-width: 420px; margin: 0 auto; min-height: 100vh; padding: 48px 24px; position: relative; }
+.otp-login h1 { font-size: 28px; letter-spacing: -0.6px; font-weight: 800; }
+.otp-login .back { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f3f3f3; cursor: pointer; }
+.otp-steps { display: flex; gap: 10px; margin: 18px 0 8px; font-size: 12px; font-weight: 700; color: #bbb; }
+.otp-steps span.on { color: #000; }
+.phone-row { display: flex; align-items: center; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin: 12px 0; }
+.phone-row .cc { padding: 14px 12px; background: #F6F6F6; font-weight: 700; border-right: 1px solid #eee; }
+.phone-row input { flex: 1; border: 0; outline: 0; padding: 14px 12px; font-size: 18px; }
+.otp-boxes { display: flex; gap: 10px; margin: 18px 0; }
+.otp-boxes input { width: 56px; height: 64px; text-align: center; font-size: 28px; font-weight: 800; border: 1px solid #ddd; border-radius: 12px; }
+.otp-err { color: #b91c1c; min-height: 18px; font-size: 13px; }
+.sms-toast {
+  position: absolute; top: 12px; left: 12px; right: 12px;
+  background: #fff; border-radius: 16px; padding: 12px 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.18); z-index: 30;
+}
+.sms-meta { display: flex; justify-content: space-between; font-size: 11px; color: #6b6b6b; font-weight: 600; }
+.sms-from { font-weight: 800; margin-top: 4px; }
+.sms-body { font-size: 14px; margin-top: 2px; }
+.wordmark { font-weight: 800; font-size: 22px; letter-spacing: -0.6px; }
+.wordmark em { color: var(--ue); font-style: normal; }
+.hidden { display: none !important; }
+
 @media (max-width: 800px) {
   .cards3, .city-grid { grid-template-columns: 1fr; }
   .ue-nav .search { display: none; }

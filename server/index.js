@@ -4,6 +4,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const otp = require('./otp');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -204,6 +205,27 @@ function publicUser(u) {
   return rest;
 }
 
+function userForVerifiedPhone(phone, role) {
+  let user = accounts.find((a) => a.role === role && a.phone === phone);
+  if (user) return user;
+  const names = { customer: 'Guest', shop: 'Shop staff', rider: 'Courier' };
+  user = {
+    id: (role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
+    name: names[role] || 'Guest',
+    phone,
+    pin: 'otp',
+    role: role || 'customer',
+    address: '45 Galle Road, Colombo 03',
+  };
+  if (role === 'rider') {
+    user.vehicle = 'Bike';
+    user.rating = 5;
+  }
+  if (role === 'shop') user.shopId = 'ALL';
+  accounts.push(user);
+  return user;
+}
+
 async function handleApi(req, res, url) {
   const { pathname } = url;
 
@@ -215,6 +237,41 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/health') {
     json(res, 200, { ok: true, orders: orders.length, clients: sseClients.size });
+    return;
+  }
+
+  if (pathname === '/api/otp/send' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const out = otp.sendOtp(body.phone, body.role || 'customer');
+      json(res, 200, out);
+    } catch (err) {
+      json(res, err.status || 400, { error: err.message });
+    }
+    return;
+  }
+
+  if (pathname === '/api/otp/sms' && req.method === 'GET') {
+    const msg = otp.readSms(url.searchParams.get('token'));
+    if (!msg) {
+      json(res, 404, { error: 'SMS not found' });
+      return;
+    }
+    json(res, 200, msg);
+    return;
+  }
+
+  if (pathname === '/api/otp/verify' && req.method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const checked = otp.verifyOtp(body.phone, body.role || 'customer', body.code);
+      const user = userForVerifiedPhone(checked.phone, checked.role);
+      const tok = token();
+      sessions[tok] = user.id;
+      json(res, 200, { token: tok, user: publicUser(user) });
+    } catch (err) {
+      json(res, err.status || 400, { error: err.message });
+    }
     return;
   }
 

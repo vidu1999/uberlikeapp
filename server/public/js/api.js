@@ -56,6 +56,31 @@
     return data.user;
   };
 
+  API.sendOtp = function (role, phone) {
+    return getJSON('/api/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, phone }),
+    });
+  };
+
+  API.readSms = function (smsToken) {
+    return getJSON('/api/otp/sms?token=' + encodeURIComponent(smsToken));
+  };
+
+  API.verifyOtp = async function (role, phone, code) {
+    const data = await getJSON('/api/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, phone, code }),
+    });
+    API.user = data.user;
+    API.token = data.token;
+    try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
+    notify();
+    return data.user;
+  };
+
   API.restore = function () {
     try {
       const raw = sessionStorage.getItem('sd_user_' + (API.roleHint || 'customer'));

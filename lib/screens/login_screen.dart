@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app.dart';
 import '../config.dart';
 import '../data/repository.dart';
@@ -14,9 +15,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _phone;
-  final _pin = TextEditingController(text: '1234');
+  final List<TextEditingController> _digits =
+      List.generate(4, (_) => TextEditingController());
+  final List<FocusNode> _focus = List.generate(4, (_) => FocusNode());
   bool busy = false;
+  bool codeStep = false;
   String? error;
+  String? smsBody;
+  String phoneSent = '';
 
   @override
   void initState() {
@@ -29,10 +35,23 @@ class _LoginScreenState extends State<LoginScreen> {
     _phone = TextEditingController(text: phone);
   }
 
+  @override
+  void dispose() {
+    _phone.dispose();
+    for (final c in _digits) {
+      c.dispose();
+    }
+    for (final f in _focus) {
+      f.dispose();
+    }
+    super.dispose();
+  }
+
   String get _title {
-    if (widget.role == UserRole.customer) return 'Food in minutes.';
-    if (widget.role == UserRole.shop) return 'Kitchen board';
-    return 'Ride. Earn. Deliver.';
+    if (codeStep) return 'Enter the 4-digit code';
+    if (widget.role == UserRole.customer) return 'Enter your mobile number';
+    if (widget.role == UserRole.shop) return 'Shop sign in';
+    return 'Deliver sign in';
   }
 
   String get _apiRole {
@@ -41,76 +60,191 @@ class _LoginScreenState extends State<LoginScreen> {
     return 'rider';
   }
 
-  Future<void> _login() async {
+  String get _code => _digits.map((c) => c.text).join();
+
+  Future<void> _send() async {
     setState(() {
       busy = true;
       error = null;
+      smsBody = null;
     });
     if (AppConfig.baseUrl.isEmpty) {
       setState(() {
         busy = false;
-        error = 'Paste the SwiftDrop server URL (cloud icon) first.';
+        error = 'Paste the server URL (cloud icon) first.';
       });
       return;
     }
-    final ok = await OrderRepository.instance.login(_apiRole, phone: _phone.text, pin: _pin.text);
+    try {
+      final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
+      if (!mounted) return;
+      final token = data?['smsToken']?.toString();
+      phoneSent = data?['phone']?.toString() ?? _phone.text;
+      setState(() {
+        busy = false;
+        codeStep = true;
+      });
+      if (token != null) {
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        final body = await OrderRepository.instance.readSms(token);
+        if (mounted) setState(() => smsBody = body);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _verify() async {
+    if (_code.length != 4) {
+      setState(() => error = 'Enter the 4-digit SMS code');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    final ok = await OrderRepository.instance.verifyOtp(_apiRole, phoneSent, _code);
     if (!mounted) return;
     setState(() => busy = false);
     if (!ok) {
-      setState(() => error = 'Login failed. Demo PIN is 1234. Is the server URL correct?');
+      setState(() => error = 'That code does not match this phone number.');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0F14),
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0,
         actions: const [SettingsButton()],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
+      body: Stack(
         children: [
-          const CircleAvatar(
-            radius: 28,
-            backgroundColor: Color(0xFF00C853),
-            child: Text('S', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+          ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const Text.rich(TextSpan(children: [
+                TextSpan(text: 'Uber ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22)),
+                TextSpan(text: 'Eats', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22, color: Color(0xFF06C167))),
+              ])),
+              const SizedBox(height: 12),
+              Text(
+                codeStep ? '1 Phone   2 SMS   3 Code' : '1 Phone   2 SMS   3 Code',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.black54),
+              ),
+              const SizedBox(height: 20),
+              Text(_title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(
+                codeStep
+                    ? 'SMS sent to $phoneSent'
+                    : 'We’ll SMS a 4-digit code to this number. Free · then you enter the app.',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 20),
+              if (!codeStep)
+                TextField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    prefixText: '+94  ',
+                    labelText: 'Mobile number',
+                    border: OutlineInputBorder(),
+                  ),
+                )
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(4, (i) {
+                    return SizedBox(
+                      width: 64,
+                      height: 72,
+                      child: TextField(
+                        controller: _digits[i],
+                        focusNode: _focus[i],
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(1),
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: const InputDecoration(border: OutlineInputBorder()),
+                        onChanged: (v) {
+                          if (v.isNotEmpty && i < 3) _focus[i + 1].requestFocus();
+                          if (_code.length == 4) _verify();
+                        },
+                      ),
+                    );
+                  }),
+                ),
+              if (error != null) ...[
+                const SizedBox(height: 12),
+                Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+              ],
+              const SizedBox(height: 20),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.black, minimumSize: const Size.fromHeight(48)),
+                onPressed: busy ? null : (codeStep ? _verify : _send),
+                child: Text(busy
+                    ? (codeStep ? 'Checking…' : 'Sending SMS…')
+                    : (codeStep ? 'Verify & enter' : 'Continue')),
+              ),
+              if (codeStep) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () {
+                          setState(() => codeStep = false);
+                          _send();
+                        },
+                  child: const Text('Resend SMS'),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => codeStep = false),
+                  child: const Text('Change number'),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const ConnectionBanner(),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(_title, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          const Text('Colombo live tracking · PIN 1234', style: TextStyle(color: Colors.white54)),
-          const SizedBox(height: 24),
-          TextField(
-            controller: _phone,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'Phone',
-              labelStyle: TextStyle(color: Colors.white70),
-              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+          if (smsBody != null)
+            Positioned(
+              top: 8,
+              left: 16,
+              right: 16,
+              child: Material(
+                elevation: 8,
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Messages', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black54)),
+                          Text('now', style: TextStyle(fontSize: 11, color: Colors.black54)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('Uber Eats', style: TextStyle(fontWeight: FontWeight.w800)),
+                      Text(smsBody!),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _pin,
-            obscureText: true,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'PIN',
-              labelStyle: TextStyle(color: Colors.white70),
-              enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-            ),
-          ),
-          if (error != null) ...[
-            const SizedBox(height: 12),
-            Text(error!, style: const TextStyle(color: Colors.orangeAccent)),
-          ],
-          const SizedBox(height: 20),
-          FilledButton(onPressed: busy ? null : _login, child: Text(busy ? 'Connecting…' : 'Continue')),
-          const SizedBox(height: 12),
-          const ConnectionBanner(),
         ],
       ),
     );

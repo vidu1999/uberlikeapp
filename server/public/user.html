@@ -16,6 +16,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
+  <script src="/js/otp-login.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
     const state = {
@@ -287,15 +288,12 @@
     }
 
     function loginView() {
-      return `<div class="login">
-        <div class="wordmark">Uber <em>Eats</em></div>
-        <h1>Order delivery near you</h1>
-        <p class="sub">Colombo · cash on delivery · live tracking</p>
-        <div class="field"><label>Mobile number</label><input id="phone" value="0771234567" /></div>
-        <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
-        <button class="btn full" id="loginBtn">Find food</button>
-        <p class="muted" style="margin-top:12px">Demo PIN 1234</p>
-      </div>`;
+      return OtpLogin.render({
+        role: 'customer',
+        title: 'Enter your mobile number',
+        sub: 'We’ll SMS a 4-digit code to this number. Free · then you enter the app.',
+        phone: '0771234567',
+      });
     }
 
     function openTrack(id, lock) {
@@ -312,7 +310,12 @@
     }
     function render() {
       const root = document.getElementById('root');
-      if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (!API.user) {
+        if (root.querySelector('[data-otp-root]')) return;
+        root.innerHTML = loginView();
+        OtpLogin.bind({ role: 'customer', onReady: () => { state.tab = 'home'; state.screen = 'home'; render(); } });
+        return;
+      }
       if (state.lockTrack && state.trackId) {
         const live = API.orders.find((x) => x.id === state.trackId);
         if (live && live.status !== 'cancelled') state.screen = 'track';
@@ -350,12 +353,7 @@
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
         state.tab = b.dataset.tab; state.screen = 'home'; render();
       });
-      const loginBtn = document.getElementById('loginBtn');
-      if (loginBtn) loginBtn.onclick = async () => {
-        loginBtn.disabled = true;
-        try { await API.login('customer', document.getElementById('phone').value, document.getElementById('pin').value); state.tab='home'; state.screen='home'; render(); }
-        catch (e) { alert(e.message); loginBtn.disabled = false; }
-      };
+
       const q = document.getElementById('q');
       if (q) q.oninput = (e) => { state.query = e.target.value; state.tab = 'browse'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
       root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; state.tab='home'; state.screen='home'; render(); });
@@ -407,7 +405,7 @@
     }
 
     API.on(() => {
-      if (demo && !API.user && API.shops.length) { API.login('customer', '0771234567', '1234'); return; }
+      if (!API.user && document.querySelector('[data-otp-root]')) return;
       render();
     });
   </script>

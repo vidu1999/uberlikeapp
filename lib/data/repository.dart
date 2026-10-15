@@ -44,6 +44,62 @@ class OrderRepository {
     return Uri.parse('$base$path');
   }
 
+  Future<Map<String, dynamic>?> sendOtp(String role, String phone) async {
+    final uri = _uri('/api/otp/send');
+    if (uri == null) return null;
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'role': role, 'phone': phone}),
+          )
+          .timeout(const Duration(seconds: 8));
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode >= 200 && res.statusCode < 300) return data;
+      throw Exception(data['error'] ?? 'Could not send SMS');
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<String?> readSms(String smsToken) async {
+    final uri = _uri('/api/otp/sms?token=${Uri.encodeComponent(smsToken)}');
+    if (uri == null) return null;
+    try {
+      final res = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        return data['body']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> verifyOtp(String role, String phone, String code) async {
+    final uri = _uri('/api/otp/verify');
+    if (uri == null) return false;
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'role': role, 'phone': phone, 'code': code}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        token = data['token']?.toString();
+        userNotifier.value =
+            SessionUser.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+        connectedNotifier.value = true;
+        await refresh();
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
     final uri = _uri('/api/login');
     if (uri == null) return false;

@@ -16,6 +16,7 @@
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
+  <script src="/js/otp-login.js"></script>
   <script>
     const demo = new URLSearchParams(location.search).has('demo');
     const state = { tab: 'orders', filter: 'new', trackId: null, mapHandle: null };
@@ -31,14 +32,12 @@
       </nav>`;
     }
     function loginView() {
-      return `<div class="login">
-        <div class="wordmark">Uber <em>Eats</em> Manager</div>
-        <h1>Kitchen</h1>
-        <p class="sub">Accept orders · prepare · hand to courier</p>
-        <div class="field"><label>Mobile</label><input id="phone" value="0772223333" /></div>
-        <div class="field"><label>PIN</label><input id="pin" value="1234" type="password" /></div>
-        <button class="btn full" id="loginBtn">Open restaurant</button>
-      </div>`;
+      return OtpLogin.render({
+        role: 'shop',
+        title: 'Shop sign in',
+        sub: 'SMS a 4-digit code to this number, then enter the kitchen.',
+        phone: '0772223333',
+      });
     }
     function ordersView() {
       const orders = API.orders;
@@ -119,7 +118,12 @@
     }
     function render() {
       const root = document.getElementById('root');
-      if (!API.user) { root.innerHTML = loginView(); bind(); return; }
+      if (!API.user) {
+        if (root.querySelector('[data-otp-root]')) return;
+        root.innerHTML = loginView();
+        OtpLogin.bind({ role: 'shop', onReady: () => render() });
+        return;
+      }
       if (state.trackId) {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (!o || o.status === 'cancelled') { state.trackId = null; }
@@ -147,11 +151,7 @@
     }
     function bind() {
       const root = document.getElementById('root');
-      const loginBtn = document.getElementById('loginBtn');
-      if (loginBtn) loginBtn.onclick = async () => {
-        try { await API.login('shop', document.getElementById('phone').value, document.getElementById('pin').value); render(); }
-        catch (e) { alert(e.message); }
-      };
+
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.trackId = null; render(); });
       root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
       root.querySelectorAll('[data-act]').forEach((b) => b.onclick = () => API.patch(b.dataset.id, { status: b.dataset.act }));
@@ -166,7 +166,7 @@
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
     }
     API.on(() => {
-      if (demo && !API.user && API.shops.length) { API.login('shop', '0772223333', '1234'); return; }
+      if (!API.user && document.querySelector('[data-otp-root]')) return;
       render();
     });
   </script>
