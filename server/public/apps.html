@@ -51,6 +51,8 @@
         <button class="btn green" id="copy">Copy</button>
       </div>
       <p class="muted">WhatsApp OTP (free) · User 0771234567 · Shop 0772223333 · Deliver 0775556666 · code arrives on WhatsApp</p>
+      <h3 style="margin-top:18px">Database</h3>
+      <p class="muted" id="dbStatus">Checking…</p>
       <h3 style="margin-top:18px">Live activity</h3>
       <div class="feed" id="feed"><div>Waiting for orders…</div></div>
     </div>
@@ -63,6 +65,14 @@
       catch (_) { prompt('Copy', location.origin); }
     };
     document.getElementById('reset').onclick = () => API.reset();
+    fetch('/api/health').then((r) => r.json()).then((h) => {
+      const el = document.getElementById('dbStatus');
+      if (!el) return;
+      const name = h.db === 'supabase' ? 'Supabase' : h.db === 'firebase' ? 'Firebase' : 'Local JSON';
+      el.textContent = h.cloud
+        ? name + ' · connected · orders persist in the cloud'
+        : name + (h.error ? ' · ' + h.error : ' · add .env keys to use Supabase or Firebase');
+    }).catch(() => {});
     const feed = document.getElementById('feed');
     API.on(() => {
       if (!API.orders.length) { feed.innerHTML = '<div>Waiting for orders…</div>'; return; }

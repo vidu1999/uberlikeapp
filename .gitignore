@@ -12,3 +12,5 @@ node_modules/
 server/data.json
 android/.gradle/
 image-search/
+.env
+.env.local

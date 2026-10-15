@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const otp = require('./otp');
+const db = require('./db');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -53,7 +54,7 @@ let items = [
   { id: 'I26', shopId: 'SHOP_10', name: 'White Bread', category: 'Grocery', price: 190, isAvailable: true, desc: 'Fresh morning loaf' },
 ];
 
-const accounts = [
+let accounts = [
   { id: 'USER_1', name: 'Sahan Perera', phone: '0771234567', pin: '1234', role: 'customer', address: '45 Galle Road, Colombo 03' },
   { id: 'USER_2', name: 'Nimal Silva', phone: '0771112222', pin: '1234', role: 'customer', address: '12 Duplication Road, Colombo 04' },
   { id: 'SHOP_STAFF', name: 'Nadeesha Fernando', phone: '0772223333', pin: '1234', role: 'shop', shopId: 'ALL' },
@@ -65,37 +66,55 @@ let orders = [];
 let messages = {}; // orderId -> [{id, from, role, text, ts}]
 let sessions = {};
 const sseClients = new Set();
+let dbReady = { db: 'local', cloud: false, error: null };
+
+function snapshot() {
+  return {
+    orders,
+    messages,
+    seq,
+    items: items.map((i) => ({ id: i.id, isAvailable: i.isAvailable })),
+    accounts,
+  };
+}
+
+function applySnapshot(d) {
+  if (!d || typeof d !== 'object') return;
+  if (Array.isArray(d.orders)) orders = d.orders;
+  if (d.messages && typeof d.messages === 'object') messages = d.messages;
+  if (d.seq) seq = Number(d.seq) || seq;
+  if (Array.isArray(d.items)) {
+    const avail = new Map(d.items.map((i) => [i.id, i.isAvailable]));
+    items = items.map((i) => ({ ...i, isAvailable: avail.has(i.id) ? avail.get(i.id) : i.isAvailable }));
+  }
+  if (Array.isArray(d.accounts) && d.accounts.length) {
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    for (const a of d.accounts) {
+      if (a && a.id) byId.set(a.id, a);
+    }
+    accounts = [...byId.values()];
+  }
+}
 
 function load() {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    const d = JSON.parse(raw);
-    orders = d.orders || [];
-    messages = d.messages || {};
-    seq = d.seq || 1000;
-    if (Array.isArray(d.items)) {
-      const avail = new Map(d.items.map((i) => [i.id, i.isAvailable]));
-      items = items.map((i) => ({ ...i, isAvailable: avail.has(i.id) ? avail.get(i.id) : i.isAvailable }));
-    }
+    applySnapshot(JSON.parse(raw));
   } catch (_) {}
 }
 
 function save() {
+  const snap = snapshot();
   try {
-    fs.writeFileSync(
-      DATA_FILE,
-      JSON.stringify(
-        { orders, messages, seq, items: items.map((i) => ({ id: i.id, isAvailable: i.isAvailable })) },
-        null,
-        2,
-      ),
-    );
+    fs.writeFileSync(DATA_FILE, JSON.stringify(snap, null, 2));
   } catch (err) {
     console.error('save failed', err.message);
   }
+  db.save(snap).catch((err) => {
+    dbReady.error = err.message;
+    console.error('cloud save failed', err.message);
+  });
 }
-
-load();
 
 function shopById(id) {
   return shops.find((s) => s.id === id);
@@ -223,6 +242,7 @@ function userForVerifiedPhone(phone, role) {
   }
   if (role === 'shop') user.shopId = 'ALL';
   accounts.push(user);
+  save();
   return user;
 }
 
@@ -236,7 +256,14 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/health') {
-    json(res, 200, { ok: true, orders: orders.length, clients: sseClients.size });
+    json(res, 200, {
+      ok: true,
+      orders: orders.length,
+      clients: sseClients.size,
+      db: dbReady.db,
+      cloud: dbReady.cloud,
+      error: dbReady.error,
+    });
     return;
   }
 
@@ -535,6 +562,30 @@ setInterval(() => {
   }
 }, 15000);
 
-server.listen(PORT, HOST, () => {
-  console.log(`SwiftDrop server listening on http://${HOST}:${PORT}`);
-});
+async function boot() {
+  load();
+  dbReady.db = db.name();
+  try {
+    const cloud = await db.load();
+    if (cloud) {
+      applySnapshot(cloud);
+      dbReady.cloud = true;
+      console.log('Database: ' + dbReady.db + ' (cloud loaded)');
+    } else if (dbReady.db !== 'local') {
+      dbReady.cloud = false;
+      console.log('Database: ' + dbReady.db + ' configured, empty — using local until first save');
+      save();
+    } else {
+      console.log('Database: local JSON (set SUPABASE_URL or FIREBASE_DB_URL in .env)');
+    }
+  } catch (err) {
+    dbReady.cloud = false;
+    dbReady.error = err.message;
+    console.error('Cloud database unavailable, using local JSON:', err.message);
+  }
+  server.listen(PORT, HOST, () => {
+    console.log(`SwiftDrop server listening on http://${HOST}:${PORT}`);
+  });
+}
+
+boot();
