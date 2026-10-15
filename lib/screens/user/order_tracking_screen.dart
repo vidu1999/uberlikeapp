@@ -12,22 +12,30 @@ class OrderTrackingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Order #$orderId')),
-      body: StreamBuilder<Order?>(
-        stream: OrderRepository.instance.watchOrder(orderId),
-        builder: (context, snapshot) {
-          final order = snapshot.data;
+      body: ValueListenableBuilder<List<Order>>(
+        valueListenable: OrderRepository.instance.ordersNotifier,
+        builder: (context, orders, _) {
+          Order? order;
+          for (final o in orders) {
+            if (o.id == orderId) {
+              order = o;
+              break;
+            }
+          }
+          order ??= OrderRepository.instance.byId(orderId);
           if (order == null) {
             return const Center(child: Text('Waiting for order…'));
           }
+          final current = order;
           return Column(
             children: [
               SizedBox(
                 height: 260,
                 child: TrackingMap(
-                  destLat: order.deliveryLat,
-                  destLng: order.deliveryLng,
-                  riderLat: order.riderLat,
-                  riderLng: order.riderLng,
+                  destLat: current.deliveryLat,
+                  destLng: current.deliveryLng,
+                  riderLat: current.riderLat,
+                  riderLng: current.riderLng,
                 ),
               ),
               Expanded(
@@ -41,23 +49,23 @@ class OrderTrackingScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: order.status.color.withOpacity(0.12),
+                            color: current.status.color.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            order.status.label,
-                            style: TextStyle(color: order.status.color, fontWeight: FontWeight.bold),
+                            current.status.label,
+                            style: TextStyle(color: current.status.color, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      order.status == OrderStatus.delivered ? 'Delivered' : '12 – 15 minutes',
+                      current.status == OrderStatus.delivered ? 'Delivered' : '12 – 15 minutes',
                       style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                     ),
                     const Divider(height: 30),
-                    StepTracker(currentStatus: order.status),
+                    StepTracker(currentStatus: current.status),
                     const Divider(height: 30),
                     Row(
                       children: [
@@ -71,7 +79,7 @@ class OrderTrackingScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              order.riderName ?? order.riderId ?? 'Assigning rider…',
+                              current.riderName ?? current.riderId ?? 'Assigning rider…',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
                             const Text('Delivery Partner • 4.9 ★',

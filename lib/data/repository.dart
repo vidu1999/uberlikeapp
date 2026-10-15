@@ -177,12 +177,6 @@ class OrderRepository {
     }
   }
 
-  Stream<Order?> watchOrder(String id) async* {
-    yield byId(id);
-    await for (final _ in ordersNotifier) {
-      yield byId(id);
-    }
-  }
 }
 
 class Catalog {
