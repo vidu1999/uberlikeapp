@@ -3,330 +3,65 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Uber Eats | Food Delivery in Colombo, Sri Lanka</title>
+  <title>QuickBite · live food delivery</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/web.css" />
-  <link rel="stylesheet" href="/css/track.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root { --g:#2ECC71; --ink:#111; --muted:#6b7280; --line:#ececec; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:"Plus Jakarta Sans",system-ui,sans-serif; background:#fff; color:var(--ink); }
+    .wrap { max-width: 480px; margin: 0 auto; padding: 28px 20px 48px; }
+    .mark { font-size: 28px; font-weight: 800; letter-spacing: -0.04em; }
+    .mark em { color: var(--g); font-style: normal; }
+    h1 { font-size: 26px; letter-spacing: -0.03em; margin: 18px 0 8px; }
+    p.lead { color: var(--muted); margin: 0 0 22px; line-height: 1.45; }
+    .card { display:flex; gap:14px; align-items:center; padding:16px; border:1px solid var(--line); border-radius:18px; text-decoration:none; color:inherit; margin-bottom:12px; }
+    .card:hover { border-color:#b6f0cf; background:#f7fff9; }
+    .ico { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; font-size:22px; background:#ecfdf3; }
+    .card b { display:block; font-size:16px; }
+    .card span { color: var(--muted); font-size:13px; }
+    .row { display:flex; gap:10px; margin-top: 8px; }
+    .row a { flex:1; text-align:center; padding:12px; border-radius:14px; background:#111; color:#fff; text-decoration:none; font-weight:700; font-size:13px; }
+    .row a.ghost { background:#f3f4f6; color:#111; }
+    .ok { margin-top:22px; font-size:12px; color:#059669; }
+    .ok.bad { color:#b91c1c; }
+  </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/maps.js"></script>
-  <script src="/js/track-ui.js"></script>
-  <script src="/js/otp-login.js"></script>
+  <div class="wrap">
+    <div class="mark">Quick<em>Bite</em></div>
+    <h1>Three live apps. One cloud.</h1>
+    <p class="lead">Customer, shop, and rider share the same orders. Open any app — no Node on your computer.</p>
+    <a class="card" href="/user?demo=1">
+      <div class="ico">🍔</div>
+      <div><b>Customer</b><span>QuickBite · Anuradhapura feed</span></div>
+    </a>
+    <a class="card" href="/shop?demo=1">
+      <div class="ico">🥐</div>
+      <div><b>Shop</b><span>Kandy Bakers dashboard</span></div>
+    </a>
+    <a class="card" href="/rider?demo=1">
+      <div class="ico">🛵</div>
+      <div><b>Rider</b><span>Kamal Perera · On Delivery</span></div>
+    </a>
+    <div class="row">
+      <a href="/apps">Android APKs</a>
+      <a class="ghost" href="/user">Sign in with OTP</a>
+    </div>
+    <p class="ok" id="health">Checking live server…</p>
+  </div>
+  <script src="/js/live.js"></script>
   <script>
-    const state = {
-      page: 'landing',
-      address: '45 Galle Road, Colombo 03',
-      query: '',
-      category: 'All',
-      shopId: null,
-      trackId: null,
-      cart: JSON.parse(localStorage.getItem('ue_cart') || '[]'),
-      note: '',
-      payment: 'Cash on delivery',
-      mapHandle: null,
-      lockTrack: false,
-      afterOtp: 'feed',
-    };
-    function saveCart() { localStorage.setItem('ue_cart', JSON.stringify(state.cart)); }
-    function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
-    function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
-    function esc(s) {
-      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-    }
-    function lkr(n) { return 'LKR ' + Math.round(Number(n) || 0).toLocaleString('en-LK'); }
-    function shopImg(s) { return (s && s.image) || '/img/shop-curry.jpg'; }
-    function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
-
-    function addToCart(item) {
-      state.cart = state.cart.filter((c) => c.shopId === item.shopId);
-      const hit = state.cart.find((c) => c.id === item.id);
-      if (hit) hit.qty += 1;
-      else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1 });
-      saveCart();
-      render();
-    }
-    function setQty(id, d) {
-      const hit = state.cart.find((c) => c.id === id);
-      if (!hit) return;
-      hit.qty += d;
-      if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
-      saveCart();
-      render();
-    }
-
-    function nav(feed) {
-      return `<header class="ue-nav">
-        <a class="logo" href="#" data-page="landing">Uber <em>Eats</em></a>
-        ${feed ? `<div class="loc">📍 ${esc(state.address.split(',')[0])} ▾</div>
-          <div class="search"><span>🔍</span><input id="q" placeholder="Food, groceries, drinks, etc" value="${esc(state.query)}" /></div>` : '<div class="grow"></div>'}
-        <div class="links">
-          <a class="btn ghost" href="/shop?demo=1">Add your restaurant</a>
-          <a class="btn ghost" href="/rider?demo=1">Deliver</a>
-          <button class="btn ghost" data-page="cart">Cart${cartCount() ? ' · ' + cartCount() : ''}</button>
-          <button class="btn" data-page="feed">Sign in</button>
-        </div>
-      </header>`;
-    }
-
-    function landing() {
-      return `${nav(false)}
-        <section class="hero" style="background-image:url('/img/hero-lk.jpg')">
-          <div class="hero-inner">
-            <h1>Order delivery near you</h1>
-            <div class="finder">
-              <input id="addr" value="${esc(state.address)}" placeholder="Enter delivery address" />
-              <select id="when"><option>Deliver now</option><option>Schedule</option></select>
-              <button class="btn" id="find">Find Food</button>
-            </div>
-            <p class="muted" style="color:#ddd;margin-top:14px">Or <a href="#" data-page="feed" style="color:#fff">Sign In</a> · PIN 1234</p>
-          </div>
-        </section>
-        <div class="cards3">
-          <a class="promo-card" href="/user?demo=1">
-            <img src="/img/shop-curry.jpg" alt="" />
-            <div><b>Feed yourself</b>Open the customer app — restaurants across Colombo.</div>
-          </a>
-          <a class="promo-card" href="/shop?demo=1">
-            <img src="/img/shop-pizza.jpg" alt="" />
-            <div><b>Your restaurant, delivered</b>Add your restaurant. Accept tickets live.</div>
-          </a>
-          <a class="promo-card" href="/rider?demo=1">
-            <img src="/img/courier.jpg" alt="" />
-            <div><b>Deliver with Uber Eats</b>Sign up to deliver. Go online for jobs.</div>
-          </a>
-        </div>
-        <div class="cities">
-          <h2>Cities near me</h2>
-          <div class="city-grid">
-            <a href="#" data-page="feed">Colombo</a>
-            <a href="#" data-page="feed">Kandy</a>
-            <a href="#" data-page="feed">Kurunegala</a>
-            <a href="#" data-page="feed">Galle</a>
-            <a href="#" data-page="feed">Negombo</a>
-            <a href="#" data-page="feed">Puttalam</a>
-          </div>
-        </div>
-        <footer class="foot">
-          <div class="wrap">
-            <div class="logo">Uber <em>Eats</em></div>
-            <div>Sri Lanka · LKR · <a href="/apps">Open 3 live apps</a></div>
-          </div>
-        </footer>`;
-    }
-
-    function feed() {
-      const q = state.query.toLowerCase();
-      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
-      if (state.category !== 'All') shops = shops.filter((s) => s.category === state.category);
-      const cats = ['All', ...new Set(API.shops.map((s) => s.category))];
-      const live = TrackUI.liveOrder(API.orders);
-      return `${nav(true)}
-        ${live ? TrackUI.banner(live) : ''}
-        <div class="filters">
-          ${cats.map((c) => `<button class="chip ${state.category===c?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}
-        </div>
-        <h2 class="sec">Delivery in Colombo</h2>
-        <p class="muted wrap" style="padding:0 24px 16px">${shops.length} restaurants near ${esc(state.address)}</p>
-        <div class="grid">
-          ${shops.map((s) => `
-            <div class="store" data-shop="${s.id}">
-              <div class="hero">
-                <img src="${shopImg(s)}" alt="" />
-                <button class="heart">♡</button>
-                ${s.promo ? `<div class="promo">${esc(s.promo)}</div>` : ''}
-              </div>
-              <div class="rate">${s.rating}</div>
-              <div class="name">${esc(s.name)}</div>
-              <div class="fee">⬤ ${s.fee ? lkr(s.fee) + ' Delivery Fee' : 'LKR 0 Delivery Fee'} · ${esc(s.eta)}</div>
-              <div class="muted">${esc(s.category)} · ${esc(s.address)}</div>
-            </div>`).join('')}
-        </div>`;
-    }
-
-    function restaurant() {
-      const shop = API.shopOf(state.shopId);
-      const items = API.items.filter((i) => i.shopId === shop.id);
-      const sub = cartTotal();
-      const fee = sub > 2000 ? 0 : (shop.fee || 0);
-      return `${nav(true)}
-        <img class="rest-hero" src="${shopImg(shop)}" alt="" />
-        <div class="rest-body">
-          <button class="btn ghost" data-page="feed">← Back</button>
-          <h1 style="letter-spacing:-1px">${esc(shop.name)}</h1>
-          <p class="muted">${shop.rating} ★ (${shop.reviews}+) · ${esc(shop.category)} · ${esc(shop.eta)} · ${esc(shop.address)}</p>
-          <p class="fee">${shop.fee ? lkr(shop.fee) + ' Delivery Fee' : 'LKR 0 Delivery Fee'}</p>
-          ${items.map((it) => `
-            <div class="item">
-              <div class="grow">
-                <b>${esc(it.name)}</b>
-                <p class="muted">${esc(it.desc || it.category)}</p>
-                <div style="margin-top:8px"><b>${lkr(it.price)}</b>
-                  ${it.isAvailable ? ` <button class="add" data-add="${it.id}">Add</button>` : ' <span class="muted">Sold out</span>'}
-                </div>
-              </div>
-              <img src="${itemImg(it)}" alt="" />
-            </div>`).join('')}
-          ${cartCount() ? `<div class="cartbar" data-page="cart"><span>View cart · ${cartCount()}</span><span>${lkr(sub + fee)}</span></div>` : ''}
-        </div>`;
-    }
-
-    function cartPage() {
-      if (!state.cart.length) {
-        return `${nav(true)}<div class="rest-body"><h1>Cart</h1><p class="muted">Add items from a restaurant to start a cart.</p><button class="btn" data-page="feed">Find food</button></div>`;
-      }
-      const shop = API.shopOf(state.cart[0].shopId);
-      const sub = cartTotal();
-      const fee = sub > 2000 ? 0 : (shop.fee || 250);
-      return `${nav(true)}<div class="rest-body">
-        <h1>Cart</h1>
-        <p class="muted">${esc(shop.name)}</p>
-        ${state.cart.map((c) => `
-          <div class="item">
-            <div class="grow"><b>${esc(c.name)}</b><div class="muted">${lkr(c.price)}</div></div>
-            <div class="qty"><button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b><button data-qty="${c.id}" data-d="1">+</button></div>
-          </div>`).join('')}
-        <p class="muted">Subtotal ${lkr(sub)} · Delivery ${fee ? lkr(fee) : 'LKR 0'}</p>
-        <h2>Total ${lkr(sub + fee)}</h2>
-        <div style="height:8px"></div>
-        <button class="btn full" data-page="checkout">Go to checkout</button>
-      </div>`;
-    }
-
-    function checkout() {
-      const shop = state.cart[0] ? API.shopOf(state.cart[0].shopId) : {};
-      const sub = cartTotal();
-      const fee = sub > 2000 ? 0 : (shop.fee || 250);
-      return `${nav(true)}<div class="rest-body">
-        <h1>Checkout</h1>
-        <p class="muted">Pay ${lkr(sub + fee)} on delivery</p>
-        <p><label class="muted">Deliver to</label><br/>
-          <input id="caddr" value="${esc(state.address)}" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px" /></p>
-        <p><label class="muted">Note</label><br/>
-          <input id="cnote" value="${esc(state.note)}" placeholder="Gate code, extra chilli…" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px" /></p>
-        <p><label class="muted">Payment</label><br/>
-          <select id="cpay" style="width:100%;padding:12px;border-radius:8px;border:1px solid #ddd">
-            <option>Cash on delivery</option><option>Card on delivery</option>
-          </select></p>
-        <button class="btn full green" id="place">Place order</button>
-      </div>`;
-    }
-
-    function track() {
-      const o = API.orders.find((x) => x.id === state.trackId);
-      if (!o) return `${nav(true)}<div class="rest-body">Order not found.</div>`;
-      return TrackUI.screen(o, 'web');
-    }
-
-    function render() {
-      const root = document.getElementById('root');
-      if (state.lockTrack && state.trackId) {
-        const live = API.orders.find((x) => x.id === state.trackId);
-        if (live && live.status !== 'cancelled') state.page = 'track';
-      }
-      if (state.page === 'otp') {
-        if (root.querySelector('[data-otp-root]')) return;
-        root.innerHTML = OtpLogin.render({ role: 'customer', phone: '0771234567', title: 'Enter your mobile number', sub: 'We’ll send a 4-digit code on WhatsApp. Then you enter Uber Eats.' });
-        OtpLogin.bind({ role: 'customer', onReady: () => { state.page = state.afterOtp || 'feed'; render(); } });
-        return;
-      }
-      if (state.page === 'landing') { root.innerHTML = landing(); bind(); return; }
-      if (state.page === 'shop') { root.innerHTML = restaurant(); bind(); return; }
-      if (state.page === 'cart') { root.innerHTML = cartPage(); bind(); return; }
-      if (state.page === 'checkout') { root.innerHTML = checkout(); bind(); return; }
-      if (state.page === 'track') {
-        const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
-        const o = API.orders.find((x) => x.id === state.trackId);
-        const hasRider = o && o.riderName ? '1' : '0';
-        if (existing && o && state.mapHandle && existing.dataset.hasRider === hasRider) {
-          state.mapHandle.update(o);
-          TrackUI.paint(existing, o, 'web');
-          return;
-        }
-        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
-        root.innerHTML = track();
-        bind();
-        const el = document.getElementById('map');
-        if (el && o) state.mapHandle = mountTrackingMap(el, o);
-        return;
-      }
-      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
-      root.innerHTML = feed();
-      bind();
-    }
-
-    function bind() {
-      document.querySelectorAll('[data-page]').forEach((el) => {
-        el.onclick = (e) => {
-          e.preventDefault();
-          const page = el.dataset.page;
-          if (!API.user && ['feed', 'cart', 'checkout', 'shop'].includes(page)) {
-            state.afterOtp = page === 'shop' ? 'feed' : page;
-            state.page = 'otp';
-            render();
-            return;
-          }
-          state.lockTrack = false;
-          state.page = page;
-          render();
-        };
-      });
-      const find = document.getElementById('find');
-      if (find) find.onclick = () => {
-        const a = document.getElementById('addr');
-        if (a) state.address = a.value || state.address;
-        if (!API.user) { state.afterOtp = 'feed'; state.page = 'otp'; render(); return; }
-        state.page = 'feed';
-        render();
-      };
-      const q = document.getElementById('q');
-      if (q) q.oninput = (e) => { state.query = e.target.value; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
-      document.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render(); });
-      document.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { state.shopId = b.dataset.shop; state.page = 'shop'; render(); });
-      document.querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
-        e.stopPropagation();
-        const item = API.items.find((i) => i.id === b.dataset.add);
-        if (item) addToCart(item);
-      });
-      document.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
-      const place = document.getElementById('place');
-      if (place) place.onclick = async () => {
-        state.address = document.getElementById('caddr').value;
-        state.note = document.getElementById('cnote').value;
-        state.payment = document.getElementById('cpay').value;
-        if (!state.cart.length) return;
-        if (!API.user) { state.afterOtp = 'checkout'; state.page = 'otp'; render(); return; }
-        place.disabled = true; place.textContent = 'Placing…';
-        try {
-          const order = await API.placeOrder({
-            shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
-            customerPhone: API.user.phone, address: state.address, note: state.note,
-            paymentMethod: state.payment, deliveryLat: 6.9271, deliveryLng: 79.8612, items: state.cart,
-          });
-          state.cart = []; saveCart();
-          state.trackId = order.id; state.page = 'track'; state.lockTrack = true;
-          render();
-        } catch (err) { alert(err.message); place.disabled = false; }
-      };
-      const moreBtn = document.querySelector('[data-more]');
-      const morePanel = document.querySelector('[data-more-panel]');
-      if (moreBtn && morePanel) moreBtn.onclick = () => morePanel.classList.toggle('hidden');
-      document.querySelectorAll('[data-track]').forEach((b) => {
-        b.onclick = () => { state.trackId = b.dataset.track; state.page = 'track'; state.lockTrack = true; render(); };
-      });
-      document.querySelectorAll('[data-track-back]').forEach((b) => {
-        b.onclick = () => { state.lockTrack = false; state.page = 'feed'; render(); };
-      });
-      document.querySelectorAll('[data-done]').forEach((b) => {
-        b.onclick = () => { state.lockTrack = false; state.page = 'feed'; render(); };
-      });
-    }
-
-    API.on(() => render());
+    const base = (window.QB_API || '').replace(/\/$/, '');
+    fetch(base + '/api/health').then((r) => r.json()).then((d) => {
+      document.getElementById('health').textContent =
+        'Live · ' + (d.ok ? 'ok' : 'degraded') + ' · db ' + (d.db || 'local') +
+        (d.cloud ? ' · cloud' : '') + ' · ' + (d.shops || 0) + ' shops · ' + (d.items || 0) + ' dishes';
+    }).catch(() => {
+      const el = document.getElementById('health');
+      el.className = 'ok bad';
+      el.textContent = 'API not reachable from this page. Open /user on the same host, or set LIVE_API_URL.';
+    });
   </script>
 </body>
 </html>

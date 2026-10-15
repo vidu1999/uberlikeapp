@@ -14,6 +14,7 @@
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/live.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
@@ -232,6 +233,9 @@
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
+    }
+    if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
+      API.login('shop', '0772223333', '1234').catch(() => {});
     }
     API.on(() => {
       if (!API.user && document.querySelector('[data-otp-root]')) return;

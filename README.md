@@ -6,13 +6,46 @@ A complete Uber-style delivery product: **three apps, one live backend**.
 User carts & pays COD  →  Shop accepts / cooks / marks ready  →  Rider GPS  →  User map + chat  →  Delivered
 ```
 
-## Live studio
+## Run globally (no Node on your computer)
+
+This repo is a single Node process with **zero npm packages**. Deploy the container or the start command on any free host; you never run Node locally.
+
+**Option A — Render (one click)**
+
+1. Open [Render New Web Service](https://render.com/deploy) and connect `vidu1999/uberlikeapp`.
+2. Or click: [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vidu1999/uberlikeapp)
+3. Blueprint file is `render.yaml` (`npm start`, health `/api/health`).
+4. Optional: set `SUPABASE_URL` + `SUPABASE_KEY` in the Render dashboard.
+
+**Option B — any Docker host (Fly, Railway, Cloud Run, your VPS)**
+
+```
+ghcr.io/vidu1999/uberlikeapp:latest
+```
+
+GitHub Actions publishes that image on every push (`Dockerfile` listens on `$PORT`, bind `0.0.0.0`).
+
+**Option C — GitHub Codespaces**
+
+Open the repo in Codespaces (`.devcontainer/devcontainer.json`) → `npm start` → forwarded port is the public URL.
+
+Then open:
+
+| URL | App |
+| --- | --- |
+| `/` | Hub |
+| `/user?demo=1` | Customer (QuickBite, skip OTP) |
+| `/shop?demo=1` | Shop dashboard |
+| `/rider?demo=1` | Rider map |
+| `/user` | Customer with WhatsApp OTP |
+
+## Live studio (optional, local)
 
 ```bash
 node server/index.js
 ```
 
-Open `http://localhost:3000` — three phones side by side, already logged in.
+Open `http://localhost:3000`.
 
 | Role | Phone | PIN |
 | --- | --- | --- |

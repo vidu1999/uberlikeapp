@@ -15,6 +15,7 @@
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/live.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/maps.js"></script>
   <script src="/js/track-ui.js"></script>
@@ -39,7 +40,7 @@
 
     const seenOnboard = sessionStorage.getItem('qb_onboard') === '1';
     const state = {
-      gate: API.user ? 'app' : 'splash',
+      gate: API.user ? 'app' : (new URLSearchParams(location.search).get('demo') === '1' ? 'app' : 'splash'),
       onboard: 0,
       tab: 'home',
       screen: 'home',
@@ -691,6 +692,9 @@
       };
     }
 
+    if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
+      API.login('customer', '0771234567', '1234').catch(() => {});
+    }
     API.on(() => {
       if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {
         if (!API.user) return;

@@ -621,6 +621,13 @@ setInterval(() => {
   }
 }, 15000);
 
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('unhandledRejection', err);
+});
+
 async function boot() {
   load();
   dbReady.db = db.name();

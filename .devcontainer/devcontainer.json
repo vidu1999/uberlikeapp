@@ -1,0 +1,10 @@
+{
+  "name": "QuickBite",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "QuickBite", "onAutoForward": "notify" }
+  },
+  "postStartCommand": "node server/index.js",
+  "appPort": 3000
+}

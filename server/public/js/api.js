@@ -7,6 +7,7 @@
     listeners: [],
     user: null,
     token: null,
+    base: (typeof window !== 'undefined' && window.QB_API) ? String(window.QB_API).replace(/\/$/, '') : '',
     roleHint: document.documentElement.getAttribute('data-role') || '',
   };
 
@@ -20,8 +21,13 @@
     });
   }
 
+  function url(path) {
+    if (/^https?:\/\//i.test(path)) return path;
+    return (API.base || '') + path;
+  }
+
   async function getJSON(path, opts) {
-    const res = await fetch(path, opts);
+    const res = await fetch(url(path), opts);
     const text = await res.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch (_) { data = { error: text }; }
@@ -156,7 +162,7 @@
   };
 
   try {
-    const es = new EventSource('/api/stream');
+    const es = new EventSource(url('/api/stream'));
     es.onmessage = (ev) => {
       const data = JSON.parse(ev.data);
       if (data.type === 'state') {
