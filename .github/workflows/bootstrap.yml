@@ -1,0 +1,23 @@
+name: Bootstrap Android
+on: workflow_dispatch
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/72bd113d-uberlikeapp
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+      - run: flutter create --platforms=android bootstrap_tmp
+      - run: cp -r bootstrap_tmp/android .
+      - run: rm -rf bootstrap_tmp
+      - run: |
+          git config user.email "bot@example.com"
+          git config user.name "bot"
+          git add android
+          git commit -m "chore: add android platform files" || echo "nothing to commit"
+          git push origin HEAD:arena/72bd113d-uberlikeapp
