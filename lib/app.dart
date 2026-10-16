@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'data/repository.dart';
+import 'models/message.dart';
 import 'screens/welcome_flow.dart';
 import 'screens/user/customer_home.dart';
 import 'screens/shop/shop_home.dart';
