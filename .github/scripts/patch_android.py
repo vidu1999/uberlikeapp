@@ -28,6 +28,10 @@ for p in pathlib.Path("android").rglob("*"):
     if p.suffix in {".gradle", ".kts"}:
         n = re.sub(r'applicationId\s*=\s*"[^"]+"', f'applicationId = "{app_id}"', n)
         n = re.sub(r'applicationId\s+"[^"]+"', f'applicationId "{app_id}"', n)
+        n = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 24', n)
+        n = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 24', n)
+        n = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 24', n)
+        n = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 24', n)
     if p.name == "AndroidManifest.xml":
         n = n.replace('android:label="uberlikeapp"', f'android:label="{label}"')
         if "usesCleartextTraffic" not in n:
