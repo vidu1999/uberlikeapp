@@ -6,6 +6,7 @@ import '../../models/shop.dart';
 import '../../theme.dart';
 import '../../widgets/tracking_map.dart';
 import '../chat_screen.dart';
+import 'delivered_screen.dart';
 
 class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
@@ -35,6 +36,9 @@ class OrderTrackingScreen extends StatelessWidget {
           order ??= OrderRepository.instance.byId(orderId);
           if (order == null) {
             return const Center(child: Text('Waiting for order…', style: TextStyle(color: Colors.white)));
+          }
+          if (order.status == OrderStatus.delivered) {
+            return const DeliveredScreen();
           }
           final current = order;
           final shop = _shop(current.shopId);

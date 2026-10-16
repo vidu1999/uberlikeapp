@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'data/repository.dart';
-import 'models/message.dart';
-import 'screens/login_screen.dart';
+import 'screens/welcome_flow.dart';
 import 'screens/user/customer_home.dart';
 import 'screens/shop/shop_home.dart';
 import 'screens/rider/rider_home.dart';
@@ -38,7 +37,7 @@ class AuthGate extends StatelessWidget {
     return ValueListenableBuilder<SessionUser?>(
       valueListenable: OrderRepository.instance.userNotifier,
       builder: (context, user, _) {
-        if (user == null) return LoginScreen(role: role);
+        if (user == null) return WelcomeFlow(role: role);
         return MainShell(initialRole: role);
       },
     );

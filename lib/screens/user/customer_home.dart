@@ -4,7 +4,6 @@ import '../../config.dart';
 import '../../data/repository.dart';
 import '../../models/shop.dart';
 import '../../theme.dart';
-import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
 import 'cart_screen.dart';
 import 'my_orders_screen.dart';
@@ -326,14 +325,22 @@ class _CustomerHomeState extends State<CustomerHome> {
           Text(u?.phone ?? '', style: const TextStyle(color: Brand.muted)),
           const SizedBox(height: 8),
           Text(u?.address ?? 'New Town, Anuradhapura'),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const SettingsButton(),
-              RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, foregroundColor: Colors.white),
+              onPressed: () {},
+              child: const Text('Edit Profile'),
+            ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          ListTile(leading: const Icon(Icons.receipt_long_outlined), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
+          const ListTile(leading: Icon(Icons.location_on_outlined), title: Text('Addresses')),
+          const ListTile(leading: Icon(Icons.credit_card_outlined), title: Text('Payment Methods')),
+          const ListTile(leading: Icon(Icons.notifications_outlined), title: Text('Notifications')),
+          const ListTile(leading: Icon(Icons.help_outline), title: Text('Help & Support')),
+          ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), trailing: const SettingsButton()),
+          const SizedBox(height: 12),
           OutlinedButton(
             onPressed: () => OrderRepository.instance.logout(),
             child: const Text('Sign out'),
