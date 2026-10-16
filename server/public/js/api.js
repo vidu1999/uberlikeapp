@@ -81,6 +81,16 @@
   async function sendWhatsApp(phone, body) {
     const wa = window.QB_WA || {};
     const to = e164(phone);
+    const payload = JSON.stringify({ phone: to, body: body });
+    try {
+      const res = await fetch('/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) return true;
+    } catch (_) {}
     const sb = String(window.QB_SUPABASE_URL || '').replace(/\/$/, '');
     if (sb && window.QB_SUPABASE_ANON) {
       try {
@@ -110,17 +120,37 @@
       } catch (_) {}
     }
     if (wa.greenId && wa.greenToken) {
-      const host = (wa.apiUrl || ('https://' + String(wa.greenId).slice(0, 4) + '.api.green-api.com')).replace(/\/$/, '');
-      const res = await fetch(
-        host + '/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chatId: to + '@c.us', message: body }),
-        },
-      );
-      if (!res.ok) throw new Error('WhatsApp send failed (' + res.status + ')');
-      return true;
+      const id = String(wa.greenId);
+      const hosts = [];
+      function addHost(h) {
+        const v = String(h || '').replace(/\/$/, '');
+        if (v && hosts.indexOf(v) === -1) hosts.push(v);
+      }
+      addHost(wa.apiUrl);
+      if (id.length >= 4) {
+        addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
+        addHost('https://' + id.slice(0, 4) + '.api.greenapi.com');
+      }
+      addHost('https://api.green-api.com');
+      addHost('https://api.greenapi.com');
+      let last = 'WhatsApp send failed';
+      for (let i = 0; i < hosts.length; i++) {
+        try {
+          const res = await fetch(
+            hosts[i] + '/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chatId: to + '@c.us', message: body }),
+            },
+          );
+          if (res.ok) return true;
+          last = 'WhatsApp send failed (' + res.status + ')';
+        } catch (e) {
+          last = e && e.message ? e.message : last;
+        }
+      }
+      throw new Error(last);
     }
     if (wa.metaToken && wa.metaPhoneId) {
       const res = await fetch('https://graph.facebook.com/v21.0/' + wa.metaPhoneId + '/messages', {

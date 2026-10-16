@@ -127,6 +127,19 @@ class OrderRepository {
   Future<void> _sendWhatsApp(String phone, String body) async {
     final to = _e164(phone);
     try {
+      final local = await http
+          .post(
+            Uri.parse('${AppConfig.normalize(AppConfig.baseUrl)}/otp'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'phone': to, 'body': body}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (local.statusCode >= 200 && local.statusCode < 300) {
+        final data = jsonDecode(local.body);
+        if (data is Map && data['ok'] == true) return;
+      }
+    } catch (_) {}
+    try {
       final uri = Uri.parse('${AppConfig.normalize(AppConfig.supabaseUrl)}/functions/v1/send-otp');
       final res = await http
           .post(
@@ -154,22 +167,45 @@ class OrderRepository {
         if (data is Map) wa = Map<String, dynamic>.from(data);
       }
     } catch (_) {}
+    if ('${wa['greenId'] ?? ''}'.isEmpty) {
+      wa = {
+        'greenId': '710722770031',
+        'greenToken': '81a5c51bd44b48a08367d01f3ca546b5a4e7409696654a8b9a',
+        'apiUrl': 'https://7107.api.green-api.com',
+      };
+    }
     final greenId = '${wa['greenId'] ?? ''}';
     final greenToken = '${wa['greenToken'] ?? ''}';
-    var apiUrl = '${wa['apiUrl'] ?? ''}';
-    if (apiUrl.isEmpty && greenId.length >= 4) {
-      apiUrl = 'https://${greenId.substring(0, 4)}.api.green-api.com';
+    final hosts = <String>[];
+    void addHost(String h) {
+      final v = h.replaceAll(RegExp(r'/$'), '');
+      if (v.isNotEmpty && !hosts.contains(v)) hosts.add(v);
     }
+    addHost('${wa['apiUrl'] ?? ''}');
+    if (greenId.length >= 4) {
+      addHost('https://${greenId.substring(0, 4)}.api.green-api.com');
+      addHost('https://${greenId.substring(0, 4)}.api.greenapi.com');
+    }
+    addHost('https://api.green-api.com');
+    addHost('https://api.greenapi.com');
     if (greenId.isNotEmpty && greenToken.isNotEmpty) {
-      final res = await http
-          .post(
-            Uri.parse('$apiUrl/waInstance$greenId/sendMessage/$greenToken'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'chatId': '$to@c.us', 'message': body}),
-          )
-          .timeout(const Duration(seconds: 20));
-      if (res.statusCode >= 200 && res.statusCode < 300) return;
-      throw Exception('WhatsApp send failed (${res.statusCode}).');
+      Object? last;
+      for (final host in hosts) {
+        try {
+          final res = await http
+              .post(
+                Uri.parse('$host/waInstance$greenId/sendMessage/$greenToken'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'chatId': '$to@c.us', 'message': body}),
+              )
+              .timeout(const Duration(seconds: 20));
+          if (res.statusCode >= 200 && res.statusCode < 300) return;
+          last = 'WhatsApp send failed (${res.statusCode}).';
+        } catch (e) {
+          last = e;
+        }
+      }
+      throw Exception(last ?? 'WhatsApp send failed.');
     }
     throw Exception('Could not send WhatsApp to +$to. Connect your sending number (Green-API).');
   }
