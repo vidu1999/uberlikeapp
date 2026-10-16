@@ -126,21 +126,46 @@ class OrderRepository {
 
   Future<void> _sendWhatsApp(String phone, String body) async {
     final to = _e164(phone);
-    final uri = Uri.parse('${AppConfig.normalize(AppConfig.supabaseUrl)}/functions/v1/send-otp');
-    final res = await http
-        .post(
-          uri,
-          headers: {
-            'apikey': AppConfig.supabaseAnon,
-            'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({'phone': to, 'body': body}),
-        )
-        .timeout(const Duration(seconds: 20));
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      final data = jsonDecode(res.body);
-      if (data is Map && data['ok'] == true) return;
+    try {
+      final uri = Uri.parse('${AppConfig.normalize(AppConfig.supabaseUrl)}/functions/v1/send-otp');
+      final res = await http
+          .post(
+            uri,
+            headers: {
+              'apikey': AppConfig.supabaseAnon,
+              'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'phone': to, 'body': body}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body);
+        if (data is Map && data['ok'] == true) return;
+      }
+    } catch (_) {}
+    Map<String, dynamic> wa = {};
+    try {
+      final cfg = await http
+          .get(Uri.parse('${AppConfig.normalize(AppConfig.baseUrl)}/js/wa.json'))
+          .timeout(const Duration(seconds: 8));
+      if (cfg.statusCode == 200) {
+        final data = jsonDecode(cfg.body);
+        if (data is Map) wa = Map<String, dynamic>.from(data);
+      }
+    } catch (_) {}
+    final greenId = '${wa['greenId'] ?? ''}';
+    final greenToken = '${wa['greenToken'] ?? ''}';
+    if (greenId.isNotEmpty && greenToken.isNotEmpty) {
+      final res = await http
+          .post(
+            Uri.parse('https://api.green-api.com/waInstance$greenId/sendMessage/$greenToken'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'chatId': '$to@c.us', 'message': body}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode >= 200 && res.statusCode < 300) return;
+      throw Exception('WhatsApp send failed (${res.statusCode}).');
     }
     throw Exception('Could not send WhatsApp to +$to. Connect your sending number (Green-API).');
   }

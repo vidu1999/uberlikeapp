@@ -103,6 +103,12 @@
         if (e && e.message && /WhatsApp|GREEN_|META_|Set GREEN|send failed/i.test(e.message)) throw e;
       }
     }
+    if (!(wa.greenId && wa.greenToken)) {
+      try {
+        const cfg = await fetch('/js/wa.json', { cache: 'no-store' }).then((r) => r.json());
+        if (cfg) Object.assign(wa, cfg);
+      } catch (_) {}
+    }
     if (wa.greenId && wa.greenToken) {
       const res = await fetch(
         'https://api.green-api.com/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
