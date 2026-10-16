@@ -9,17 +9,6 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-const REWRITES = {
-  '/user': '/user.html',
-  '/user/': '/user.html',
-  '/shop': '/shop.html',
-  '/shop/': '/shop.html',
-  '/rider': '/rider.html',
-  '/rider/': '/rider.html',
-  '/apps': '/apps.html',
-  '/apps/': '/apps.html',
-};
-
 function e164(raw) {
   let d = String(raw || '').replace(/\D/g, '');
   if (d.startsWith('0') && d.length === 10) d = '94' + d.slice(1);
@@ -70,14 +59,7 @@ export default {
       }
     }
 
-    const dest = REWRITES[path];
-    if (dest) {
-      const next = new URL(url.toString());
-      next.pathname = dest;
-      if (env && env.ASSETS) return env.ASSETS.fetch(new Request(next.toString(), request));
-    }
-
-    if (env && env.ASSETS) return env.ASSETS.fetch(request);
-    return new Response('Not found', { status: 404 });
+    if (!env || !env.ASSETS) return new Response('Not found', { status: 404 });
+    return env.ASSETS.fetch(request);
   },
 };
