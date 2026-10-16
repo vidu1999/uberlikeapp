@@ -29,8 +29,9 @@ Deno.serve(async (req) => {
     const metaTemplate = Deno.env.get('META_TEMPLATE') || '';
 
     if (greenId && greenToken) {
+      const host = (Deno.env.get('GREEN_API_URL') || ('https://' + greenId.slice(0, 4) + '.api.green-api.com')).replace(/\/$/, '');
       const r = await fetch(
-        `https://api.green-api.com/waInstance${greenId}/sendMessage/${greenToken}`,
+        `${host}/waInstance${greenId}/sendMessage/${greenToken}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

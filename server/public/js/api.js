@@ -110,8 +110,9 @@
       } catch (_) {}
     }
     if (wa.greenId && wa.greenToken) {
+      const host = (wa.apiUrl || ('https://' + String(wa.greenId).slice(0, 4) + '.api.green-api.com')).replace(/\/$/, '');
       const res = await fetch(
-        'https://api.green-api.com/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
+        host + '/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

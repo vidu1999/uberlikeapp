@@ -156,10 +156,14 @@ class OrderRepository {
     } catch (_) {}
     final greenId = '${wa['greenId'] ?? ''}';
     final greenToken = '${wa['greenToken'] ?? ''}';
+    var apiUrl = '${wa['apiUrl'] ?? ''}';
+    if (apiUrl.isEmpty && greenId.length >= 4) {
+      apiUrl = 'https://${greenId.substring(0, 4)}.api.green-api.com';
+    }
     if (greenId.isNotEmpty && greenToken.isNotEmpty) {
       final res = await http
           .post(
-            Uri.parse('https://api.green-api.com/waInstance$greenId/sendMessage/$greenToken'),
+            Uri.parse('$apiUrl/waInstance$greenId/sendMessage/$greenToken'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'chatId': '$to@c.us', 'message': body}),
           )
