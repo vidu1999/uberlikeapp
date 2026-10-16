@@ -52,15 +52,29 @@
   </div>
   <script src="/js/live.js"></script>
   <script>
-    const base = (window.QB_API || '').replace(/\/$/, '');
-    fetch(base + '/api/health').then((r) => r.json()).then((d) => {
-      document.getElementById('health').textContent =
-        'Live · ' + (d.ok ? 'ok' : 'degraded') + ' · db ' + (d.db || 'local') +
-        (d.cloud ? ' · cloud' : '') + ' · ' + (d.shops || 0) + ' shops · ' + (d.items || 0) + ' dishes';
+    const el = document.getElementById('health');
+    const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
+    const key = window.QB_SUPABASE_ANON || '';
+    function hdr() {
+      return { apikey: key, Authorization: 'Bearer ' + key };
+    }
+    async function pingSupabase() {
+      if (!sb || !key) throw new Error('no supabase');
+      const shops = await fetch(sb + '/rest/v1/shops?select=id', { headers: hdr() }).then((r) => r.json());
+      const items = await fetch(sb + '/rest/v1/menu_items?select=id', { headers: hdr() }).then((r) => r.json());
+      el.className = 'ok';
+      el.textContent = 'Live · Supabase · ' + shops.length + ' shops · ' + items.length + ' dishes';
+    }
+    pingSupabase().catch(() => {
+      const base = (window.QB_API || '').replace(/\/$/, '');
+      return fetch(base + '/api/health').then((r) => r.json()).then((d) => {
+        el.textContent =
+          'Live · ' + (d.ok ? 'ok' : 'degraded') + ' · db ' + (d.db || 'local') +
+          (d.cloud ? ' · cloud' : '') + ' · ' + (d.shops || 0) + ' shops · ' + (d.items || 0) + ' dishes';
+      });
     }).catch(() => {
-      const el = document.getElementById('health');
       el.className = 'ok bad';
-      el.textContent = 'API not reachable from this page. Open /user on the same host, or set LIVE_API_URL.';
+      el.textContent = 'Could not reach Supabase. Open /user anyway.';
     });
   </script>
 </body>
