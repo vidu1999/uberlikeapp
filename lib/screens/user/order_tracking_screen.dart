@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../config.dart';
+import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../models/shop.dart';
@@ -55,6 +56,8 @@ class OrderTrackingScreen extends StatelessWidget {
                   riderLng: current.riderLng,
                   shopLat: shop?.lat,
                   shopLng: shop?.lng,
+                  liveLat: UserPlace.instance.liveLat,
+                  liveLng: UserPlace.instance.liveLng,
                   dark: true,
                 ),
               ),

@@ -53,7 +53,10 @@
       cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
       favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
       note: '',
-      address: 'No.123, Lake View Road, Anuradhapura',
+      address: 'Finding your location…',
+      loc: { lat: 8.3350, lng: 80.4108, label: 'Finding your location…', liveLat: null, liveLng: null, custom: false },
+      locHandle: null,
+      locFrom: 'home',
       payment: 'Cash on delivery',
       deliveryType: 'standard',
       mapHandle: null,
@@ -78,6 +81,38 @@
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function fee() { return state.deliveryType === 'express' ? 360 : 200; }
+    function setPlace(lat, lng, label, custom) {
+      state.loc.lat = lat; state.loc.lng = lng;
+      if (label) state.loc.label = label;
+      state.address = state.loc.label;
+      if (custom) state.loc.custom = true;
+      window.QB_LIVE = { lat: state.loc.liveLat, lng: state.loc.liveLng };
+    }
+    async function labelAt(lat, lng) {
+      if (typeof reversePlace === 'function') return reversePlace(lat, lng);
+      return lat.toFixed(5) + ', ' + lng.toFixed(5);
+    }
+    function startLiveLocation() {
+      if (!navigator.geolocation || startLiveLocation._on) return;
+      startLiveLocation._on = true;
+      navigator.geolocation.watchPosition(async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        state.loc.liveLat = lat; state.loc.liveLng = lng;
+        window.QB_LIVE = { lat, lng };
+        if (state.locHandle && state.locHandle.setLive) state.locHandle.setLive(lat, lng);
+        if (!state.loc.custom) {
+          const label = await labelAt(lat, lng);
+          setPlace(lat, lng, label, false);
+          if (state.screen === 'home' || state.screen === 'checkout') render();
+        }
+      }, () => {
+        if (state.loc.label === 'Finding your location…') {
+          state.loc.label = 'Anuradhapura';
+          state.address = 'Anuradhapura';
+          if (state.screen === 'home') render();
+        }
+      }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
+    }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
@@ -369,6 +404,23 @@
         <div class="pad"><button class="btn-qb" data-go="checkout">Proceed to Checkout</button></div>
       </div>${nav()}`;
     }
+    function locateView() {
+      return `<div class="loc-pick" data-locate-root>
+        <div class="loc-search">
+          <button type="button" data-loc-back>←</button>
+          <input id="locQ" placeholder="Search area, street, city…" autocomplete="off" />
+        </div>
+        <div class="loc-hits hidden" data-loc-hits></div>
+        <div class="loc-map" id="locMap"></div>
+        <div class="loc-center">📍</div>
+        <button class="loc-me" type="button" data-loc-me title="My live location">◎</button>
+        <div class="loc-sheet">
+          <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live location</div>
+          <b data-loc-label>${esc(state.loc.label)}</b>
+          <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
+        </div>
+      </div>`;
+    }
     function checkoutView() {
       const sub = cartTotal();
       const f = fee();
@@ -376,7 +428,7 @@
         <div class="back-row"><button class="back-fab" data-tab="cart">←</button><b>Checkout</b></div>
         <div class="pad">
           <h3>Delivery Address</h3>
-          <div class="addr-card">${SVG.pin} ${esc(state.address)} <button class="link" style="float:right;color:#00C853;border:0;background:0;font-weight:700">Change</button>
+          <div class="addr-card">${SVG.pin} ${esc(state.address)} <button class="link" data-open-loc style="float:right;color:#00C853;border:0;background:0;font-weight:700">Change</button>
             <input id="addr" value="${esc(state.address)}" style="margin-top:8px;width:100%;border:0;background:transparent;font-size:14px" />
           </div>
           <h3>Delivery Type</h3>
@@ -526,6 +578,14 @@
         if (live && live.status !== 'cancelled') state.screen = live.status === 'delivered' ? 'done' : 'track';
       }
       if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bindApp(); return; }
+      if (state.screen === 'locate') {
+        const keep = root.querySelector('[data-locate-root]') && state.locHandle;
+        if (keep) return;
+        root.innerHTML = locateView();
+        bindLocate();
+        return;
+      }
+      if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
       if (state.screen === 'shop') { root.innerHTML = shopView(); bindApp(); return; }
       if (state.screen === 'search') { root.innerHTML = searchView(); bindApp(); return; }
@@ -612,6 +672,67 @@
       };
     }
 
+    function bindLocate() {
+      const mapEl = document.getElementById('locMap');
+      const labelEl = document.querySelector('[data-loc-label]');
+      const hits = document.querySelector('[data-loc-hits]');
+      if (typeof mountLocationPicker !== 'function' || !mapEl) return;
+      if (state.locHandle) { try { state.locHandle.destroy(); } catch (_) {} }
+      state.locHandle = mountLocationPicker(mapEl, {
+        lat: state.loc.lat, lng: state.loc.lng,
+        liveLat: state.loc.liveLat, liveLng: state.loc.liveLng,
+      });
+      let seq = 0;
+      if (state.locHandle) {
+        state.locHandle.onMoveEnd(async (lat, lng) => {
+          const n = ++seq;
+          const label = await labelAt(lat, lng);
+          if (n !== seq) return;
+          if (labelEl) labelEl.textContent = label;
+          state.loc._draft = { lat, lng, label };
+        });
+      }
+      const back = document.querySelector('[data-loc-back]');
+      if (back) back.onclick = () => { state.screen = state.locFrom || 'home'; render(); };
+      const me = document.querySelector('[data-loc-me]');
+      if (me) me.onclick = () => {
+        startLiveLocation();
+        if (state.loc.liveLat == null) return;
+        state.locHandle && state.locHandle.setView(state.loc.liveLat, state.loc.liveLng, 17);
+      };
+      const ok = document.querySelector('[data-loc-ok]');
+      if (ok) ok.onclick = () => {
+        const c = state.locHandle ? state.locHandle.getCenter() : { lat: state.loc.lat, lng: state.loc.lng };
+        const d = state.loc._draft || c;
+        setPlace(d.lat, d.lng, d.label || (labelEl && labelEl.textContent) || state.loc.label, true);
+        state.screen = state.locFrom || 'home';
+        render();
+      };
+      const q = document.getElementById('locQ');
+      let st;
+      if (q) q.oninput = () => {
+        clearTimeout(st);
+        st = setTimeout(async () => {
+          if (typeof searchPlaces !== 'function') return;
+          const list = await searchPlaces(q.value);
+          if (!hits) return;
+          if (!list.length) { hits.classList.add('hidden'); hits.innerHTML = ''; return; }
+          hits.classList.remove('hidden');
+          hits.innerHTML = list.map((p, i) => `<button type="button" data-hit="${i}">${esc(p.label)}</button>`).join('');
+          hits.querySelectorAll('[data-hit]').forEach((b) => {
+            b.onclick = () => {
+              const p = list[Number(b.dataset.hit)];
+              hits.classList.add('hidden');
+              q.value = p.label;
+              if (state.locHandle) state.locHandle.setView(p.lat, p.lng, 17);
+              if (labelEl) labelEl.textContent = p.label;
+              state.loc._draft = p;
+            };
+          });
+        }, 280);
+      };
+    }
+
     function bindApp() {
       const root = document.getElementById('root');
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
@@ -637,6 +758,11 @@
       root.querySelectorAll('[data-mcat]').forEach((b) => b.onclick = () => { state.menuCat = b.dataset.mcat; render(); });
       root.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
       root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
+      root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
+        state.locFrom = state.screen === 'checkout' ? 'checkout' : 'home';
+        state.screen = 'locate';
+        render();
+      });
       root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render(); });
       const place = document.getElementById('place');
       if (place) place.onclick = async () => {
@@ -651,7 +777,7 @@
             shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
             customerPhone: API.user.phone, address: state.address, note: state.note,
             paymentMethod: state.payment, deliveryType: state.deliveryType, deliveryFee: fee(),
-            deliveryLat: 8.3350, deliveryLng: 80.4108, items: state.cart,
+            deliveryLat: state.loc.lat, deliveryLng: state.loc.lng, items: state.cart,
           });
           state.cart = []; saveCart();
           openTrack(order.id, true);
@@ -690,11 +816,13 @@
       API.login('customer', '0771234567', '1234').catch(() => {});
     }
     API.on(() => {
+      if (API.user) startLiveLocation();
       if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {
         if (!API.user) return;
       }
       render();
     });
+    if (API.user) startLiveLocation();
   </script>
 </body>
 </html>

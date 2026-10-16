@@ -72,6 +72,15 @@
     });
   }
 
+  function liveDotIcon() {
+    return L.divIcon({
+      className: 'live-dot-wrap',
+      html: '<div class="live-dot"><i></i><i></i><b></b></div>',
+      iconSize: [56, 56],
+      iconAnchor: [28, 28],
+    });
+  }
+
   function bikeIcon() {
     return L.divIcon({
       className: 'pin-bike-wrap',
@@ -168,6 +177,11 @@
 
     L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map);
     L.marker(pos.dest, { icon: destIcon() }).addTo(map);
+    let liveMarker = null;
+    const live = window.QB_LIVE;
+    if (live && live.lat != null) {
+      liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), zIndexOffset: 600 }).addTo(map);
+    }
     let riderMarker = null;
     const layers = { glow: null, solid: null, dash: null };
     drawRoutes(map, layers, pos.shopPos, pos.dest, pos.rider);
@@ -194,6 +208,11 @@
       update(next) {
         if (!next) return;
         const p = positions(next);
+        const live = window.QB_LIVE;
+        if (live && live.lat != null) {
+          if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), zIndexOffset: 600 }).addTo(map);
+          else liveMarker.setLatLng([live.lat, live.lng]);
+        }
         drawRoutes(map, layers, p.shopPos, p.dest, p.rider);
         if (p.rider) {
           if (!riderMarker) {
@@ -226,6 +245,76 @@
         try {
           map.remove();
         } catch (_) {}
+      },
+    };
+  };
+
+  function photonLabel(f) {
+    const p = (f && f.properties) || {};
+    const parts = [p.name, p.street, p.city || p.county || p.town, p.state].filter(Boolean);
+    const uniq = [];
+    parts.forEach((x) => { if (uniq.indexOf(x) === -1) uniq.push(x); });
+    return uniq.join(', ') || 'Pinned location';
+  }
+
+  global.reversePlace = async function (lat, lng) {
+    try {
+      const r = await fetch('https://photon.komoot.io/reverse?lon=' + lng + '&lat=' + lat);
+      const j = await r.json();
+      const f = j.features && j.features[0];
+      if (f) return photonLabel(f);
+    } catch (_) {}
+    return lat.toFixed(5) + ', ' + lng.toFixed(5);
+  };
+
+  global.searchPlaces = async function (q) {
+    if (!q || q.length < 2) return [];
+    try {
+      const r = await fetch('https://photon.komoot.io/api/?limit=6&q=' + encodeURIComponent(q));
+      const j = await r.json();
+      return (j.features || []).map((f) => ({
+        label: photonLabel(f),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+      }));
+    } catch (_) {
+      return [];
+    }
+  };
+
+  global.mountLocationPicker = function (el, opts) {
+    if (!el || typeof L === 'undefined') return null;
+    const start = [Number(opts.lat) || 8.335, Number(opts.lng) || 80.411];
+    const map = L.map(el, { zoomControl: false, attributionControl: false }).setView(start, 16);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    let liveMarker = null;
+    if (opts.liveLat != null && opts.liveLng != null) {
+      liveMarker = L.marker([opts.liveLat, opts.liveLng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
+    }
+    setTimeout(() => map.invalidateSize(), 200);
+    setTimeout(() => map.invalidateSize(), 600);
+    return {
+      map,
+      getCenter() {
+        const c = map.getCenter();
+        return { lat: c.lat, lng: c.lng };
+      },
+      setView(lat, lng, z) {
+        map.setView([lat, lng], z || 16);
+      },
+      setLive(lat, lng) {
+        if (lat == null) return;
+        if (!liveMarker) liveMarker = L.marker([lat, lng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
+        else liveMarker.setLatLng([lat, lng]);
+      },
+      onMoveEnd(fn) {
+        map.on('moveend', () => {
+          const c = map.getCenter();
+          fn(c.lat, c.lng);
+        });
+      },
+      destroy() {
+        try { map.remove(); } catch (_) {}
       },
     };
   };

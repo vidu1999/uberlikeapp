@@ -3,9 +3,11 @@ import '../../app.dart';
 import '../../config.dart';
 import '../../data/repository.dart';
 import '../../models/shop.dart';
+import '../../data/place.dart';
 import '../../theme.dart';
 import '../../widgets/settings_button.dart';
 import 'cart_screen.dart';
+import 'location_picker.dart';
 import 'my_orders_screen.dart';
 import 'search_screen.dart';
 import 'shop_menu_screen.dart';
@@ -24,6 +26,12 @@ class _CustomerHomeState extends State<CustomerHome> {
   String category = 'All';
   String query = '';
   final favs = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    UserPlace.instance.start();
+  }
 
   String get _hello {
     final h = DateTime.now().hour;
@@ -129,8 +137,21 @@ class _CustomerHomeState extends State<CustomerHome> {
               children: [
                 const Icon(Icons.location_on_outlined, size: 18),
                 const SizedBox(width: 4),
-                const Text('Anuradhapura', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                const Icon(Icons.expand_more, size: 18),
+                ValueListenableBuilder<int>(
+                  valueListenable: UserPlace.instance.notifier,
+                  builder: (_, __, ___) {
+                    final label = UserPlace.instance.label.split(',').first;
+                    return GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPickerScreen())),
+                      child: Row(
+                        children: [
+                          Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                          const Icon(Icons.expand_more, size: 18),
+                        ],
+                      ),
+                    );
+                  },
+                ),
                 const Spacer(),
                 CircleAvatar(
                   radius: 18,

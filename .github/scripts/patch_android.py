@@ -32,6 +32,13 @@ for p in pathlib.Path("android").rglob("*"):
         n = n.replace('android:label="uberlikeapp"', f'android:label="{label}"')
         if "usesCleartextTraffic" not in n:
             n = re.sub(r"<application\b", '<application android:usesCleartextTraffic="true"', n, count=1)
+        if "ACCESS_FINE_LOCATION" not in n:
+            n = re.sub(
+                r"(<manifest[^>]*>)",
+                r'\1\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>',
+                n,
+                count=1,
+            )
     if n != t:
         p.write_text(n, encoding="utf-8")
 print("patched", ROLE, app_id, label)

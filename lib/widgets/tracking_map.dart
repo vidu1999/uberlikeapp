@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'live_dot.dart';
 
 class TrackingMap extends StatelessWidget {
   final double destLat;
@@ -9,6 +10,8 @@ class TrackingMap extends StatelessWidget {
   final double? riderLng;
   final double? shopLat;
   final double? shopLng;
+  final double? liveLat;
+  final double? liveLng;
   final bool dark;
   const TrackingMap({
     super.key,
@@ -18,6 +21,8 @@ class TrackingMap extends StatelessWidget {
     this.riderLng,
     this.shopLat,
     this.shopLng,
+    this.liveLat,
+    this.liveLng,
     this.dark = true,
   });
 
@@ -143,6 +148,13 @@ class TrackingMap extends StatelessWidget {
                 ],
               ),
             ),
+            if (liveLat != null && liveLng != null)
+              Marker(
+                point: LatLng(liveLat!, liveLng!),
+                width: 56,
+                height: 56,
+                child: const LiveDot(size: 20),
+              ),
             if (rider != null)
               Marker(
                 point: rider,

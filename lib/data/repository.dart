@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
+import 'place.dart';
 import '../models/message.dart';
 import '../models/order.dart';
 import '../models/shop.dart';
@@ -421,10 +422,14 @@ class OrderRepository {
     required String address,
     String note = '',
     String paymentMethod = 'Cash on delivery',
+    double? deliveryLat,
+    double? deliveryLng,
   }) async {
     final cart = cartNotifier.value;
     if (cart.isEmpty) return null;
     final u = user;
+    final dlat = deliveryLat ?? UserPlace.instance.lat;
+    final dlng = deliveryLng ?? UserPlace.instance.lng;
     final payload = {
       'shopId': cart.first.shopId,
       'userId': u?.id ?? 'USER_1',
@@ -433,8 +438,8 @@ class OrderRepository {
       'address': address,
       'note': note,
       'paymentMethod': paymentMethod,
-      'deliveryLat': 8.3350,
-      'deliveryLng': 80.4108,
+      'deliveryLat': dlat,
+      'deliveryLng': dlng,
       'items': cart.map((e) => e.toJson()).toList(),
     };
     final uri = _uri('/api/orders');
@@ -460,8 +465,8 @@ class OrderRepository {
       status: OrderStatus.pending,
       items: cart.map((e) => DeliveryItem(name: e.name, qty: e.qty, price: e.price)).toList(),
       totalAmount: cartTotal + 200,
-      deliveryLat: 8.3350,
-      deliveryLng: 80.4108,
+      deliveryLat: dlat,
+      deliveryLng: dlng,
       timestamp: DateTime.now(),
       shopName: shop.isNotEmpty ? shop.first.name : 'Shop',
       customerName: u?.name ?? 'Vidura',

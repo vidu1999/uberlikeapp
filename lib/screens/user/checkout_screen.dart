@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../theme.dart';
+import 'location_picker.dart';
 import 'order_tracking_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -11,7 +13,7 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
-  final _addr = TextEditingController(text: 'No.123, Lake View Road, Anuradhapura');
+  late final _addr = TextEditingController(text: UserPlace.instance.label);
   String ship = 'standard';
   String pay = 'Cash on delivery';
   bool placing = false;
@@ -20,7 +22,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _place() async {
     setState(() => placing = true);
-    final order = await OrderRepository.instance.checkout(address: _addr.text, paymentMethod: pay);
+    final order = await OrderRepository.instance.checkout(
+      address: _addr.text,
+      paymentMethod: pay,
+      deliveryLat: UserPlace.instance.lat,
+      deliveryLng: UserPlace.instance.lng,
+    );
     if (!mounted) return;
     setState(() => placing = false);
     if (order == null) {
@@ -44,6 +51,16 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         children: [
           const Text('Delivery Address', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
           const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () async {
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPickerScreen()));
+                if (mounted) setState(() => _addr.text = UserPlace.instance.label);
+              },
+              child: const Text('Change on map', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+            ),
+          ),
           TextField(
             controller: _addr,
             maxLines: 2,
