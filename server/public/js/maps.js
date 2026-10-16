@@ -81,6 +81,15 @@
     });
   }
 
+  function dropPinIcon() {
+    return L.divIcon({
+      className: 'drop-pin-wrap',
+      html: '<div class="drop-pin"><span></span></div>',
+      iconSize: [36, 48],
+      iconAnchor: [18, 46],
+    });
+  }
+
   function bikeIcon() {
     return L.divIcon({
       className: 'pin-bike-wrap',
@@ -288,35 +297,80 @@
     const startLng = opts.liveLng != null ? opts.liveLng : (Number(opts.lng) || 80.411);
     const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([startLat, startLng], 18);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    let follow = true;
+    let follow = opts.liveLat != null;
     let liveMarker = null;
+    let accCircle = null;
+    const pin = L.marker([startLat, startLng], {
+      icon: dropPinIcon(),
+      draggable: true,
+      autoPan: true,
+      zIndexOffset: 1100,
+    }).addTo(map);
     if (opts.liveLat != null && opts.liveLng != null) {
-      liveMarker = L.marker([opts.liveLat, opts.liveLng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
+      liveMarker = L.marker([opts.liveLat, opts.liveLng], {
+        icon: liveDotIcon(),
+        zIndexOffset: 800,
+        interactive: false,
+      }).addTo(map);
     }
-    map.on('dragstart', () => { follow = false; });
-    setTimeout(() => map.invalidateSize(), 200);
-    setTimeout(() => map.invalidateSize(), 600);
+    pin.on('dragstart', () => { follow = false; });
+    setTimeout(() => map.invalidateSize(), 80);
+    setTimeout(() => map.invalidateSize(), 300);
+    setTimeout(() => map.invalidateSize(), 800);
     return {
       map,
       getCenter() {
-        const c = map.getCenter();
-        return { lat: c.lat, lng: c.lng };
+        const p = pin.getLatLng();
+        return { lat: p.lat, lng: p.lng };
       },
       setView(lat, lng, z) {
-        follow = true;
+        follow = false;
+        pin.setLatLng([lat, lng]);
         map.setView([lat, lng], z || 18);
       },
-      setLive(lat, lng) {
+      goLive(lat, lng, z) {
+        follow = true;
+        pin.setLatLng([lat, lng]);
+        map.setView([lat, lng], z || 18);
+      },
+      setLive(lat, lng, acc) {
         if (lat == null || lng == null) return;
-        if (!liveMarker) liveMarker = L.marker([lat, lng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
-        else liveMarker.setLatLng([lat, lng]);
-        if (follow) map.setView([lat, lng], Math.max(map.getZoom(), 18));
+        if (!liveMarker) {
+          liveMarker = L.marker([lat, lng], {
+            icon: liveDotIcon(),
+            zIndexOffset: 800,
+            interactive: false,
+          }).addTo(map);
+        } else {
+          liveMarker.setLatLng([lat, lng]);
+        }
+        const meters = Number(acc);
+        if (meters > 0 && meters < 2500) {
+          if (!accCircle) {
+            accCircle = L.circle([lat, lng], {
+              radius: meters,
+              color: '#1A73E8',
+              weight: 1,
+              fillColor: '#1A73E8',
+              fillOpacity: 0.14,
+              interactive: false,
+            }).addTo(map);
+          } else {
+            accCircle.setLatLng([lat, lng]);
+            accCircle.setRadius(meters);
+          }
+        }
+        if (follow) {
+          pin.setLatLng([lat, lng]);
+          map.setView([lat, lng], Math.max(map.getZoom(), 18));
+        }
       },
       onMoveEnd(fn) {
-        map.on('moveend', () => {
-          const c = map.getCenter();
-          fn(c.lat, c.lng);
-        });
+        const fire = () => {
+          const p = pin.getLatLng();
+          fn(p.lat, p.lng);
+        };
+        pin.on('dragend', fire);
       },
       destroy() {
         try { map.remove(); } catch (_) {}

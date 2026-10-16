@@ -179,9 +179,13 @@
 
 .err { color: #b91c1c; font-size: 13px; min-height: 18px; }
 .u-hi p.hungry { color: #6B7280; font-size: 13px; margin-top: 4px; }
-.u-city { cursor: pointer; }
+.u-city { cursor: pointer; border: 0; background: 0; padding: 0; font: inherit; flex-direction: column; align-items: flex-start; gap: 2px; }
+.u-city small { display: block; margin-left: 22px; font-size: 11px; font-weight: 600; color: #1A73E8; }
 
-.live-dot-wrap { background: none !important; border: none !important; }
+.leaflet-div-icon.live-dot-wrap,
+.leaflet-div-icon.drop-pin-wrap {
+  background: none !important; border: none !important;
+}
 .live-dot { width: 56px; height: 56px; position: relative; pointer-events: none; }
 .live-dot b {
   position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
@@ -199,30 +203,57 @@
   100% { transform: scale(4.6); opacity: 0; }
 }
 
+.drop-pin {
+  width: 28px; height: 28px;
+  background: #00C853;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 8px 14px rgba(0,0,0,.28);
+  position: relative;
+}
+.drop-pin span {
+  position: absolute; left: 50%; top: 50%;
+  width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  background: #fff; border-radius: 50%;
+  transform: rotate(45deg);
+}
+
 .loc-pick { position: absolute; inset: 0; background: #fff; display: flex; flex-direction: column; z-index: 20; }
-.loc-search { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: #fff; z-index: 3; box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+.loc-search { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: #fff; z-index: 3; box-shadow: 0 4px 16px rgba(0,0,0,.06); flex: none; }
 .loc-search input { flex: 1; border: 1px solid #E5E7EB; border-radius: 12px; padding: 10px 12px; font-size: 15px; }
 .loc-search button { border: 0; background: #F3F4F6; width: 40px; height: 40px; border-radius: 12px; font-size: 18px; cursor: pointer; }
 .loc-hits { position: absolute; left: 12px; right: 12px; top: 58px; background: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 4; overflow: hidden; }
 .loc-hits button { display: block; width: 100%; text-align: left; padding: 12px 14px; border: 0; background: #fff; border-bottom: 1px solid #F3F4F6; cursor: pointer; font-size: 13px; }
-.loc-map { flex: 1; min-height: 0; position: relative; background: #e8eef5; }
+.loc-stage { flex: 1; min-height: 240px; position: relative; background: #e8eef5; }
+.loc-map { position: absolute; inset: 0; }
 .loc-map .leaflet-container { height: 100%; width: 100%; }
-.loc-center {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%);
-  z-index: 2; pointer-events: none; font-size: 36px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25));
-}
 .loc-me {
-  position: absolute; right: 14px; bottom: 150px; z-index: 3;
+  position: absolute; right: 14px; bottom: 16px; z-index: 3;
   width: 44px; height: 44px; border-radius: 50%; border: 0; background: #fff;
   box-shadow: 0 4px 14px rgba(0,0,0,.16); font-size: 18px; cursor: pointer; color: #1A73E8;
 }
 .loc-sheet {
   background: #fff; padding: 14px 16px 20px; border-radius: 18px 18px 0 0;
-  box-shadow: 0 -8px 24px rgba(0,0,0,.08); z-index: 3;
+  box-shadow: 0 -8px 24px rgba(0,0,0,.08); z-index: 3; flex: none;
 }
 .loc-sheet .live-line { display: flex; align-items: center; gap: 8px; color: #1A73E8; font-weight: 700; font-size: 12px; margin-bottom: 6px; }
 .loc-sheet .live-line [data-loc-acc] { color: #6B7280; font-weight: 600; }
 .loc-sheet .live-line .live-dot { width: 22px; height: 22px; }
 .loc-sheet .live-line .live-dot b { width: 10px; height: 10px; margin: -5px 0 0 -5px; border-width: 2px; }
 .loc-sheet .live-line .live-dot i { width: 10px; height: 10px; margin: -5px 0 0 -5px; }
-.loc-sheet b { display: block; font-size: 15px; margin-bottom: 10px; line-height: 1.35; }
+.loc-sheet b { display: block; font-size: 15px; margin-bottom: 6px; line-height: 1.35; }
+.loc-hint { color: #6B7280; font-size: 12px; margin: 0 0 12px; }
+
+.qb-locperm {
+  min-height: 100%; background: #fff; color: #111;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 32px 24px 40px;
+}
+.qb-locperm .pin-big {
+  width: 92px; height: 92px; border-radius: 50%; background: #E8F8EE;
+  display: grid; place-items: center; margin-bottom: 18px;
+}
+.qb-locperm h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 0 0 10px; }
+.qb-locperm p { color: #6B7280; margin: 0 0 18px; line-height: 1.45; max-width: 280px; }
+.qb-locperm .btn-qb { width: 100%; max-width: 320px; }

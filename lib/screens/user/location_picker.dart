@@ -114,6 +114,19 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.uberlike.customer',
               ),
+              if (live != null && acc != null && acc > 0)
+                CircleLayer(
+                  circles: [
+                    CircleMarker(
+                      point: live,
+                      radius: acc.clamp(1, 800).toDouble(),
+                      useRadiusInMeter: true,
+                      color: const Color(0x221A73E8),
+                      borderColor: const Color(0xFF1A73E8),
+                      borderStrokeWidth: 1,
+                    ),
+                  ],
+                ),
               MarkerLayer(
                 markers: [
                   if (live != null)
@@ -130,8 +143,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           const IgnorePointer(
             child: Center(
               child: Padding(
-                padding: EdgeInsets.only(bottom: 36),
-                child: Text('📍', style: TextStyle(fontSize: 40)),
+                padding: EdgeInsets.only(bottom: 26),
+                child: Icon(Icons.location_on, size: 52, color: Brand.green, shadows: [
+                  Shadow(color: Color(0x66000000), blurRadius: 8, offset: Offset(0, 3)),
+                ]),
               ),
             ),
           ),

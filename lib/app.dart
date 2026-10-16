@@ -3,6 +3,7 @@ import 'data/repository.dart';
 import 'models/message.dart';
 import 'screens/welcome_flow.dart';
 import 'screens/user/customer_home.dart';
+import 'screens/user/location_allow.dart';
 import 'screens/shop/shop_home.dart';
 import 'screens/rider/rider_home.dart';
 import 'theme.dart';
@@ -62,7 +63,9 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     switch (_role) {
       case UserRole.customer:
-        return CustomerHome(onSwitchRole: _switchRole, currentRole: _role);
+        return LocationAllowGate(
+          child: CustomerHome(onSwitchRole: _switchRole, currentRole: _role),
+        );
       case UserRole.shop:
         return ShopHome(onSwitchRole: _switchRole, currentRole: _role);
       case UserRole.rider:

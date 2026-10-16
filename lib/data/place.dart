@@ -19,8 +19,13 @@ class UserPlace {
   double? liveLat;
   double? liveLng;
   double? accuracyM;
+  bool denied = false;
+  bool deniedForever = false;
+  String? error;
   StreamSubscription<Position>? _sub;
   bool _starting = false;
+
+  bool get hasLive => liveLat != null;
 
   static const _settings = LocationSettings(
     accuracy: LocationAccuracy.bestForNavigation,
@@ -30,14 +35,26 @@ class UserPlace {
   Future<void> start() async {
     if (_sub != null || _starting) return;
     _starting = true;
+    error = null;
+    denied = false;
+    deniedForever = false;
+    final service = await Geolocator.isLocationServiceEnabled();
+    if (!service) {
+      _starting = false;
+      error = 'Turn on Location / GPS, then tap Allow location.';
+      liveNotifier.value++;
+      return;
+    }
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
       _starting = false;
-      label = 'Anuradhapura';
-      notifier.value++;
+      denied = true;
+      deniedForever = perm == LocationPermission.deniedForever;
+      error = 'Location permission is required.';
+      liveNotifier.value++;
       return;
     }
     _sub = Geolocator.getPositionStream(locationSettings: _settings).listen((pos) {
@@ -49,12 +66,16 @@ class UserPlace {
         timeLimit: const Duration(seconds: 20),
       );
       await _apply(pos, reverse: true);
-    } catch (_) {}
+    } catch (_) {
+      error = 'Waiting for GPS. Move outdoors for ~1 m accuracy.';
+      liveNotifier.value++;
+    }
+    _starting = false;
   }
 
   Future<void> _apply(Position pos, {required bool reverse}) async {
     final acc = pos.accuracy;
-    if (accuracyM != null && acc > accuracyM! + 5 && acc > 8) return;
+    if (accuracyM != null && accuracyM! <= 12 && acc > 40) return;
     liveLat = pos.latitude;
     liveLng = pos.longitude;
     accuracyM = acc;
