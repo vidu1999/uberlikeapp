@@ -72,9 +72,76 @@
     }, extra || {});
   }
 
+  function e164(phone) {
+    let d = String(phone || '').replace(/\D/g, '');
+    if (d.startsWith('0') && d.length === 10) d = '94' + d.slice(1);
+    return d;
+  }
+
+  async function sendWhatsApp(phone, body) {
+    const wa = window.QB_WA || {};
+    const to = e164(phone);
+    const sb = String(window.QB_SUPABASE_URL || '').replace(/\/$/, '');
+    if (sb && window.QB_SUPABASE_ANON) {
+      try {
+        const res = await fetch(sb + '/functions/v1/send-otp', {
+          method: 'POST',
+          headers: {
+            apikey: window.QB_SUPABASE_ANON,
+            Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone: to, body }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) return true;
+        if (res.status && res.status !== 404) {
+          const msg = (data && data.error) ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : ('WhatsApp ' + res.status);
+          throw new Error(msg);
+        }
+      } catch (e) {
+        if (e && e.message && /WhatsApp|GREEN_|META_|Set GREEN|send failed/i.test(e.message)) throw e;
+      }
+    }
+    if (wa.greenId && wa.greenToken) {
+      const res = await fetch(
+        'https://api.green-api.com/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: to + '@c.us', message: body }),
+        },
+      );
+      if (!res.ok) throw new Error('WhatsApp send failed (' + res.status + ')');
+      return true;
+    }
+    if (wa.metaToken && wa.metaPhoneId) {
+      const res = await fetch('https://graph.facebook.com/v21.0/' + wa.metaPhoneId + '/messages', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + wa.metaToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: to,
+          type: 'text',
+          text: { body: body },
+        }),
+      });
+      if (!res.ok) throw new Error('WhatsApp Cloud send failed (' + res.status + ')');
+      return true;
+    }
+    throw new Error('WhatsApp sender is not connected. Paste your Green-API idInstance and apiTokenInstance.');
+  }
+
   async function sbGet(table) {
     const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
-    const res = await fetch(base + '/rest/v1/' + table, { headers: sbHeaders() });
+    const ctrl = new AbortController();
+    const t = setTimeout(function () { ctrl.abort(); }, 8000);
+    let res;
+    try {
+      res = await fetch(base + '/rest/v1/' + table, { headers: sbHeaders(), signal: ctrl.signal });
+    } finally {
+      clearTimeout(t);
+    }
     const text = await res.text();
     if (!res.ok) throw new Error('Supabase ' + table.split('?')[0] + ' ' + res.status);
     return text ? JSON.parse(text) : [];
@@ -271,16 +338,9 @@
           attempts: 0,
         }]);
       } catch (_) {}
-    } else {
-      try {
-        return await getJSON('/api/otp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role, phone }),
-        });
-      } catch (_) {}
     }
-    return { ok: true, phone, smsToken, channel: 'whatsapp', expiresIn: 300, body };
+    await sendWhatsApp(phone, body);
+    return { ok: true, phone, smsToken, channel: 'whatsapp', expiresIn: 300 };
   };
 
   API.readSms = async function (smsToken) {

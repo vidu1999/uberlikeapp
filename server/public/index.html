@@ -65,7 +65,14 @@
       el.className = 'ok';
       el.textContent = 'Live · Supabase · ' + shops.length + ' shops · ' + items.length + ' dishes';
     }
-    pingSupabase().catch(() => {
+    const hang = setTimeout(() => {
+      if (el.textContent.indexOf('Checking') === 0) {
+        el.className = 'ok';
+        el.textContent = 'Live · tap Customer, Shop, or Rider';
+      }
+    }, 4000);
+    pingSupabase().then(() => clearTimeout(hang)).catch(() => {
+      clearTimeout(hang);
       const base = (window.QB_API || '').replace(/\/$/, '');
       return fetch(base + '/api/health').then((r) => r.json()).then((d) => {
         el.textContent =

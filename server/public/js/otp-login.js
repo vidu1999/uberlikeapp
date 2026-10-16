@@ -70,16 +70,11 @@
     const toast = root.querySelector('[data-sms]');
     const preview = root.querySelector('[data-sms-preview]');
     const bubble = root.querySelector('[data-sms-body]');
-    try {
-      await new Promise((r) => setTimeout(r, 800));
-      const msg = await API.readSms(smsToken);
-      if (bubble) bubble.textContent = msg.body;
-      if (preview) preview.textContent = msg.body;
-      toast.classList.remove('hidden');
-      setTimeout(() => toast.classList.add('hidden'), 7000);
-    } catch (_) {
-      if (bubble) bubble.textContent = 'WhatsApp message failed to load. Tap resend.';
-    }
+    const sent = 'Open WhatsApp. We sent the 4-digit code to this number.';
+    if (bubble) bubble.textContent = sent;
+    if (preview) preview.textContent = sent;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 7000);
   }
 
   function bind(opts) {

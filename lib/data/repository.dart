@@ -114,7 +114,35 @@ class OrderRepository {
         }
       ]);
     } catch (_) {}
-    return {'ok': true, 'phone': phone, 'smsToken': token, 'channel': 'whatsapp', 'body': _otpBody};
+    await _sendWhatsApp(phone, _otpBody!);
+    return {'ok': true, 'phone': phone, 'smsToken': token, 'channel': 'whatsapp'};
+  }
+
+  String _e164(String phone) {
+    var d = phone.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('0') && d.length == 10) d = '94${d.substring(1)}';
+    return d;
+  }
+
+  Future<void> _sendWhatsApp(String phone, String body) async {
+    final to = _e164(phone);
+    final uri = Uri.parse('${AppConfig.normalize(AppConfig.supabaseUrl)}/functions/v1/send-otp');
+    final res = await http
+        .post(
+          uri,
+          headers: {
+            'apikey': AppConfig.supabaseAnon,
+            'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'phone': to, 'body': body}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final data = jsonDecode(res.body);
+      if (data is Map && data['ok'] == true) return;
+    }
+    throw Exception('Could not send WhatsApp to +$to. Connect your sending number (Green-API).');
   }
 
   Future<String?> readSms(String smsToken) async {

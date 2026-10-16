@@ -88,18 +88,12 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
       if (!mounted) return;
-      final token = data?['smsToken']?.toString();
       phoneSent = data?['phone']?.toString() ?? _phone.text;
       setState(() {
         busy = false;
         codeStep = true;
-        smsBody = data?['body']?.toString();
+        smsBody = 'Open WhatsApp. We sent the 4-digit code to this number.';
       });
-      if (token != null && (smsBody == null || smsBody!.isEmpty)) {
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        final body = await OrderRepository.instance.readSms(token);
-        if (mounted) setState(() => smsBody = body);
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
