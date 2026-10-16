@@ -134,12 +134,8 @@
         if (v && hosts.indexOf(v) === -1) hosts.push(v);
       }
       addHost(wa.apiUrl);
-      if (id.length >= 4) {
-        addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
-        addHost('https://' + id.slice(0, 4) + '.api.greenapi.com');
-      }
+      if (id.length >= 4) addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
       addHost('https://api.green-api.com');
-      addHost('https://api.greenapi.com');
       let last = 'WhatsApp send failed';
       for (let i = 0; i < hosts.length; i++) {
         try {
