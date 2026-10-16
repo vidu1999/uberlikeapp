@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../data/repository.dart';
-import '../../models/order.dart';
 import '../../models/shop.dart';
 import 'order_tracking_screen.dart';
 

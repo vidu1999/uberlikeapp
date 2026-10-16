@@ -126,53 +126,17 @@ class OrderRepository {
 
   Future<void> _sendWhatsApp(String phone, String body) async {
     final to = _e164(phone);
-    String clean(String s) => s.replaceAll(RegExp(r'\s+'), '').replaceAll(RegExp(r'[\[\]\(\)]'), '');
-
-    Future<bool> postJson(Uri uri, Map<String, String> headers, Map<String, dynamic> payload) async {
-      final res = await http
-          .post(uri, headers: headers, body: jsonEncode(payload))
-          .timeout(const Duration(seconds: 20));
-      if (res.statusCode < 200 || res.statusCode >= 300) return false;
-      final text = res.body.trim();
-      if (text.startsWith('<') || text.isEmpty) return false;
-      final data = jsonDecode(text);
-      return data is Map && data['ok'] == true;
-    }
-
-    final pages = AppConfig.normalize(AppConfig.baseUrl);
-    if (pages.isNotEmpty) {
-      try {
-        if (await postJson(
-          Uri.parse('$pages/otp'),
-          {'Content-Type': 'application/json'},
-          {'phone': to, 'body': body},
-        )) {
-          return;
-        }
-      } catch (_) {}
-    }
-
-    try {
-      if (await postJson(
-        Uri.parse('${AppConfig.normalize(AppConfig.supabaseUrl)}/functions/v1/send-otp'),
-        {
-          'apikey': AppConfig.supabaseAnon,
-          'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
-          'Content-Type': 'application/json',
-        },
-        {'phone': to, 'body': body},
-      )) {
-        return;
-      }
-    } catch (_) {}
-
-    final id = clean('710722770031');
-    final token = clean('81a5c51bd44b48a08367d01f3ca546b5a4e7409696654a8b9a');
-    final hosts = <String>['7107.api.green-api.com', 'api.green-api.com'];
-    Object? last;
+    const id = '710722770031';
+    const token = '81a5c51bd44b48a08367d01f3ca546b5a4e7409696654a8b9a';
+    const hosts = <String>['7107.api.green-api.com', 'api.green-api.com'];
+    String? last;
     for (final host in hosts) {
       try {
-        final uri = Uri(scheme: 'https', host: host, path: '/waInstance$id/sendMessage/$token');
+        final uri = Uri(
+          scheme: 'https',
+          host: host,
+          path: '/waInstance$id/sendMessage/$token',
+        );
         final res = await http
             .post(
               uri,
@@ -181,14 +145,12 @@ class OrderRepository {
             )
             .timeout(const Duration(seconds: 20));
         if (res.statusCode >= 200 && res.statusCode < 300) return;
-        last = 'WhatsApp send failed (${res.statusCode}).';
+        last = 'WhatsApp send failed (${res.statusCode})';
       } catch (e) {
-        last = e;
+        last = e.toString();
       }
     }
-    throw Exception(
-      'Could not send WhatsApp to +$to. ${last ?? ''} Use the website if the phone blocks Green-API.',
-    );
+    throw Exception('Could not send WhatsApp to +$to. ${last ?? ''}');
   }
 
   Future<String?> readSms(String smsToken) async {

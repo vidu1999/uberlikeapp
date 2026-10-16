@@ -7,6 +7,7 @@ import '../../theme.dart';
 import '../../widgets/settings_button.dart';
 import 'cart_screen.dart';
 import 'my_orders_screen.dart';
+import 'search_screen.dart';
 import 'shop_menu_screen.dart';
 
 class CustomerHome extends StatefulWidget {
@@ -254,13 +255,16 @@ class _CustomerHomeState extends State<CustomerHome> {
               }).toList(),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Row(
               children: [
-                Text('Popular Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                Spacer(),
-                Text('See All ›', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700)),
+                const Text('Popular Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+                  child: const Text('See All ›', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700)),
+                ),
               ],
             ),
           ),

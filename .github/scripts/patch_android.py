@@ -6,9 +6,9 @@ import sys
 
 ROLE = sys.argv[1]
 IDS = {
-    "user": ("com.uberlike.customer", "SwiftDrop User"),
-    "shop": ("com.uberlike.shop", "SwiftDrop Shop"),
-    "rider": ("com.uberlike.rider", "SwiftDrop Rider"),
+    "user": ("com.uberlike.customer", "QuickBite User"),
+    "shop": ("com.uberlike.shop", "QuickBite Shop"),
+    "rider": ("com.uberlike.rider", "QuickBite Rider"),
 }
 app_id, label = IDS[ROLE]
 shutil.rmtree("android", ignore_errors=True)
