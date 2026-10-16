@@ -32,6 +32,10 @@ body > #root > .track-screen {
   background: #0B1220;
   font: inherit;
 }
+.track-screen .leaflet-tile-pane,
+.rd-screen .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.88) contrast(1.05) saturate(0.35);
+}
 .track-screen .leaflet-control-attribution,
 .track-screen .leaflet-control-zoom,
 .rd-screen .leaflet-control-attribution,

@@ -161,9 +161,9 @@
       zoomControl: false,
       attributionControl: false,
     }).setView(center, 14);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
+      attribution: '',
     }).addTo(map);
 
     L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map);

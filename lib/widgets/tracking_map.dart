@@ -71,17 +71,26 @@ class TrackingMap extends StatelessWidget {
       rest = full.sublist(_nearest(full, rider));
     }
     final center = rider ?? dest;
-    final tiles = dark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
-
     return FlutterMap(
       options: MapOptions(initialCenter: center, initialZoom: 14),
       children: [
         TileLayer(
-          urlTemplate: tiles,
-          subdomains: const ['a', 'b', 'c', 'd'],
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.uberlike.customer',
+          fallbackUrl: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
+          tileBuilder: dark
+              ? (context, widget, tile) {
+                  return ColorFiltered(
+                    colorFilter: const ColorFilter.matrix(<double>[
+                      -0.55, 0, 0, 0, 255,
+                      0, -0.45, 0, 0, 230,
+                      0, 0, -0.35, 0, 200,
+                      0, 0, 0, 1, 0,
+                    ]),
+                    child: widget,
+                  );
+                }
+              : null,
         ),
         PolylineLayer(
           polylines: [
