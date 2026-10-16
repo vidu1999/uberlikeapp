@@ -44,60 +44,113 @@ class OrderRepository {
     return Uri.parse('$base$path');
   }
 
-  Future<Map<String, dynamic>?> sendOtp(String role, String phone) async {
-    final uri = _uri('/api/otp/send');
-    if (uri == null) return null;
-    try {
-      final res = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'role': role, 'phone': phone}),
-          )
-          .timeout(const Duration(seconds: 8));
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      if (res.statusCode >= 200 && res.statusCode < 300) return data;
-      throw Exception(data['error'] ?? 'Could not send SMS');
-    } catch (e) {
-      rethrow;
+  String? _otpPhone;
+  String? _otpRole;
+  String? _otpCode;
+  String? _otpBody;
+  DateTime? _otpExp;
+
+  String _normPhone(String raw) {
+    var d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('94') && d.length == 11) d = '0${d.substring(2)}';
+    if (d.length == 9 && d.startsWith('7')) d = '0$d';
+    return d;
+  }
+
+  Future<void> _enterAccount(String role, String phone) async {
+    final rows = await _sbGet('accounts?select=*&role=eq.$role&phone=eq.$phone');
+    Map<String, dynamic> user;
+    if (rows.isNotEmpty) {
+      user = Map<String, dynamic>.from(rows.first as Map);
+    } else {
+      user = {
+        'id': '${role.toUpperCase()}_${phone.substring(phone.length - 4)}',
+        'name': role == 'shop'
+            ? 'Shop staff'
+            : role == 'rider'
+                ? 'Courier'
+                : 'Guest',
+        'phone': phone,
+        'role': role,
+        'pin': 'otp',
+        'address': 'No.123, Lake View Road, Anuradhapura',
+      };
+      if (role == 'shop') user['shop_id'] = 'SHOP_1';
+      if (role == 'rider') {
+        user['vehicle'] = 'Bike';
+        user['rating'] = 5;
+      }
+      try {
+        await _sbWrite('accounts', 'POST', [user]);
+      } catch (_) {}
     }
+    token = 'sb_${user['id']}';
+    userNotifier.value = SessionUser.fromJson(user);
+    connectedNotifier.value = true;
+    await refresh();
+  }
+
+  Future<Map<String, dynamic>?> sendOtp(String role, String phone) async {
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    if (phone.length < 10) throw Exception('Enter a valid mobile number');
+    final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    _otpPhone = phone;
+    _otpRole = role;
+    _otpCode = code;
+    _otpBody = 'Your QuickBite code is $code. Don\'t share this WhatsApp message.';
+    _otpExp = DateTime.now().add(const Duration(minutes: 5));
+    final token = 'wa_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      await _sbWrite('otp_codes', 'POST', [
+        {
+          'id': token,
+          'phone': phone,
+          'role': role,
+          'code': code,
+          'body': _otpBody,
+          'expires_at': _otpExp!.toUtc().toIso8601String(),
+          'attempts': 0,
+        }
+      ]);
+    } catch (_) {}
+    return {'ok': true, 'phone': phone, 'smsToken': token, 'channel': 'whatsapp', 'body': _otpBody};
   }
 
   Future<String?> readSms(String smsToken) async {
-    final uri = _uri('/api/otp/sms?token=${Uri.encodeComponent(smsToken)}');
-    if (uri == null) return null;
+    if (_otpBody != null) return _otpBody;
     try {
-      final res = await http.get(uri).timeout(const Duration(seconds: 8));
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        return data['body']?.toString();
+      final rows = await _sbGet('otp_codes?id=eq.$smsToken&select=body');
+      if (rows.isNotEmpty) {
+        return Map<String, dynamic>.from(rows.first as Map)['body']?.toString();
       }
     } catch (_) {}
     return null;
   }
 
   Future<bool> verifyOtp(String role, String phone, String code) async {
-    final uri = _uri('/api/otp/verify');
-    if (uri == null) return false;
-    try {
-      final res = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'role': role, 'phone': phone, 'code': code}),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        token = data['token']?.toString();
-        userNotifier.value =
-            SessionUser.fromJson(Map<String, dynamic>.from(data['user'] as Map));
-        connectedNotifier.value = true;
-        await refresh();
-        return true;
-      }
-    } catch (_) {}
-    return false;
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    code = code.replaceAll(RegExp(r'\D'), '');
+    var match = _otpPhone == phone &&
+        _otpCode == code &&
+        _otpExp != null &&
+        DateTime.now().isBefore(_otpExp!);
+    if (!match) {
+      try {
+        final rows = await _sbGet(
+          'otp_codes?phone=eq.$phone&role=eq.$role&code=eq.$code&select=*',
+        );
+        if (rows.isNotEmpty) {
+          final rec = Map<String, dynamic>.from(rows.first as Map);
+          final exp = DateTime.tryParse('${rec['expires_at'] ?? ''}');
+          if (exp != null && DateTime.now().isBefore(exp.toLocal())) match = true;
+        }
+      } catch (_) {}
+    }
+    if (!match) return false;
+    await _enterAccount(role, phone);
+    return true;
   }
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {

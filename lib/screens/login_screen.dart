@@ -85,10 +85,6 @@ class _LoginScreenState extends State<LoginScreen> {
       smsBody = null;
     });
     AppConfig.baseUrl = AppConfig.normalize(AppConfig.baseUrl);
-    if (AppConfig.baseUrl.isEmpty || AppConfig.isStaticHost) {
-      await _demoEnter();
-      return;
-    }
     try {
       final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
       if (!mounted) return;
@@ -97,32 +93,19 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() {
         busy = false;
         codeStep = true;
+        smsBody = data?['body']?.toString();
       });
-      if (token != null) {
-        await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (token != null && (smsBody == null || smsBody!.isEmpty)) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
         final body = await OrderRepository.instance.readSms(token);
         if (mounted) setState(() => smsBody = body);
       }
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      await _demoEnter();
-    }
-  }
-
-  Future<void> _demoEnter() async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    final ok = await OrderRepository.instance.login(
-      _apiRole,
-      phone: _phone.text.trim(),
-      pin: '1234',
-    );
-    if (!mounted) return;
-    setState(() => busy = false);
-    if (!ok) {
-      setState(() => error = 'Demo login failed. Check phone: 0771234567 / 0772223333 / 0775556666');
+      setState(() {
+        busy = false;
+        error = e.toString().replaceFirst('Exception: ', '');
+      });
     }
   }
 
@@ -256,13 +239,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ? (codeStep ? 'Checking…' : 'Sending WhatsApp…')
                     : (codeStep ? 'Verify & enter' : 'Continue')),
               ),
-              if (!codeStep) ...[
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: busy ? null : _demoEnter,
-                  child: const Text('Enter demo · PIN 1234'),
-                ),
-              ],
               if (codeStep) ...[
                 const SizedBox(height: 8),
                 TextButton(

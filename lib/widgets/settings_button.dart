@@ -26,7 +26,7 @@ Future<void> showServerDialog(BuildContext context) async {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Paste only this, with no spaces:\nhttps://quickbite-2ao.pages.dev\n\nOn Pages, tap Enter demo (PIN 1234). WhatsApp OTP needs a Node host.',
+            'Paste only this, with no spaces:\nhttps://quickbite-2ao.pages.dev',
             style: TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 12),

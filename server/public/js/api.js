@@ -214,29 +214,122 @@
     });
   };
 
-  API.sendOtp = function (role, phone) {
-    return getJSON('/api/otp/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role, phone }),
-    });
+  function normalizePhone(raw) {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (d.startsWith('94') && d.length === 11) d = '0' + d.slice(2);
+    if (d.length === 9 && d.startsWith('7')) d = '0' + d;
+    return d;
+  }
+
+  async function enterAccount(role, phone) {
+    let rows = [];
+    try {
+      rows = await sbGet('accounts?select=*&role=eq.' + encodeURIComponent(role) + '&phone=eq.' + encodeURIComponent(phone));
+    } catch (_) {}
+    let row = rows && rows[0];
+    if (!row) {
+      row = {
+        id: String(role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
+        name: role === 'shop' ? 'Shop staff' : role === 'rider' ? 'Courier' : 'Guest',
+        phone,
+        pin: 'otp',
+        role: role || 'customer',
+        address: 'No.123, Lake View Road, Anuradhapura',
+      };
+      if (role === 'shop') row.shop_id = 'SHOP_1';
+      if (role === 'rider') {
+        row.vehicle = 'Bike';
+        row.rating = 5;
+      }
+      try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
+    }
+    API.user = mapAccount(row);
+    API.token = 'sb_' + row.id;
+    try { sessionStorage.setItem('sd_user_' + (API.user.role || API.roleHint), JSON.stringify(API.user)); } catch (_) {}
+    notify();
+    return API.user;
+  }
+
+  API.sendOtp = async function (role, phone) {
+    phone = normalizePhone(phone);
+    if (!/^07\d{8}$/.test(phone) && !/^\d{10,15}$/.test(phone)) {
+      throw new Error('Enter a valid mobile number');
+    }
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const smsToken = 'wa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';
+    API._otp = { id: smsToken, phone, role: role || 'customer', code, body, expires: Date.now() + 300000 };
+    if (sbConfigured()) {
+      try {
+        await sbSend('otp_codes', 'POST', [{
+          id: smsToken,
+          phone,
+          role: role || 'customer',
+          code,
+          body,
+          expires_at: new Date(API._otp.expires).toISOString(),
+          attempts: 0,
+        }]);
+      } catch (_) {}
+    } else {
+      try {
+        return await getJSON('/api/otp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role, phone }),
+        });
+      } catch (_) {}
+    }
+    return { ok: true, phone, smsToken, channel: 'whatsapp', expiresIn: 300, body };
   };
 
-  API.readSms = function (smsToken) {
+  API.readSms = async function (smsToken) {
+    if (API._otp && API._otp.id === smsToken) {
+      return { from: 'QuickBite', body: API._otp.body, phone: API._otp.phone, channel: 'whatsapp' };
+    }
+    if (sbConfigured()) {
+      try {
+        const rows = await sbGet('otp_codes?id=eq.' + encodeURIComponent(smsToken) + '&select=body,phone');
+        if (rows && rows[0]) return { from: 'QuickBite', body: rows[0].body, phone: rows[0].phone, channel: 'whatsapp' };
+      } catch (_) {}
+    }
     return getJSON('/api/otp/sms?token=' + encodeURIComponent(smsToken));
   };
 
   API.verifyOtp = async function (role, phone, code) {
-    const data = await getJSON('/api/otp/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role, phone, code }),
-    });
-    API.user = data.user;
-    API.token = data.token;
-    try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
-    notify();
-    return data.user;
+    phone = normalizePhone(phone);
+    code = String(code || '').replace(/\D/g, '');
+    let match = false;
+    if (API._otp && API._otp.phone === phone && API._otp.code === code && Date.now() < API._otp.expires) {
+      match = true;
+    }
+    if (!match && sbConfigured()) {
+      try {
+        const rows = await sbGet(
+          'otp_codes?phone=eq.' + encodeURIComponent(phone) +
+          '&role=eq.' + encodeURIComponent(role || 'customer') +
+          '&code=eq.' + encodeURIComponent(code) +
+          '&select=*',
+        );
+        const rec = rows && rows[0];
+        if (rec && new Date(rec.expires_at).getTime() > Date.now()) match = true;
+      } catch (_) {}
+    }
+    if (!match && !sbConfigured()) {
+      const data = await getJSON('/api/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, phone, code }),
+      });
+      API.user = data.user;
+      API.token = data.token;
+      try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
+      notify();
+      return data.user;
+    }
+    if (!match) throw new Error('That code does not match this phone number.');
+    API._otp = null;
+    return enterAccount(role || 'customer', phone);
   };
 
   API.restore = function () {
