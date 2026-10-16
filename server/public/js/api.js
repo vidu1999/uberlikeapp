@@ -72,6 +72,12 @@
     }, extra || {});
   }
 
+  function abortAfter(ms) {
+    const c = new AbortController();
+    setTimeout(function () { c.abort(); }, ms);
+    return c.signal;
+  }
+
   function e164(phone) {
     let d = String(phone || '').replace(/\D/g, '');
     if (d.startsWith('0') && d.length === 10) d = '94' + d.slice(1);
@@ -83,11 +89,12 @@
     const to = e164(phone);
     const payload = JSON.stringify({ phone: to, body: body });
     try {
-      const res = await fetch('/otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-      });
+        const res = await fetch('/otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          signal: abortAfter(12000),
+        });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) return true;
     } catch (_) {}
@@ -142,6 +149,7 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ chatId: to + '@c.us', message: body }),
+              signal: abortAfter(8000),
             },
           );
           if (res.ok) return true;
@@ -584,6 +592,7 @@
   };
 
   try {
+    if (!API.base) throw new Error('no stream');
     const es = new EventSource(url('/api/stream'));
     es.onmessage = (ev) => {
       if (sbConfigured()) {
