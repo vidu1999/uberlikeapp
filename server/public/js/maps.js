@@ -284,13 +284,16 @@
 
   global.mountLocationPicker = function (el, opts) {
     if (!el || typeof L === 'undefined') return null;
-    const start = [Number(opts.lat) || 8.335, Number(opts.lng) || 80.411];
-    const map = L.map(el, { zoomControl: false, attributionControl: false }).setView(start, 16);
+    const startLat = opts.liveLat != null ? opts.liveLat : (Number(opts.lat) || 8.335);
+    const startLng = opts.liveLng != null ? opts.liveLng : (Number(opts.lng) || 80.411);
+    const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([startLat, startLng], 18);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    let follow = true;
     let liveMarker = null;
     if (opts.liveLat != null && opts.liveLng != null) {
       liveMarker = L.marker([opts.liveLat, opts.liveLng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
     }
+    map.on('dragstart', () => { follow = false; });
     setTimeout(() => map.invalidateSize(), 200);
     setTimeout(() => map.invalidateSize(), 600);
     return {
@@ -300,12 +303,14 @@
         return { lat: c.lat, lng: c.lng };
       },
       setView(lat, lng, z) {
-        map.setView([lat, lng], z || 16);
+        follow = true;
+        map.setView([lat, lng], z || 18);
       },
       setLive(lat, lng) {
-        if (lat == null) return;
+        if (lat == null || lng == null) return;
         if (!liveMarker) liveMarker = L.marker([lat, lng], { icon: liveDotIcon(), zIndexOffset: 800 }).addTo(map);
         else liveMarker.setLatLng([lat, lng]);
+        if (follow) map.setView([lat, lng], Math.max(map.getZoom(), 18));
       },
       onMoveEnd(fn) {
         map.on('moveend', () => {

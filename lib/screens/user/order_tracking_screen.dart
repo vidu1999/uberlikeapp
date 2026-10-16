@@ -49,16 +49,19 @@ class OrderTrackingScreen extends StatelessWidget {
           return Stack(
             children: [
               Positioned.fill(
-                child: TrackingMap(
-                  destLat: current.deliveryLat,
-                  destLng: current.deliveryLng,
-                  riderLat: current.riderLat,
-                  riderLng: current.riderLng,
-                  shopLat: shop?.lat,
-                  shopLng: shop?.lng,
-                  liveLat: UserPlace.instance.liveLat,
-                  liveLng: UserPlace.instance.liveLng,
-                  dark: true,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: UserPlace.instance.liveNotifier,
+                  builder: (_, __, ___) => TrackingMap(
+                    destLat: current.deliveryLat,
+                    destLng: current.deliveryLng,
+                    riderLat: current.riderLat,
+                    riderLng: current.riderLng,
+                    shopLat: shop?.lat,
+                    shopLng: shop?.lng,
+                    liveLat: UserPlace.instance.liveLat,
+                    liveLng: UserPlace.instance.liveLng,
+                    dark: true,
+                  ),
                 ),
               ),
               SafeArea(

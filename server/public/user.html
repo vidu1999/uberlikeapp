@@ -93,25 +93,42 @@
       return lat.toFixed(5) + ', ' + lng.toFixed(5);
     }
     function startLiveLocation() {
-      if (!navigator.geolocation || startLiveLocation._on) return;
-      startLiveLocation._on = true;
-      navigator.geolocation.watchPosition(async (pos) => {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 };
+      const onFix = async (pos) => {
+        const acc = Number(pos.coords.accuracy || 999);
+        if (state.loc.acc != null && acc > state.loc.acc + 5 && acc > 8) return;
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
-        state.loc.liveLat = lat; state.loc.liveLng = lng;
-        window.QB_LIVE = { lat, lng };
+        state.loc.acc = acc;
+        state.loc.liveLat = lat;
+        state.loc.liveLng = lng;
+        window.QB_LIVE = { lat, lng, acc };
+        const accEl = document.querySelector('[data-loc-acc]');
+        if (accEl) accEl.textContent = 'GPS ±' + Math.max(1, Math.round(acc)) + ' m';
         if (state.locHandle && state.locHandle.setLive) state.locHandle.setLive(lat, lng);
         if (!state.loc.custom) {
-          const label = await labelAt(lat, lng);
-          setPlace(lat, lng, label, false);
-          if (state.screen === 'home' || state.screen === 'checkout') render();
+          const first = !state.loc._gps;
+          state.loc._gps = true;
+          setPlace(lat, lng, state.loc.label, false);
+          if (first) {
+            const label = await labelAt(lat, lng);
+            setPlace(lat, lng, label, false);
+            if (state.screen === 'home' || state.screen === 'checkout') render();
+          }
         }
-      }, () => {
+      };
+      const onErr = () => {
         if (state.loc.label === 'Finding your location…') {
           state.loc.label = 'Anuradhapura';
           state.address = 'Anuradhapura';
           if (state.screen === 'home') render();
         }
-      }, { enableHighAccuracy: true, maximumAge: 4000, timeout: 12000 });
+      };
+      navigator.geolocation.getCurrentPosition(onFix, onErr, opt);
+      if (!startLiveLocation._on) {
+        startLiveLocation._on = true;
+        navigator.geolocation.watchPosition(onFix, onErr, opt);
+      }
     }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -415,7 +432,7 @@
         <div class="loc-center">📍</div>
         <button class="loc-me" type="button" data-loc-me title="My live location">◎</button>
         <div class="loc-sheet">
-          <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live location</div>
+          <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live location <span data-loc-acc></span></div>
           <b data-loc-label>${esc(state.loc.label)}</b>
           <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
         </div>
@@ -678,8 +695,11 @@
       const hits = document.querySelector('[data-loc-hits]');
       if (typeof mountLocationPicker !== 'function' || !mapEl) return;
       if (state.locHandle) { try { state.locHandle.destroy(); } catch (_) {} }
+      startLiveLocation();
+      const pinLat = state.loc.liveLat != null ? state.loc.liveLat : state.loc.lat;
+      const pinLng = state.loc.liveLng != null ? state.loc.liveLng : state.loc.lng;
       state.locHandle = mountLocationPicker(mapEl, {
-        lat: state.loc.lat, lng: state.loc.lng,
+        lat: pinLat, lng: pinLng,
         liveLat: state.loc.liveLat, liveLng: state.loc.liveLng,
       });
       let seq = 0;
@@ -698,7 +718,7 @@
       if (me) me.onclick = () => {
         startLiveLocation();
         if (state.loc.liveLat == null) return;
-        state.locHandle && state.locHandle.setView(state.loc.liveLat, state.loc.liveLng, 17);
+        state.locHandle && state.locHandle.setView(state.loc.liveLat, state.loc.liveLng, 18);
       };
       const ok = document.querySelector('[data-loc-ok]');
       if (ok) ok.onclick = () => {
