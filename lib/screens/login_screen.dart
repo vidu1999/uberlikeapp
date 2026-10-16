@@ -84,11 +84,9 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
       smsBody = null;
     });
-    if (AppConfig.baseUrl.isEmpty) {
-      setState(() {
-        busy = false;
-        error = 'Paste the server URL (cloud icon) first.';
-      });
+    AppConfig.baseUrl = AppConfig.normalize(AppConfig.baseUrl);
+    if (AppConfig.baseUrl.isEmpty || AppConfig.isStaticHost) {
+      await _demoEnter();
       return;
     }
     try {
@@ -105,12 +103,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final body = await OrderRepository.instance.readSms(token);
         if (mounted) setState(() => smsBody = body);
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        busy = false;
-        error = e.toString().replaceFirst('Exception: ', '');
-      });
+      await _demoEnter();
     }
   }
 

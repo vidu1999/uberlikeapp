@@ -26,15 +26,15 @@ Future<void> showServerDialog(BuildContext context) async {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Paste the SwiftDrop server URL from the web studio so User, Shop, and Rider share live orders.',
+            'Paste only this, with no spaces:\nhttps://quickbite-2ao.pages.dev\n\nOn Pages, tap Enter demo (PIN 1234). WhatsApp OTP needs a Node host.',
             style: TextStyle(fontSize: 13),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: ctrl,
             decoration: const InputDecoration(
-              labelText: 'Server URL',
-              hintText: 'https://your-server-url',
+              labelText: 'Site URL',
+              hintText: 'https://quickbite-2ao.pages.dev',
               border: OutlineInputBorder(),
             ),
             keyboardType: TextInputType.url,

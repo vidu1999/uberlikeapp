@@ -1,8 +1,8 @@
 class AppConfig {
-  /// Shared Node API (OTP). Paste the live server URL in the APK if you need WhatsApp OTP.
+  /// Public site. Cloudflare Pages has no Node OTP API — apps use Supabase.
   static String baseUrl = const String.fromEnvironment(
     'API_URL',
-    defaultValue: '',
+    defaultValue: 'https://quickbite-2ao.pages.dev',
   );
 
   /// Direct Supabase REST — shops, menus, orders, accounts.
@@ -18,7 +18,28 @@ class AppConfig {
 
   static String normalize(String raw) {
     var v = raw.trim();
-    if (v.endsWith('/')) v = v.substring(0, v.length - 1);
+    final md = RegExp(r'https?://[^\s\)\]]+').firstMatch(v);
+    if (md != null) v = md.group(0)!;
+    v = v.replaceAll(RegExp(r'[\s`\[\]\(\)]+'), '');
+    if (v.startsWith('http://')) v = 'https://${v.substring(7)}';
+    if (v.isNotEmpty && !v.startsWith('http')) v = 'https://$v';
+    while (v.endsWith('/')) {
+      v = v.substring(0, v.length - 1);
+    }
+    try {
+      final u = Uri.parse(v);
+      if (u.host.isNotEmpty) {
+        v = '${u.scheme}://${u.host}';
+      }
+    } catch (_) {}
     return v;
+  }
+
+  static bool get isStaticHost {
+    final host = Uri.tryParse(baseUrl)?.host ?? '';
+    return host.endsWith('.pages.dev') ||
+        host.endsWith('.github.io') ||
+        host.endsWith('.netlify.app') ||
+        host.endsWith('.vercel.app');
   }
 }
