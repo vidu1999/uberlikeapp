@@ -117,6 +117,7 @@ class Order {
   final String? customerPhone;
   final String? riderName;
   final String? riderPhone;
+  final String address;
 
   const Order({
     required this.id,
@@ -136,6 +137,7 @@ class Order {
     this.customerPhone,
     this.riderName,
     this.riderPhone,
+    this.address = '',
   });
 
   Order copyWith({
@@ -163,6 +165,7 @@ class Order {
       customerPhone: customerPhone,
       riderName: riderName ?? this.riderName,
       riderPhone: this.riderPhone,
+      address: address,
     );
   }
 
@@ -183,6 +186,7 @@ class Order {
         'customerName': customerName,
         'customerPhone': customerPhone,
         'riderName': riderName,
+        'address': address,
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
@@ -210,6 +214,7 @@ class Order {
       customerPhone: (j['customerPhone'] ?? j['customer_phone'])?.toString(),
       riderName: j['riderName']?.toString(),
       riderPhone: j['riderPhone']?.toString(),
+      address: '${j['address'] ?? ''}',
     );
   }
 }

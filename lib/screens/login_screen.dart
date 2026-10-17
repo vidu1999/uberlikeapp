@@ -20,6 +20,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _name = TextEditingController(text: 'Vidura K Jayathilake');
   final _email = TextEditingController(text: 'vidurakavindadev@gmail.com');
   final _shopName = TextEditingController();
+  final _pw = TextEditingController();
+  final _addr = TextEditingController();
+  bool _addrDirty = false;
+  double? _shopLat;
+  double? _shopLng;
   final List<TextEditingController> _digits = List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focus = List.generate(4, (_) => FocusNode());
   bool busy = false;
@@ -39,10 +44,11 @@ class _LoginScreenState extends State<LoginScreen> {
             ? '0772223333'
             : '0775556666';
     _phone = TextEditingController(text: phone);
-    if (widget.role == UserRole.shop) {
+    if (widget.role == UserRole.shop || widget.role == UserRole.rider) {
       _name.text = '';
       _email.text = '';
     }
+    if (widget.role == UserRole.rider) regRole = 'rider';
   }
 
   @override
@@ -51,6 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _name.dispose();
     _email.dispose();
     _shopName.dispose();
+    _pw.dispose();
     _addr.dispose();
     for (final c in _digits) {
       c.dispose();
@@ -88,6 +95,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _download(regRole);
       return;
     }
+    if (register && widget.role == UserRole.rider && regRole == 'shop') {
+      _download('shop');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -107,6 +118,34 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         final p = acc['phone']?.toString();
         if (p != null && p.isNotEmpty) _phone.text = p;
+      }
+      if (widget.role == UserRole.rider && !register) {
+        final acc = await OrderRepository.instance.findAccount('rider', _phone.text);
+        if (!mounted) return;
+        if (acc == null) {
+          setState(() {
+            busy = false;
+            register = true;
+            fromRegister = true;
+          });
+          return;
+        }
+        final p = acc['phone']?.toString();
+        if (p != null && p.isNotEmpty) _phone.text = p;
+      }
+      if (widget.role == UserRole.rider && register) {
+        if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
+          setState(() {
+            busy = false;
+            error = 'Enter your name and phone.';
+          });
+          return;
+        }
+        OrderRepository.instance.pendingRider = {
+          'name': _name.text.trim(),
+          'phone': _phone.text.trim(),
+          'email': _email.text.trim(),
+        };
       }
       if (widget.role == UserRole.shop && register) {
         if (_shopName.text.trim().isEmpty || _name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
@@ -184,8 +223,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     if (codeStep) return _otp();
     if (register && widget.role == UserRole.shop) return _shopRegister();
+    if (register && widget.role == UserRole.rider) return _riderRegister();
     if (register && widget.role == UserRole.customer) return _register();
     if (widget.role == UserRole.shop) return _shopLogin();
+    if (widget.role == UserRole.rider) return _riderLogin();
     return _login();
   }
 
@@ -514,6 +555,157 @@ class _LoginScreenState extends State<LoginScreen> {
               style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
               onPressed: busy ? null : _send,
               child: Text(busy ? 'Sending WhatsApp…' : 'Register', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() {
+                register = false;
+                error = null;
+              }),
+              child: const Text.rich(TextSpan(children: [
+                TextSpan(text: 'Already have an account? ', style: TextStyle(color: Color(0xFF6B7280))),
+                TextSpan(text: 'Login', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              ])),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _riderLogin() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF07140F),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
+        children: [
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(28)),
+                  child: const Icon(Icons.delivery_dining, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                const Text('QuickBite', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800)),
+                const Text('Rider', style: TextStyle(color: Color(0xFF9FE7B8), fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          const Text('Welcome Back', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('Sign in to continue', style: TextStyle(color: Color(0xFF9CA3AF))),
+          const SizedBox(height: 18),
+          _field(_phone, 'Phone Number', Icons.phone_outlined, keyboard: TextInputType.phone),
+          const SizedBox(height: 10),
+          _field(_pw, 'Password', Icons.lock_outline),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(onPressed: () {}, child: const Text('Forgot Password?', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700))),
+          ),
+          if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFFCA5A5))),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 54,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+              onPressed: busy ? null : _send,
+              child: Text(busy ? 'Checking…' : 'Login', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Center(child: Text('or', style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600))),
+          const SizedBox(height: 10),
+          _ghost('Continue with Google'),
+          const SizedBox(height: 8),
+          _ghost('Continue with Apple'),
+          const SizedBox(height: 18),
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() {
+                register = true;
+                error = null;
+                regRole = 'rider';
+              }),
+              child: const Text.rich(TextSpan(children: [
+                TextSpan(text: "Don't have an account? ", style: TextStyle(color: Color(0xFF9CA3AF))),
+                TextSpan(text: 'Sign Up', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              ])),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _riderRegister() {
+    Widget tab(String id, String label) {
+      final on = regRole == id;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => regRole = id),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: on ? Brand.green : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: on ? Brand.green : const Color(0xFFE5E7EB)),
+            ),
+            child: Text(label, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w800, color: on ? Colors.white : Brand.ink, fontSize: 13)),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
+        children: [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(28)),
+              child: const Icon(Icons.delivery_dining, color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text('QuickBite', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+          const Text('Rider', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          const Text('Create Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('Join QuickBite and start earning today!', style: TextStyle(color: Color(0xFF6B7280))),
+          const SizedBox(height: 12),
+          Row(children: [tab('rider', 'Rider'), const SizedBox(width: 8), tab('shop', 'Shop')]),
+          const SizedBox(height: 14),
+          _lightField(_name, 'Full Name'),
+          const SizedBox(height: 10),
+          _lightField(_phone, 'Phone Number', keyboard: TextInputType.phone),
+          const SizedBox(height: 10),
+          _lightField(_email, 'Email Address'),
+          const SizedBox(height: 10),
+          _lightField(_pw, 'Password'),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 54,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+              onPressed: busy ? null : _send,
+              child: Text(
+                busy ? 'Sending WhatsApp…' : (regRole == 'shop' ? 'Download Shop App' : 'Register'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white),
+              ),
             ),
           ),
           const SizedBox(height: 14),

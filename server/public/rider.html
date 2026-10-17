@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>On Delivery</title>
+  <title>QuickBite Rider</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -20,120 +20,432 @@
   <script src="/js/track-ui.js"></script>
   <script src="/js/otp-login.js"></script>
   <script>
-    const state = { tab: 'jobs', activeId: null, chat: false, mapHandle: null };
-    const gps = {};
+    const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
+    const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
+    const state = {
+      tab: 'home', screen: '', auth: 'splash', fromReg: false, orderId: null,
+      filter: 'new', online: true, mapHandle: null, liveLat: null, liveLng: null,
+      loginId: '0775556666', loginPw: '',
+      reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
+    };
+    let gpsWatch = null;
+    let gpsStarted = false;
+    const SVG = {
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11.5 12 5l8 6.5V20h-6v-6H10v6H4z"/></svg>',
+      orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.2"/></svg>',
+      earn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V6a5 5 0 0 1 10 0v2"/></svg>',
+      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      bag: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      wallet: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 12h4"/></svg>',
+      phone: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+      chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
+    };
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function oid(id) { return '#' + String(id||'').replace('_','-'); }
-    function startGps(order) {
-      const shop = API.shopOf(order.shopId);
-      if (gps[order.id]) clearInterval(gps[order.id].timer);
-      const from = [order.riderLat ?? shop.lat, order.riderLng ?? shop.lng];
-      const to = [order.deliveryLat, order.deliveryLng];
-      const pts = (typeof routeCurve === 'function') ? routeCurve(from, to) : [from, to];
-      let i = 0;
-      const tick = () => {
-        i = Math.min(i + 1, pts.length - 1);
-        const [lat, lng] = pts[i];
-        API.patch(order.id, {
-          riderLat: lat, riderLng: lng, status: 'on_the_way',
-          riderId: 'RIDER_77', riderName: 'Kamal Perera', riderPhone: '0775556666',
-        });
-        if (i >= pts.length - 1) clearInterval(gps[order.id].timer);
-      };
-      gps[order.id] = { timer: setInterval(tick, 1200) };
-      API.patch(order.id, {
-        status: 'on_the_way', riderId: 'RIDER_77', riderName: 'Kamal Perera',
-        riderPhone: '0775556666', riderLat: from[0], riderLng: from[1],
-      });
+    function me() { return API.user || {}; }
+    function isMine(o) {
+      const u = me();
+      return !!(o && (o.riderId === u.id || (u.phone && o.riderPhone === u.phone)));
     }
-    const SVG = {
-      jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="17" r="3"/><circle cx="17" cy="17" r="3"/><path d="M7 17 11 8h5l4 9"/></svg>',
-      earn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 10h4.5a2 2 0 1 1 0 4H9"/></svg>',
-      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
-    };
+    function available() {
+      return (API.orders || []).filter((o) => o.status === 'ready' && !o.riderId);
+    }
+    function ongoing() {
+      return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || o.status === 'on_the_way'));
+    }
+    function done() {
+      return (API.orders || []).filter((o) => isMine(o) && o.status === 'delivered');
+    }
+    function earnOf(o) {
+      const f = Number(o && o.deliveryFee);
+      if (f > 0) return f;
+      return Math.round(Number(o && o.totalAmount) || 0) || 150;
+    }
+    function greet() {
+      const h = new Date().getHours();
+      if (h < 12) return 'Good Morning';
+      if (h < 17) return 'Good Afternoon';
+      return 'Good Evening';
+    }
+    function firstName() { return String(me().name || 'Rider').split(/\s+/)[0]; }
+    function timeOf(o) {
+      const d = new Date(o.timestamp || o.updatedAt || Date.now());
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function thumb(o) {
+      const it = (o.items || [])[0];
+      if (it && it.id) {
+        const item = (API.items || []).find((i) => i.id === it.id);
+        if (item && item.image) return item.image;
+      }
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      return (shop && shop.image) || '/img/shop-bakery.jpg';
+    }
+    function kmOf(o) {
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      const from = state.liveLat != null
+        ? [state.liveLat, state.liveLng]
+        : (o.riderLat != null ? [Number(o.riderLat), Number(o.riderLng)] : [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)]);
+      const to = [Number(o.deliveryLat), Number(o.deliveryLng)];
+      const km = typeof haversineKm === 'function' ? haversineKm(from, to) : 2.4;
+      return Math.max(0.2, km);
+    }
+    function telHref(phone) {
+      if (!phone) return '';
+      const d = String(phone).replace(/\s/g, '');
+      if (d.startsWith('+')) return 'tel:' + d;
+      if (d.startsWith('0')) return 'tel:+94' + d.slice(1);
+      return 'tel:' + d;
+    }
+    function riderPhoto() { return '/img/avatar-rider.jpg'; }
+    function vehicleLabel() { return me().vehicle || 'Honda Dio · BDX 1234'; }
+
+    function stopLiveGps() {
+      if (gpsWatch != null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(gpsWatch); } catch (_) {}
+      }
+      gpsWatch = null;
+    }
+    function startLiveGps(orderId) {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 800, timeout: 20000 };
+      const push = (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        state.liveLat = lat; state.liveLng = lng;
+        if (!orderId) return;
+        const o = (API.orders || []).find((x) => x.id === orderId);
+        const u = me();
+        const body = { riderLat: lat, riderLng: lng };
+        if (o && o.status !== 'on_the_way' && o.status !== 'delivered') {
+          body.status = 'on_the_way';
+          body.riderId = u.id; body.riderName = u.name; body.riderPhone = u.phone;
+        }
+        API.patch(orderId, body);
+      };
+      navigator.geolocation.getCurrentPosition(push, () => {}, opt);
+      if (gpsWatch != null) return;
+      gpsWatch = navigator.geolocation.watchPosition(push, () => {}, opt);
+    }
+    function startRiderGps() {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 };
+      const onPos = (pos) => {
+        state.liveLat = pos.coords.latitude; state.liveLng = pos.coords.longitude;
+        const live = ongoing().find((o) => o.status === 'on_the_way');
+        if (live) API.patch(live.id, { riderLat: state.liveLat, riderLng: state.liveLng });
+      };
+      if (!gpsStarted) {
+        gpsStarted = true;
+        navigator.geolocation.getCurrentPosition(onPos, () => {}, opt);
+      }
+      if (gpsWatch != null) return;
+      gpsWatch = navigator.geolocation.watchPosition(onPos, () => {}, opt);
+    }
+
     function nav() {
       const t = state.tab;
       return `<nav class="bnav">
-        <button data-tab="jobs" class="${t==='jobs'?'on':''}">${SVG.jobs}Jobs</button>
+        <button data-tab="home" class="${t==='home'?'on':''}">${SVG.home}Home</button>
+        <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
+        <button data-tab="map" class="${t==='map'?'on':''}">${SVG.map}Map</button>
         <button data-tab="earn" class="${t==='earn'?'on':''}">${SVG.earn}Earnings</button>
-        <button data-tab="account" class="${t==='account'?'on':''}">${SVG.profile}Profile</button>
+        <button data-tab="profile" class="${t==='profile'?'on':''}">${SVG.profile}Profile</button>
       </nav>`;
     }
+
+    function splash() {
+      return `<div class="rd-splash">
+        <div class="mark">${MARK}</div>
+        <h1>Quick<em>Bite</em></h1>
+        <div class="tag">Rider</div>
+        <p class="hero">Delivering Happiness</p>
+        <div class="meta">Rider App · Fast · Safe · Reliable</div>
+        <div class="bar"></div>
+      </div>`;
+    }
     function loginView() {
+      return `<div class="rd-auth" data-rider-auth="login">
+        <div class="mark">${MARK}</div>
+        <div class="brand">QuickBite<small>Rider</small></div>
+        <h1>Welcome Back</h1>
+        <p class="sub">Sign in to continue</p>
+        <label>Phone Number</label>
+        <input id="loginId" inputmode="tel" placeholder="+94 7X XXX XXXX" value="${esc(state.loginId)}" />
+        <label>Password</label>
+        <input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" />
+        <button class="forgot" type="button">Forgot Password?</button>
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-rider-login>Login</button>
+        <div class="or">or</div>
+        <button class="ghost" type="button" data-rider-login>Continue with Google</button>
+        <button class="ghost" type="button" data-rider-login>Continue with Apple</button>
+        <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
+      </div>`;
+    }
+    function registerView() {
+      const r = state.reg;
+      return `<div class="rd-reg" data-rider-auth="register">
+        <div class="mark">${MARK}</div>
+        <div class="brand">QuickBite<small>Rider</small></div>
+        <h1>Create Account</h1>
+        <p class="sub">Join QuickBite and start earning today!</p>
+        <div class="role-tabs">
+          <button class="${r.role==='rider'?'on':''}" data-regrole="rider">Rider</button>
+          <button class="${r.role==='shop'?'on':''}" data-regrole="shop">Shop</button>
+        </div>
+        <label>Full Name</label>
+        <input id="regName" placeholder="Enter your name" value="${esc(r.name)}" />
+        <label>Phone Number</label>
+        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" />
+        <label>Email Address</label>
+        <input id="regEmail" placeholder="Enter your email (optional)" value="${esc(r.email)}" />
+        <label>Password</label>
+        <input id="regPw" type="password" placeholder="Create a password" value="${esc(r.password)}" />
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-rider-register>${r.role==='shop' ? 'Download Shop App' : 'Register'}</button>
+        <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
+      </div>`;
+    }
+    function otpView() {
       return OtpLogin.render({
         role: 'rider',
-        title: 'Deliver sign in',
-        sub: 'We’ll send a 4-digit code on WhatsApp, then you go online.',
-        phone: '0775556666',
+        title: 'Enter the 4-digit code',
+        sub: 'WhatsApp sent the code. Enter it to go online.',
+        phone: state.loginId,
       });
     }
-    function activeJob() {
-      const jobs = API.orders.filter((o) => o.status === 'on_the_way');
-      return jobs.find((o) => o.id === state.activeId) || jobs[0] || null;
+    function downloadView() {
+      return `<div class="rd-reg">
+        <div class="mark">🏪</div>
+        <h1>Shop Partner app</h1>
+        <p class="sub">Download the Shop APK, then sign in with your WhatsApp number.</p>
+        <a class="btn-green" href="${APK_SHOP}" style="display:block;text-align:center;text-decoration:none">Download shop.apk</a>
+        <div class="foot"><button type="button" data-go-login>Back to rider login</button></div>
+      </div>`;
     }
-    function jobsListView() {
-      const jobs = API.orders.filter((o) => o.status === 'ready');
-      const earned = API.orders.filter((o) => o.status === 'delivered').length * 150;
-      return `<div class="scroll">
-        <div class="rd-top" style="position:static;background:transparent;padding-bottom:8px">
-          <div>
-            <h1>On Delivery</h1>
-            <small>${esc(API.user?.name)} · Online</small>
+
+    function jobCard(o, { accept } = {}) {
+      const km = kmOf(o).toFixed(1);
+      return `<div class="rd-card-job" data-open="${esc(o.id)}">
+        <img src="${esc(thumb(o))}" alt="" />
+        <div class="grow">
+          <b>${esc(oid(o.id))}</b>
+          <div class="sub">${esc(o.shopName || 'Shop')}</div>
+          <div class="sub">${km} km · ${rs(earnOf(o))}</div>
+        </div>
+        ${accept ? `<button class="acc" data-pick="${esc(o.id)}">Accept</button>` : `<span class="acc" style="background:#1F2937">${esc(timeOf(o))}</span>`}
+      </div>`;
+    }
+
+    function homeView() {
+      const jobs = available();
+      const today = done();
+      const pay = today.reduce((n, o) => n + earnOf(o), 0);
+      return `<div class="scroll rd-home">
+        <div class="rd-hi">
+          <div class="who">
+            <p class="greet">${greet()},</p>
+            <h1>${esc(firstName())}</h1>
           </div>
-          <span class="online-pill"><i></i> Online</span>
+          <button class="rd-online ${state.online?'':'off'}" data-online type="button"><i></i> ${state.online ? 'Online' : 'Offline'}</button>
+          <img src="${riderPhoto()}" alt="" />
         </div>
-        <div class="sd-stats">
-          <div class="sd-stat teal"><b>${jobs.length}</b><span>Open</span></div>
-          <div class="sd-stat gold"><b>${rs(earned)}</b><span>Today</span></div>
-          <div class="sd-stat green"><b>4.9★</b><span>Rating</span></div>
+        <div class="rd-kpis">
+          <div class="rd-kpi"><span>Today's Earnings</span><b>${rs(pay)}</b><small>${today.length} Deliveries</small></div>
+          <div class="rd-kpi"><span>Today's Orders</span><b>${today.length + ongoing().length}</b><small>On Going: ${ongoing().length}</small></div>
         </div>
-        <div class="rd-jobs">
-        ${jobs.map((o) => `
-          <div class="rd-job">
-            <b>${esc(o.shopName)} → ${esc(o.customerName)}</b>
-            <div class="sub">${esc(o.address)} · ${esc(oid(o.id))}</div>
-            <div class="row">
-              <div class="grow price">You earn Rs. 150</div>
-              <button class="btn sm green" data-pick="${esc(o.id)}">Accept</button>
-            </div>
-          </div>`).join('') || '<div class="muted">No trips yet. In Shop, accept an order and tap Food is ready.</div>'}
+        <div class="rd-short">
+          <button data-tab="orders"><span class="ico">${SVG.bag}</span>New Orders</button>
+          <button data-tab="map"><span class="ico">${SVG.map}</span>Map</button>
+          <button data-go="wallet"><span class="ico">${SVG.wallet}</span>Wallet</button>
+          <button data-tab="profile"><span class="ico">${SVG.profile}</span>Profile</button>
         </div>
+        <div class="rd-sec"><h2>Available Orders</h2><button data-tab="orders">See all</button></div>
+        ${state.online ? (jobs.map((o) => jobCard(o, { accept: true })).join('') || '<div class="pad muted">No ready jobs yet. When a shop taps Food is ready, it shows here.</div>')
+          : '<div class="pad muted">Go Online to see nearby orders.</div>'}
       </div>${nav()}`;
     }
+
+    function ordersView() {
+      const f = state.filter;
+      const list = f === 'going' ? ongoing() : f === 'done' ? done() : available();
+      return `<div class="scroll rd-home">
+        <div class="rd-head"><h1>Orders</h1></div>
+        <div class="rd-pills">
+          <button class="${f==='new'?'on':''}" data-filter="new">New (${available().length})</button>
+          <button class="${f==='going'?'on':''}" data-filter="going">On Going (${ongoing().length})</button>
+          <button class="${f==='done'?'on':''}" data-filter="done">Completed</button>
+        </div>
+        ${list.map((o) => jobCard(o, { accept: f==='new' })).join('') || '<div class="pad muted">No orders in this tab.</div>'}
+      </div>${nav()}`;
+    }
+
+    function detailsView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      if (!o) return homeView();
+      const st = o.status === 'on_the_way' ? 'On the way' : o.status === 'ready' ? 'Ready' : (API.statusLabel ? API.statusLabel(o.status) : o.status);
+      const phone = o.customerPhone || '';
+      const items = o.items || [];
+      const claimed = isMine(o) || !!o.riderId;
+      const canNav = isMine(o) && o.status !== 'delivered';
+      return `<div class="scroll rd-details">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Order Details</h1></div>
+        <div class="hero-food">
+          <img src="${esc(thumb(o))}" alt="" />
+          <div class="grow">
+            <b>${esc(oid(o.id))}</b>
+            <div class="sub">${esc(o.shopName || '')}</div>
+            <div class="sub">${rs(o.totalAmount)} · ${kmOf(o).toFixed(1)} km</div>
+            <div class="st">${esc(st)}</div>
+          </div>
+        </div>
+        <div class="rd-cust">
+          <img src="/img/avatar-user.jpg" alt="" />
+          <div class="grow"><b>${esc(o.customerName || 'Customer')}</b><div class="sub">${esc(phone || 'WhatsApp customer')}</div></div>
+          <div class="acts">
+            ${phone ? `<a class="ico" href="${telHref(phone)}">${SVG.phone}</a>` : ''}
+            <button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}</button>
+          </div>
+        </div>
+        <div class="rd-block">
+          <h3>Delivery Address</h3>
+          <b>${esc(o.address || 'Customer pin on the map')}</b>
+        </div>
+        <div class="rd-block">
+          <h3>Order Items</h3>
+          ${items.map((it) => `<div class="rd-item"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(it.name)}</b><div class="sub">x${it.qty} · ${rs(it.price)}</div></div></div>`).join('') || '<div class="sub">No items</div>'}
+        </div>
+        ${!claimed && o.status === 'ready' ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">Accept</button>` : ''}
+        ${canNav && o.status !== 'on_the_way' ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate</button>` : ''}
+        ${o.status === 'on_the_way' ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">Open live map</button>` : ''}
+      </div>`;
+    }
+
+    function liveView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      if (!o) return homeView();
+      if (o.status === 'delivered') return deliveredView();
+      return TrackUI.screen(o, 'rider', { back: 'data-close' });
+    }
+
+    function deliveredView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId) || {};
+      return `<div class="rd-done">
+        <div class="box">📦</div>
+        <h1>Order Delivered!</h1>
+        <p>Great job! You completed the delivery successfully.</p>
+        <div class="pay"><span>Earnings</span><b>${rs(earnOf(o))}</b></div>
+        <button class="ghost" type="button" data-open="${esc(o.id || '')}">View Order Details</button>
+        <button class="btn-green" type="button" data-tab="home">Back to Home</button>
+      </div>`;
+    }
+
     function earnView() {
-      const done = API.orders.filter((o) => o.status === 'delivered');
-      return `<div class="scroll">
-        <div class="rd-top" style="position:static;background:transparent;padding-bottom:8px"><h1>Earnings</h1></div>
-        <div class="pad">
-          <div class="sd-stat green" style="min-height:auto;margin-bottom:12px"><b>${rs(done.length * 150)}</b><span>${done.length} completed trips</span></div>
-          ${done.map((o) => `<div class="rd-job"><div class="row"><div class="grow"><b>${esc(oid(o.id))}</b><div class="sub">${esc(o.shopName)}</div></div><b>+ Rs. 150</b></div></div>`).join('') || '<div class="muted">Complete a trip to see earnings.</div>'}
+      const list = done();
+      const pay = list.reduce((n, o) => n + earnOf(o), 0);
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const buckets = [0,0,0,0,0,0,0];
+      list.forEach((o) => {
+        const d = new Date(o.timestamp || Date.now());
+        const i = (d.getDay() + 6) % 7;
+        buckets[i] += earnOf(o);
+      });
+      const max = Math.max(1, ...buckets);
+      const dist = list.reduce((n, o) => n + kmOf(o), 0);
+      return `<div class="scroll rd-earn">
+        <div class="rd-head"><h1>Earnings</h1></div>
+        <div class="big"><b>${rs(pay)}</b><span>${list.length} Deliveries · Today</span></div>
+        <div class="rd-chart">${buckets.map((v) => `<i class="${v?'on':''}" style="height:${Math.max(8, Math.round(v/max*110))}px"></i>`).join('')}</div>
+        <div class="rd-days">${days.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="rd-stats3">
+          <div><b>${list.length}</b><span>Total Deliveries</span></div>
+          <div><b>${dist.toFixed(1)} km</b><span>Total Distance</span></div>
+          <div><b>${list.length ? rs(pay / list.length) : 'Rs. 0'}</b><span>Avg. per Delivery</span></div>
         </div>
+        <div class="rd-sec"><h2>Recent Transactions</h2></div>
+        ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">Complete a delivery to see earnings.</div>'}
       </div>${nav()}`;
     }
-    function accountView() {
-      return `<div class="scroll">
-        <div class="rd-top" style="position:static;background:transparent;padding-bottom:8px"><h1>Profile</h1></div>
-        <div class="pad">
-          <div class="rd-who">
-            <img src="/img/avatar-rider.jpg" alt="" />
-            <div class="grow">
-              <b>${esc(API.user?.name)}</b>
-              <div class="role">${esc(API.user?.phone)} · Delivery Partner</div>
-              <div class="rate"><span class="star">★</span> 4.9 (120+)</div>
-            </div>
-          </div>
-          <p class="muted" style="margin-top:16px">${esc(API.user?.vehicle)}</p>
-          <button class="btn ghost full" id="logout">Sign out</button>
-        </div>
+
+    function walletView() {
+      const list = done();
+      const pay = list.reduce((n, o) => n + earnOf(o), 0);
+      return `<div class="scroll rd-earn rd-wallet">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Wallet</h1></div>
+        <div class="bal"><div><span>Available Balance</span><b>${rs(pay)}</b></div><button class="wd" data-withdraw type="button">Withdraw</button></div>
+        <div class="rd-sec"><h2>Transaction</h2></div>
+        ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>Order ${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">No payouts yet.</div>'}
       </div>${nav()}`;
     }
+
+    function profileView() {
+      const u = me();
+      return `<div class="scroll rd-prof">
+        <div class="rd-head"><h1></h1></div>
+        <img class="ava" src="${riderPhoto()}" alt="" />
+        <h2>${esc(u.name || 'Rider')}</h2>
+        <div class="role">Delivery Partner</div>
+        <div class="stars">★ 4.9 (120+)</div>
+        <div class="rd-prof-stats">
+          <div><b>${done().length}</b><span>Completed</span></div>
+          <div><b>${ongoing().length}</b><span>On Going</span></div>
+          <div><b>0</b><span>Cancelled</span></div>
+        </div>
+        <div class="rd-menu-list">
+          <button type="button" data-go="docs">My Documents <span>›</span></button>
+          <button type="button" data-go="vehicle">Vehicle Information <span>›</span></button>
+          <button type="button" data-go="wallet">Bank Account <span>›</span></button>
+          <button type="button">Settings <span>›</span></button>
+          <button type="button" data-go="help">Help & Support <span>›</span></button>
+        </div>
+        <button class="rd-out" type="button" id="logout">Log Out</button>
+      </div>${nav()}`;
+    }
+
+    function docsView() {
+      const rows = [['NIC / ID Card','Verified'],['Driving License','Verified'],['Vehicle Registration','Verified'],['Profile Photo','Verified']];
+      return `<div class="scroll rd-list-page">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>My Documents</h1></div>
+        ${rows.map((r) => `<div class="rd-row"><div class="grow"><b>${r[0]}</b><div class="sub">${r[1]}</div></div><div class="ok">✓</div></div>`).join('')}
+      </div>`;
+    }
+    function vehicleView() {
+      return `<div class="scroll rd-list-page rd-veh">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Vehicle Information</h1></div>
+        <div class="rd-block">
+          <img src="/img/splash-rider.jpg" alt="" />
+          <b>${esc(vehicleLabel())}</b>
+          <div class="kv"><span>License Plate</span><b>BDX 1234</b></div>
+          <div class="kv"><span>Vehicle Type</span><b>Motorcycle</b></div>
+          <div class="kv"><span>Insurance</span><b>Valid (2026)</b></div>
+          <div class="kv"><span>RC Book</span><b>Verified</b></div>
+        </div>
+      </div>`;
+    }
+    function helpView() {
+      return `<div class="scroll rd-list-page">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Help & Support</h1></div>
+        <div class="rd-menu-list">
+          <button type="button">FAQs <span>›</span></button>
+          <button type="button">Contact Support <span>›</span></button>
+          <button type="button">Live Chat <span>›</span></button>
+          <button type="button">Report an Issue <span>›</span></button>
+        </div>
+        <div class="rd-help-card">
+          <b>QuickBite Rider Support Team</b>
+          <p class="sub" style="color:#9FE7B8;margin:6px 0 0">We are here to help you!</p>
+        </div>
+      </div>`;
+    }
+
     function chatView() {
-      const o = API.orders.find((x) => x.id === state.activeId);
-      const msgs = API.messages[state.activeId] || [];
-      return `<div class="back-row"><button class="back-fab" id="backJobs">←</button><b>${esc(o?.customerName || '')}</b></div>
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      const msgs = (API.messages || {})[state.orderId] || [];
+      return `<div class="back-row"><button class="back-fab" data-close type="button">←</button><b>${esc(o?.customerName || 'Customer')}</b></div>
         <div class="chat" style="flex:1;min-height:0">
           <div class="bubbles" id="bubbles">
             ${msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
@@ -143,6 +455,20 @@
             <button class="btn sm green" type="submit">Send</button>
           </form>
         </div>`;
+    }
+
+    function mapIdleView() {
+      return `<div class="rd-map-empty" style="position:relative;height:100%">
+        <div id="map" class="map" style="position:absolute;inset:0"></div>
+        <div class="rd-map-note">
+          <b>${state.online ? 'You are online' : 'You are offline'}</b>
+          <div class="sub">${available().length} ready jobs nearby. Accept one, then Navigate to start live GPS.</div>
+        </div>
+      </div>${nav()}`;
+    }
+
+    function killMap() {
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
     }
     function bindMapChrome(order) {
       const root = document.getElementById('root');
@@ -154,41 +480,261 @@
       const loc = root.querySelector('[data-locate]');
       if (loc) loc.onclick = () => { if (state.mapHandle && order) state.mapHandle.locate(order); };
     }
+
+    async function goOtp(phone) {
+      state.loginId = phone;
+      await API.sendOtp('rider', phone);
+      state.auth = 'otp';
+      render(true);
+    }
+
+    function bindAuth() {
+      const root = document.getElementById('root');
+      const err = root.querySelector('[data-err]');
+      const goReg = root.querySelector('[data-go-reg]');
+      if (goReg) goReg.onclick = () => { state.auth = 'register'; render(true); };
+      const goLogin = root.querySelector('[data-go-login]');
+      if (goLogin) goLogin.onclick = () => { state.auth = 'login'; render(true); };
+      root.querySelectorAll('[data-regrole]').forEach((b) => b.onclick = () => {
+        state.reg.role = b.dataset.regrole;
+        render(true);
+      });
+      const rn = document.getElementById('regName');
+      if (rn) rn.oninput = () => { state.reg.name = rn.value; };
+      const rp = document.getElementById('regPhone');
+      if (rp) rp.oninput = () => { state.reg.phone = rp.value; };
+      const re = document.getElementById('regEmail');
+      if (re) re.oninput = () => { state.reg.email = re.value; };
+      const rw = document.getElementById('regPw');
+      if (rw) rw.oninput = () => { state.reg.password = rw.value; };
+      const lp = document.getElementById('loginPw');
+      if (lp) lp.oninput = () => { state.loginPw = lp.value; };
+      root.querySelectorAll('[data-rider-login]').forEach((b) => {
+        b.onclick = async () => {
+          const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
+          state.loginId = id;
+          if (err) err.textContent = '';
+          if (!id) { if (err) err.textContent = 'Enter your phone number.'; return; }
+          b.disabled = true;
+          const label = b.textContent;
+          b.textContent = 'Checking…';
+          try {
+            const acc = await API.findAccount('rider', id);
+            if (!acc) {
+              state.auth = 'register';
+              state.reg.phone = API.normalizePhone ? API.normalizePhone(id) : id;
+              render(true);
+              return;
+            }
+            state.loginId = acc.phone || id;
+            API.setPendingRider(null);
+            state.fromReg = false;
+            await goOtp(state.loginId);
+          } catch (e) {
+            if (err) err.textContent = e.message;
+            b.disabled = false;
+            b.textContent = label;
+          }
+        };
+      });
+      const regBtn = root.querySelector('[data-rider-register]');
+      if (regBtn) regBtn.onclick = async () => {
+        state.reg.name = (document.getElementById('regName') || {}).value || '';
+        state.reg.phone = (document.getElementById('regPhone') || {}).value || '';
+        state.reg.email = (document.getElementById('regEmail') || {}).value || '';
+        if (state.reg.role === 'shop') { state.auth = 'download'; render(true); return; }
+        if (err) err.textContent = '';
+        if (!state.reg.name.trim() || !state.reg.phone.trim()) {
+          if (err) err.textContent = 'Enter your name and phone.';
+          return;
+        }
+        API.setPendingRider({ name: state.reg.name.trim(), email: state.reg.email.trim(), phone: state.reg.phone.trim() });
+        state.loginId = state.reg.phone.trim();
+        state.fromReg = true;
+        regBtn.disabled = true;
+        try { await goOtp(state.loginId); }
+        catch (e) {
+          if (err) err.textContent = e.message;
+          regBtn.disabled = false;
+        }
+      };
+    }
+
+    function bind() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
+        state.tab = b.dataset.tab;
+        state.screen = '';
+        if (b.dataset.tab !== 'map') killMap();
+        render(true);
+      });
+      root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(true); });
+      root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(true); });
+      root.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
+        if (!b.dataset.open) return;
+        state.orderId = b.dataset.open;
+        state.screen = 'details';
+        render(true);
+      });
+      root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = () => {
+        state.orderId = b.dataset.openLive;
+        state.screen = 'live';
+        startLiveGps(state.orderId);
+        render(true);
+      });
+      const online = root.querySelector('[data-online]');
+      if (online) online.onclick = () => { state.online = !state.online; render(true); };
+      root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = async (e) => {
+        e.stopPropagation();
+        const id = b.dataset.pick;
+        const u = me();
+        await API.patch(id, { riderId: u.id, riderName: u.name, riderPhone: u.phone });
+        state.orderId = id;
+        state.screen = 'details';
+        render(true);
+      });
+      root.querySelectorAll('[data-nav]').forEach((b) => b.onclick = async () => {
+        const id = b.dataset.nav;
+        const u = me();
+        const body = { status: 'on_the_way', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+        await API.patch(id, body);
+        state.orderId = id;
+        state.screen = 'live';
+        startLiveGps(id);
+        render(true);
+      });
+      root.querySelectorAll('[data-drop]').forEach((b) => b.onclick = async () => {
+        const id = b.dataset.drop;
+        stopLiveGps();
+        startRiderGps();
+        await API.patch(id, { status: 'delivered' });
+        state.orderId = id;
+        state.screen = 'delivered';
+        render(true);
+      });
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        state.orderId = b.dataset.chat;
+        state.screen = 'chat';
+        render(true);
+      });
+      root.querySelectorAll('[data-close]').forEach((b) => b.onclick = () => {
+        if (state.screen === 'chat' || state.screen === 'live') { state.screen = 'details'; }
+        else { state.screen = ''; }
+        killMap();
+        render(true);
+      });
+      const form = document.getElementById('chatForm');
+      if (form) form.onsubmit = async (e) => {
+        e.preventDefault();
+        const text = form.text.value.trim();
+        if (!text) return;
+        form.text.value = '';
+        await API.sendMessage(state.orderId, me().name, 'rider', text);
+      };
+      const logout = document.getElementById('logout');
+      if (logout) logout.onclick = () => {
+        stopLiveGps();
+        gpsStarted = false;
+        killMap();
+        API.logout();
+        state.auth = 'login';
+        state.screen = '';
+        render(true);
+      };
+      const wd = root.querySelector('[data-withdraw]');
+      if (wd) wd.onclick = () => { wd.textContent = 'Requested'; };
+    }
+
     function render(force, opts) {
       const root = document.getElementById('root');
       const keep = !force && !!(opts && opts.keepScroll);
       const sc0 = root.querySelector('.scroll');
       const y = keep && sc0 ? sc0.scrollTop : 0;
       try {
-      if (!API.user) {
-        if (root.querySelector('[data-otp-root]')) return;
-        root.innerHTML = loginView();
-        OtpLogin.bind({ role: 'rider', onReady: () => render(true) });
-        return;
-      }
-      const active = activeJob();
-      if (active) state.activeId = active.id;
-      if (state.chat) { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bind(); return; }
-      if (active && state.tab === 'jobs') {
-        const existing = root.querySelector('[data-track-root="'+active.id+'"]');
-        if (!force && existing && state.mapHandle) {
-          state.mapHandle.update(active);
-          TrackUI.paint(existing, active, 'rider');
+        if (!API.user) {
+          if (keep && root.querySelector('[data-rider-auth], [data-otp-root]')) return;
+          killMap();
+          if (state.auth === 'splash') { root.innerHTML = splash(); return; }
+          if (state.auth === 'register') { root.innerHTML = registerView(); bindAuth(); return; }
+          if (state.auth === 'download') { root.innerHTML = downloadView(); bindAuth(); return; }
+          if (state.auth === 'otp') {
+            root.innerHTML = otpView();
+            OtpLogin.bind({ role: 'rider', onReady: () => { state.auth = 'login'; state.tab = 'home'; startRiderGps(); render(true); } });
+            const pi = document.getElementById('phone');
+            if (pi) pi.value = state.loginId;
+            const phoneStep = root.querySelector('[data-step="phone"]');
+            const codeStep = root.querySelector('[data-step="code"]');
+            if (phoneStep) phoneStep.classList.add('hidden');
+            if (codeStep) codeStep.classList.remove('hidden');
+            const sp = root.querySelector('[data-sent-phone]');
+            if (sp) sp.textContent = state.loginId;
+            const back = root.querySelector('[data-back-phone]');
+            if (back) back.onclick = () => { state.auth = state.fromReg ? 'register' : 'login'; render(true); };
+            return;
+          }
+          root.innerHTML = loginView();
+          bindAuth();
           return;
         }
-        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
-        root.innerHTML = TrackUI.screen(active, 'rider', { back: 'data-stay' });
+        startRiderGps();
+        if (state.screen === 'live' && state.orderId) {
+          const o = (API.orders || []).find((x) => x.id === state.orderId);
+          if (o && o.status === 'delivered') {
+            killMap();
+            state.screen = 'delivered';
+          } else if (o) {
+            const existing = root.querySelector('[data-track-root="'+state.orderId+'"]');
+            if (!force && existing && state.mapHandle) {
+              state.mapHandle.update(o);
+              TrackUI.paint(existing, o, 'rider');
+              return;
+            }
+            killMap();
+            root.innerHTML = liveView();
+            bind();
+            bindMapChrome(o);
+            const el = document.getElementById('map');
+            if (el) state.mapHandle = mountTrackingMap(el, o);
+            return;
+          }
+        }
+        if (state.tab === 'map' && !state.screen) {
+          const live = ongoing().find((o) => o.status === 'on_the_way');
+          if (live) {
+            state.orderId = live.id;
+            state.screen = 'live';
+            startLiveGps(live.id);
+            render(true);
+            return;
+          }
+          const existing = root.querySelector('.rd-map-empty');
+          if (!force && existing && state.mapHandle) return;
+          killMap();
+          root.innerHTML = mapIdleView();
+          bind();
+          const el = document.getElementById('map');
+          if (el && typeof L !== 'undefined') {
+            const lat = state.liveLat || 8.335, lng = state.liveLng || 80.4108;
+            const map = L.map(el, { zoomControl: false }).setView([lat, lng], 14);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' }).addTo(map);
+            state.mapHandle = { destroy() { try { map.remove(); } catch(_){} }, update() {}, locate() { map.setView([state.liveLat||lat, state.liveLng||lng], 16); } };
+          }
+          return;
+        }
+        killMap();
+        if (state.screen === 'details') root.innerHTML = detailsView();
+        else if (state.screen === 'delivered') root.innerHTML = deliveredView();
+        else if (state.screen === 'wallet') root.innerHTML = walletView();
+        else if (state.screen === 'docs') root.innerHTML = docsView();
+        else if (state.screen === 'vehicle') root.innerHTML = vehicleView();
+        else if (state.screen === 'help') root.innerHTML = helpView();
+        else if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; }
+        else if (state.tab === 'orders') root.innerHTML = ordersView();
+        else if (state.tab === 'earn') root.innerHTML = earnView();
+        else if (state.tab === 'profile') root.innerHTML = profileView();
+        else root.innerHTML = homeView();
         bind();
-        bindMapChrome(active);
-        const el = document.getElementById('map');
-        if (el) state.mapHandle = mountTrackingMap(el, active);
-        return;
-      }
-      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
-      if (state.tab === 'earn') { root.innerHTML = earnView(); bind(); return; }
-      if (state.tab === 'account') { root.innerHTML = accountView(); bind(); return; }
-      root.innerHTML = jobsListView();
-      bind();
       } finally {
         if (keep) {
           const sc = root.querySelector('.scroll');
@@ -196,41 +742,16 @@
         }
       }
     }
-    function bind() {
-      const root = document.getElementById('root');
-      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.chat = false; render(true); });
-      root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => {
-        const o = API.orders.find((x) => x.id === b.dataset.pick);
-        state.activeId = o.id;
-        state.tab = 'jobs';
-        startGps(o);
-      });
-      root.querySelectorAll('[data-drop]').forEach((b) => b.onclick = () => {
-        const id = b.dataset.drop;
-        if (gps[id]) clearInterval(gps[id].timer);
-        state.activeId = null;
-        API.patch(id, { status: 'delivered' });
-      });
-      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.activeId = b.dataset.chat; state.chat = true; render(true); });
-      root.querySelectorAll('[data-stay]').forEach((b) => b.onclick = () => { state.tab = 'jobs'; state.chat = false; render(true); });
-      const back = document.getElementById('backJobs');
-      if (back) back.onclick = () => { state.chat = false; state.tab = 'jobs'; render(true); };
-      const form = document.getElementById('chatForm');
-      if (form) form.onsubmit = async (e) => {
-        e.preventDefault();
-        const text = form.text.value.trim();
-        if (!text) return;
-        form.text.value = '';
-        await API.sendMessage(state.activeId, API.user.name, 'rider', text);
-      };
-      const logout = document.getElementById('logout');
-      if (logout) logout.onclick = () => { API.logout(); render(true); };
-    }
-    if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
-      API.login('rider', '0775556666', '1234').catch(() => {});
+
+    if (!API.user) {
+      setTimeout(() => {
+        if (!API.user && state.auth === 'splash') { state.auth = 'login'; render(true); }
+      }, 1600);
+    } else {
+      state.auth = 'login';
     }
     API.on(() => {
-      if (!API.user && document.querySelector('[data-otp-root]')) return;
+      if (!API.user && document.querySelector('[data-otp-root], [data-rider-auth]')) return;
       render(false, { keepScroll: true });
     });
     render();

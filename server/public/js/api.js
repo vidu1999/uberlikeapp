@@ -237,6 +237,11 @@
     };
   }
 
+  function isDemoOrder(o) {
+    const id = String((o && o.id) || '');
+    return /^ORD-100[1-4]$/.test(id) || id === 'ORD-NONE';
+  }
+
   function nextOrderId() {
     let seq = 1000;
     for (const o of API.orders) {
@@ -255,7 +260,7 @@
     ]);
     API.shops = (shopRows || []).map(mapShop);
     API.items = (itemRows || []).map(mapItem);
-    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r));
+    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r)).filter((o) => !isDemoOrder(o));
     API.messages = {};
     for (const m of msgRows || []) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
@@ -293,7 +298,7 @@
     const data = await getJSON('/api/state');
     API.shops = data.shops;
     API.items = data.items;
-    API.orders = data.orders;
+    API.orders = (data.orders || []).filter((o) => !isDemoOrder(o));
     API.messages = data.messages || {};
     notify();
   };
@@ -352,6 +357,18 @@
     try {
       if (profile) sessionStorage.setItem('sd_pending_shop', JSON.stringify(profile));
       else sessionStorage.removeItem('sd_pending_shop');
+    } catch (_) {}
+  };
+
+  function pendingRider() {
+    if (API._pendingRider) return API._pendingRider;
+    try { return JSON.parse(sessionStorage.getItem('sd_pending_rider') || 'null'); } catch (_) { return null; }
+  }
+  API.setPendingRider = function (profile) {
+    API._pendingRider = profile || null;
+    try {
+      if (profile) sessionStorage.setItem('sd_pending_rider', JSON.stringify(profile));
+      else sessionStorage.removeItem('sd_pending_rider');
     } catch (_) {}
   };
 
@@ -461,16 +478,19 @@
       try { API.shops.push(mapShop(shop)); } catch (_) {}
     }
     if (!row) {
+      const pr = pendingRider() || {};
       row = {
         id: String(role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
-        name: role === 'rider' ? 'Courier' : 'Guest',
+        name: role === 'rider' ? (pr.name || 'Rider') : (pr.name || 'Guest'),
         phone,
+        email: pr.email || '',
         pin: 'otp',
         role: role || 'customer',
-        address: 'No.123, Lake View Road, Anuradhapura',
+        address: 'Sri Lanka',
       };
+      API.setPendingRider(null);
       if (role === 'rider') {
-        row.vehicle = 'Bike';
+        row.vehicle = pr.vehicle || 'Honda Dio · BDX 1234';
         row.rating = 5;
       }
       try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
@@ -590,6 +610,7 @@
     API.user = null;
     API.token = null;
     API.setPendingShop(null);
+    API.setPendingRider(null);
     try {
       localStorage.removeItem(sessionKey(role));
       sessionStorage.removeItem(sessionKey(role));
@@ -688,10 +709,10 @@
     const cur = order || API.orders.find((o) => o.id === id);
     if (cur && sbConfigured()) {
       const next = Object.assign({}, cur, body);
-      if (body.status === 'on_the_way') {
-        next.riderId = next.riderId || 'RIDER_77';
-        next.riderName = next.riderName || 'Kamal Perera';
-        next.riderPhone = next.riderPhone || '0775556666';
+      if (body.status === 'on_the_way' && API.user && API.user.role === 'rider') {
+        next.riderId = next.riderId || API.user.id;
+        next.riderName = next.riderName || API.user.name;
+        next.riderPhone = next.riderPhone || API.user.phone;
       }
       if (body.status === 'delivered') next.deliveredAt = new Date().toISOString();
       next.updatedAt = new Date().toISOString();
@@ -700,6 +721,15 @@
     }
     await API.refresh();
     return order;
+  };
+
+  API.claimOrder = async function (id) {
+    const u = API.user || {};
+    return API.patch(id, {
+      riderId: u.id,
+      riderName: u.name,
+      riderPhone: u.phone,
+    });
   };
 
   API.toggleItem = async function (id, isAvailable) {

@@ -74,7 +74,7 @@
   function person(order, viewer) {
     if (viewer === 'rider') {
       return {
-        name: order.riderName || 'Kamal Perera',
+        name: order.riderName || (typeof API !== 'undefined' && API.user && API.user.name) || 'Rider',
         role: 'Delivery Partner',
         phone: order.customerPhone,
         photo: '/img/avatar-rider.jpg',

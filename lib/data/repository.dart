@@ -62,6 +62,7 @@ class OrderRepository {
   String? _otpBody;
   DateTime? _otpExp;
   Map<String, String>? pendingShop;
+  Map<String, String>? pendingRider;
   bool openShopProfile = false;
   static const _shopProfKey = 'qb_shop_profile_';
 
@@ -190,18 +191,21 @@ class OrderRepository {
       });
       pendingShop = null;
     } else {
+      final pr = pendingRider;
       user = {
-        'id': '${role.toUpperCase()}_${phone.substring(phone.length - 4)}',
-        'name': role == 'rider' ? 'Courier' : 'Guest',
+        'id': '${role.toUpperCase()}_${phone.substring(phone.length - 4)}_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
+        'name': role == 'rider' ? (pr?['name'] ?? 'Rider') : (pr?['name'] ?? 'Guest'),
         'phone': phone,
+        'email': pr?['email'] ?? '',
         'role': role,
         'pin': 'otp',
-        'address': 'No.123, Lake View Road, Anuradhapura',
+        'address': 'Sri Lanka',
       };
       if (role == 'rider') {
-        user['vehicle'] = 'Bike';
+        user['vehicle'] = pr?['vehicle'] ?? 'Honda Dio · BDX 1234';
         user['rating'] = 5;
       }
+      pendingRider = null;
       try {
         await _sbWrite('accounts', 'POST', [user]);
       } catch (_) {}
@@ -382,6 +386,7 @@ class OrderRepository {
     userNotifier.value = null;
     token = null;
     pendingShop = null;
+    pendingRider = null;
     _persist();
   }
 
@@ -493,6 +498,7 @@ class OrderRepository {
       );
       ordersNotifier.value = orderRows
           .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
+          .where((o) => !_isDemoOrder(o))
           .toList();
       messages.clear();
       for (final raw in msgRows) {
@@ -535,6 +541,7 @@ class OrderRepository {
         final rawOrders = (data['orders'] as List?) ?? const [];
         ordersNotifier.value = rawOrders
             .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
+            .where((o) => !_isDemoOrder(o))
             .toList();
         final rawShops = (data['shops'] as List?) ?? const [];
         final rawItems = (data['items'] as List?) ?? const [];
@@ -683,8 +690,17 @@ class OrderRepository {
     await _patch(id, {'status': status.apiName});
   }
 
-  Future<void> assignRider(String id, String riderId, {String riderName = 'Kamal Perera'}) async {
-    await _patch(id, {'riderId': riderId, 'riderName': riderName, 'riderPhone': '0775556666'});
+  bool _isDemoOrder(Order o) {
+    return RegExp(r'^ORD-100[1-4]$').hasMatch(o.id) || o.id == 'ORD-NONE';
+  }
+
+  Future<void> assignRider(String id, {String? riderId, String? riderName, String? riderPhone}) async {
+    final u = user;
+    await _patch(id, {
+      'riderId': riderId ?? u?.id,
+      'riderName': riderName ?? u?.name,
+      'riderPhone': riderPhone ?? u?.phone,
+    });
   }
 
   Future<void> updateRiderLocation(String id, double lat, double lng) async {

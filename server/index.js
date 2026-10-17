@@ -222,9 +222,6 @@ function patchOrder(order, body) {
     const shop = shopById(order.shopId);
     order.riderLat = shop ? shop.lat : 8.3514;
     order.riderLng = shop ? shop.lng : 80.3988;
-    order.riderId = order.riderId || 'RIDER_77';
-    order.riderName = order.riderName || 'Kamal Perera';
-    order.riderPhone = order.riderPhone || '0775556666';
   }
   if (body.status === 'delivered') order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();

@@ -81,21 +81,21 @@ class _WelcomeFlowState extends State<WelcomeFlow> {
                     color: Brand.green,
                     borderRadius: BorderRadius.circular(28),
                   ),
-                  child: const Icon(Icons.restaurant, color: Colors.white, size: 44),
+                  child: Icon(widget.role == UserRole.rider ? Icons.delivery_dining : Icons.restaurant, color: Colors.white, size: 44),
                 ),
                 const SizedBox(height: 18),
                 const Text(
                   'QuickBite',
                   style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -0.6),
                 ),
-                const Text('Good Food, Fast Delivery', style: TextStyle(color: Color(0xFF9FE7B8), fontWeight: FontWeight.w600)),
+                Text(widget.role == UserRole.rider ? 'Rider' : 'Good Food, Fast Delivery', style: const TextStyle(color: Color(0xFF9FE7B8), fontWeight: FontWeight.w600)),
                 const Spacer(),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(32, 0, 32, 36),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 0, 32, 36),
                   child: Text(
-                    'Your Favorite Food\nDelivered to Your Door',
+                    widget.role == UserRole.rider ? 'Delivering Happiness' : 'Your Favorite Food\nDelivered to Your Door',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1.3),
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1.3),
                   ),
                 ),
                 Container(

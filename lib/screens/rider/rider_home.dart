@@ -1,11 +1,15 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+
 import '../../app.dart';
 import '../../config.dart';
+import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
+import '../../models/shop.dart';
 import '../../theme.dart';
-import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
 import '../../widgets/tracking_map.dart';
 import '../chat_screen.dart';
@@ -20,43 +24,177 @@ class RiderHome extends StatefulWidget {
 }
 
 class _RiderHomeState extends State<RiderHome> {
-  Timer? _timer;
   int tab = 0;
+  String page = '';
+  String filter = 'new';
+  String? orderId;
+  bool online = true;
+  double? lat;
+  double? lng;
+  StreamSubscription<Position>? _gps;
 
-  Future<void> _pickUp(Order o) async {
-    await OrderRepository.instance.assignRider(o.id, 'RIDER_77', riderName: 'Kamal Perera');
-    await OrderRepository.instance.updateStatus(o.id, OrderStatus.onTheWay);
-    _startLocationStream(o.id);
-  }
-
-  void _startLocationStream(String orderId) {
-    _timer?.cancel();
-    final order = OrderRepository.instance.byId(orderId);
-    if (order == null) return;
-    double lat = order.riderLat ?? order.deliveryLat + 0.012;
-    double lng = order.riderLng ?? order.deliveryLng - 0.01;
-    final destLat = order.deliveryLat;
-    final destLng = order.deliveryLng;
-    _timer = Timer.periodic(const Duration(seconds: 2), (t) {
-      lat += (destLat - lat) * 0.18;
-      lng += (destLng - lng) * 0.18;
-      OrderRepository.instance.updateRiderLocation(orderId, lat, lng);
-      if ((lat - destLat).abs() < 0.0004 && (lng - destLng).abs() < 0.0004) {
-        t.cancel();
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    _watchGps();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _gps?.cancel();
     super.dispose();
+  }
+
+  Future<void> _watchGps() async {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
+        timeLimit: const Duration(seconds: 20),
+      );
+      if (!mounted) return;
+      setState(() {
+        lat = pos.latitude;
+        lng = pos.longitude;
+      });
+      _pushLoc(pos.latitude, pos.longitude);
+    } catch (_) {}
+    _gps = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: 1),
+    ).listen((pos) {
+      if (!mounted) return;
+      setState(() {
+        lat = pos.latitude;
+        lng = pos.longitude;
+      });
+      _pushLoc(pos.latitude, pos.longitude);
+    });
+  }
+
+  void _pushLoc(double la, double ln) {
+    final live = OrderRepository.instance.orders.where((o) => _mine(o) && o.status == OrderStatus.onTheWay);
+    for (final o in live) {
+      OrderRepository.instance.updateRiderLocation(o.id, la, ln);
+    }
+  }
+
+  bool _mine(Order o) {
+    final u = OrderRepository.instance.user;
+    if (u == null) return false;
+    return o.riderId == u.id || (u.phone.isNotEmpty && o.riderPhone == u.phone);
+  }
+
+  List<Order> _available(List<Order> orders) =>
+      orders.where((o) => o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)).toList();
+
+  List<Order> _ongoing(List<Order> orders) =>
+      orders.where((o) => _mine(o) && (o.status == OrderStatus.ready || o.status == OrderStatus.onTheWay)).toList();
+
+  List<Order> _done(List<Order> orders) =>
+      orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).toList();
+
+  double _earn(Order o) => o.totalAmount > 0 ? o.totalAmount : 150;
+
+  double _km(Order o) {
+    Shop? shop;
+    for (final s in Catalog.shops) {
+      if (s.id == o.shopId) shop = s;
+    }
+    final fromLat = lat ?? o.riderLat ?? shop?.lat ?? o.deliveryLat;
+    final fromLng = lng ?? o.riderLng ?? shop?.lng ?? o.deliveryLng;
+    return UserPlace.km(fromLat, fromLng, o.deliveryLat, o.deliveryLng);
   }
 
   String? _url(String path) {
     final base = AppConfig.normalize(AppConfig.baseUrl);
     if (base.isEmpty) return null;
+    if (path.startsWith('http')) return path;
     return '$base$path';
+  }
+
+  String _thumbPath(Order o) {
+    if (o.items.isNotEmpty) {
+      for (final it in Catalog.items) {
+        if (it.name == o.items.first.name && it.image != null && it.image!.isNotEmpty) return it.image!;
+      }
+    }
+    for (final s in Catalog.shops) {
+      if (s.id == o.shopId && s.image != null && s.image!.isNotEmpty) return s.image!;
+    }
+    return '/img/shop-bakery.jpg';
+  }
+
+  ImageProvider? _img(String path) {
+    final u = _url(path);
+    if (u == null) return null;
+    return NetworkImage(u);
+  }
+
+  Widget _thumb(Order o, double size) {
+    final img = _img(_thumbPath(o));
+    if (img == null) return Container(width: size, height: size, color: Brand.navy3);
+    return Image(
+      image: img,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(width: size, height: size, color: Brand.navy3),
+    );
+  }
+
+  String _greet() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good Morning';
+    if (h < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
+  String get _first {
+    final n = OrderRepository.instance.user?.name ?? 'Rider';
+    return n.split(RegExp(r'\s+')).first;
+  }
+
+  Order? _current(List<Order> orders) {
+    if (orderId == null) return null;
+    for (final o in orders) {
+      if (o.id == orderId) return o;
+    }
+    return null;
+  }
+
+  Future<void> _accept(Order o) async {
+    await OrderRepository.instance.assignRider(o.id);
+    if (!mounted) return;
+    setState(() {
+      orderId = o.id;
+      page = 'details';
+    });
+  }
+
+  Future<void> _navigate(Order o) async {
+    await OrderRepository.instance.assignRider(o.id);
+    await OrderRepository.instance.updateStatus(o.id, OrderStatus.onTheWay);
+    if (lat != null && lng != null) {
+      await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
+    }
+    if (!mounted) return;
+    setState(() {
+      orderId = o.id;
+      page = 'live';
+    });
+  }
+
+  Future<void> _deliver(Order o) async {
+    await OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered);
+    if (!mounted) return;
+    setState(() {
+      orderId = o.id;
+      page = 'delivered';
+    });
   }
 
   @override
@@ -68,25 +206,64 @@ class _RiderHomeState extends State<RiderHome> {
         body: ValueListenableBuilder<List<Order>>(
           valueListenable: OrderRepository.instance.ordersNotifier,
           builder: (context, orders, _) {
-            final active = orders.where((o) => o.status == OrderStatus.onTheWay).toList();
-            if (active.isNotEmpty && tab == 0) {
-              return _onDelivery(active.first);
+            Widget body;
+            if (page == 'details') {
+              body = _details(_current(orders));
+            } else if (page == 'live') {
+              final o = _current(orders);
+              if (o != null && o.status == OrderStatus.delivered) {
+                body = _delivered(o);
+              } else {
+                body = _live(o);
+              }
+            } else if (page == 'delivered') {
+              body = _delivered(_current(orders));
+            } else if (page == 'wallet') {
+              body = _wallet(_done(orders));
+            } else if (page == 'docs') {
+              body = _docs();
+            } else if (page == 'vehicle') {
+              body = _vehicle();
+            } else if (page == 'help') {
+              body = _help();
+            } else if (tab == 1) {
+              body = _orders(orders);
+            } else if (tab == 2) {
+              final live = _ongoing(orders).where((o) => o.status == OrderStatus.onTheWay);
+              if (live.isNotEmpty) {
+                body = _live(live.first);
+              } else {
+                body = _mapIdle(orders);
+              }
+            } else if (tab == 3) {
+              body = _earn(_done(orders));
+            } else if (tab == 4) {
+              body = _profile(orders);
+            } else {
+              body = _home(orders);
             }
+            final hideNav = page == 'details' || page == 'live' || page == 'delivered' || page == 'docs' || page == 'vehicle' || page == 'help';
             return Column(
               children: [
-                Expanded(child: tab == 1 ? _earn(orders) : tab == 2 ? _profile() : _jobs(orders)),
-                NavigationBar(
-                  height: 64,
-                  backgroundColor: Brand.navy,
-                  indicatorColor: Brand.green.withOpacity(0.18),
-                  selectedIndex: tab,
-                  onDestinationSelected: (i) => setState(() => tab = i),
-                  destinations: const [
-                    NavigationDestination(icon: Icon(Icons.delivery_dining_outlined), selectedIcon: Icon(Icons.delivery_dining, color: Brand.green), label: 'Jobs'),
-                    NavigationDestination(icon: Icon(Icons.payments_outlined), selectedIcon: Icon(Icons.payments, color: Brand.green), label: 'Earnings'),
-                    NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: Brand.green), label: 'Profile'),
-                  ],
-                ),
+                Expanded(child: body),
+                if (!hideNav)
+                  NavigationBar(
+                    height: 64,
+                    backgroundColor: Brand.navy,
+                    indicatorColor: Brand.green.withOpacity(0.18),
+                    selectedIndex: tab,
+                    onDestinationSelected: (i) => setState(() {
+                      tab = i;
+                      page = '';
+                    }),
+                    destinations: const [
+                      NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: Brand.green), label: 'Home'),
+                      NavigationDestination(icon: Icon(Icons.shopping_bag_outlined), selectedIcon: Icon(Icons.shopping_bag, color: Brand.green), label: 'Orders'),
+                      NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map, color: Brand.green), label: 'Map'),
+                      NavigationDestination(icon: Icon(Icons.payments_outlined), selectedIcon: Icon(Icons.payments, color: Brand.green), label: 'Earnings'),
+                      NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: Brand.green), label: 'Profile'),
+                    ],
+                  ),
               ],
             );
           },
@@ -95,70 +272,350 @@ class _RiderHomeState extends State<RiderHome> {
     );
   }
 
-  Widget _jobs(List<Order> orders) {
-    final jobs = orders.where((o) => o.status == OrderStatus.ready).toList();
+  Widget _home(List<Order> orders) {
+    final jobs = _available(orders);
+    final today = _done(orders);
+    final pay = today.fold<double>(0, (n, o) => n + _earn(o));
+    final going = _ongoing(orders);
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
         children: [
-          const ConnectionBanner(),
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('On Delivery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                    Text('Online', style: TextStyle(color: Brand.soft, fontSize: 12)),
-                  ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${_greet()},', style: const TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(_first, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(20)),
-                child: const Text('●  Online', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (jobs.isEmpty) const Text('No trips yet. In Shop, accept an order and tap Food is ready.', style: TextStyle(color: Brand.soft)),
-          ...jobs.map((o) => Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${o.shopName} → ${o.customerName}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text(o.id, style: const TextStyle(color: Brand.soft, fontSize: 12)),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Brand.green),
-                        onPressed: () => _pickUp(o),
-                        child: const Text('Accept'),
-                      ),
+                GestureDetector(
+                  onTap: () => setState(() => online = !online),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: online ? const Color(0xFF123D28) : Brand.navy3,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ],
+                    child: Text(online ? '●  Online' : '○  Offline', style: TextStyle(color: online ? Brand.green : Brand.soft, fontWeight: FontWeight.w800, fontSize: 12)),
+                  ),
                 ),
-              )),
+                const SizedBox(width: 8),
+                CircleAvatar(radius: 22, backgroundImage: _img('/img/avatar-rider.jpg'), backgroundColor: Brand.navy3),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(child: _kpi("Today's Earnings", 'Rs. ${pay.round()}', '${today.length} Deliveries')),
+                const SizedBox(width: 10),
+                Expanded(child: _kpi("Today's Orders", '${today.length + going.length}', 'On Going: ${going.length}')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              children: [
+                _short(Icons.shopping_bag, 'New Orders', () => setState(() { tab = 1; filter = 'new'; page = ''; })),
+                _short(Icons.map, 'Map', () => setState(() { tab = 2; page = ''; })),
+                _short(Icons.account_balance_wallet, 'Wallet', () => setState(() => page = 'wallet')),
+                _short(Icons.person, 'Profile', () => setState(() { tab = 4; page = ''; })),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                const Expanded(child: Text('Available Orders', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+                TextButton(onPressed: () => setState(() { tab = 1; page = ''; }), child: const Text('See all', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800))),
+              ],
+            ),
+          ),
+          if (!online)
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Go Online to see nearby orders.', style: TextStyle(color: Brand.soft)))
+          else if (jobs.isEmpty)
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('No ready jobs yet. When a shop taps Food is ready, it shows here.', style: TextStyle(color: Brand.soft)))
+          else
+            ...jobs.map((o) => _jobCard(o, accept: true)),
         ],
       ),
     );
   }
 
-  Widget _onDelivery(Order o) {
+  Widget _kpi(String label, String value, String sub) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Brand.soft, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(sub, style: const TextStyle(color: Brand.green, fontSize: 12, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
+  Widget _short(IconData icon, String label, VoidCallback onTap) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+              child: Icon(icon, color: Brand.green),
+            ),
+            const SizedBox(height: 6),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _jobCard(Order o, {required bool accept}) {
+    final km = _km(o);
+    return GestureDetector(
+      onTap: () => setState(() {
+        orderId = o.id;
+        page = 'details';
+      }),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: _thumb(o, 56),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('#${o.id.replaceAll('_', '-')}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  Text(o.shopName, style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                  Text('${km.toStringAsFixed(1)} km · Rs. ${_earn(o).round()}', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                ],
+              ),
+            ),
+            if (accept)
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size(0, 36)),
+                onPressed: () => _accept(o),
+                child: const Text('Accept'),
+              )
+            else
+              Text(TimeOfDay.fromDateTime(o.timestamp).format(context), style: const TextStyle(color: Brand.soft, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _orders(List<Order> orders) {
+    final list = filter == 'going' ? _ongoing(orders) : filter == 'done' ? _done(orders) : _available(orders);
+    return SafeArea(
+      child: ListView(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text('Orders', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                _pill('New (${_available(orders).length})', filter == 'new', () => setState(() => filter = 'new')),
+                const SizedBox(width: 8),
+                _pill('On Going (${_ongoing(orders).length})', filter == 'going', () => setState(() => filter = 'going')),
+                const SizedBox(width: 8),
+                _pill('Completed', filter == 'done', () => setState(() => filter = 'done')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (list.isEmpty)
+            const Padding(padding: EdgeInsets.all(16), child: Text('No orders in this tab.', style: TextStyle(color: Brand.soft)))
+          else
+            ...list.map((o) => _jobCard(o, accept: filter == 'new')),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(String label, bool on, VoidCallback tap) {
+    return GestureDetector(
+      onTap: tap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(color: on ? Brand.green : Brand.navy2, borderRadius: BorderRadius.circular(20)),
+        child: Text(label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: on ? Colors.white : Brand.soft)),
+      ),
+    );
+  }
+
+  Widget _details(Order? o) {
+    if (o == null) {
+      return Center(child: TextButton(onPressed: () => setState(() => page = ''), child: const Text('Back')));
+    }
+    final claimed = _mine(o) || (o.riderId != null && o.riderId!.isNotEmpty);
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          Row(
+            children: [
+              IconButton.filled(
+                style: IconButton.styleFrom(backgroundColor: Brand.navy2),
+                onPressed: () => setState(() => page = ''),
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              const Text('Order Details', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _thumb(o, 64),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('#${o.id.replaceAll('_', '-')}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                      Text(o.shopName, style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                      Text('Rs. ${o.totalAmount.round()} · ${_km(o).toStringAsFixed(1)} km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                      Text(o.status.label, style: const TextStyle(color: Color(0xFFF5C518), fontWeight: FontWeight.w800, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+            child: Row(
+              children: [
+                CircleAvatar(backgroundImage: _img('/img/avatar-user.jpg'), backgroundColor: Brand.navy3),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      Text(o.customerPhone ?? 'WhatsApp customer', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
+                IconButton.filled(
+                  style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'rider'))),
+                  icon: const Icon(Icons.chat_bubble, color: Brand.green),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Delivery Address', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(o.address.isEmpty ? 'Customer pin on the map' : o.address, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Order Items', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
+                ...o.items.map((it) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text('x${it.qty} · Rs. ${it.price.round()}', style: const TextStyle(color: Brand.soft)),
+                    )),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (!claimed && o.status == OrderStatus.ready)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
+              onPressed: () => _accept(o),
+              child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+          if (_mine(o) && o.status != OrderStatus.onTheWay && o.status != OrderStatus.delivered)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
+              onPressed: () => _navigate(o),
+              child: const Text('Navigate', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+          if (o.status == OrderStatus.onTheWay)
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
+              onPressed: () => setState(() => page = 'live'),
+              child: const Text('Open live map', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _live(Order? o) {
+    if (o == null) return const Center(child: Text('No active delivery'));
+    Shop? shop;
+    for (final s in Catalog.shops) {
+      if (s.id == o.shopId) shop = s;
+    }
     final avatar = _url('/img/avatar-rider.jpg');
+    final name = OrderRepository.instance.user?.name ?? o.riderName ?? 'Rider';
     return Stack(
       children: [
         Positioned.fill(
           child: TrackingMap(
             destLat: o.deliveryLat,
             destLng: o.deliveryLng,
-            riderLat: o.riderLat,
-            riderLng: o.riderLng,
-            shopLat: o.deliveryLat + 0.012,
-            shopLng: o.deliveryLng - 0.01,
+            riderLat: o.riderLat ?? lat,
+            riderLng: o.riderLng ?? lng,
+            shopLat: shop?.lat,
+            shopLng: shop?.lng,
+            liveLat: lat,
+            liveLng: lng,
             dark: true,
           ),
         ),
@@ -169,8 +626,8 @@ class _RiderHomeState extends State<RiderHome> {
               children: [
                 IconButton.filled(
                   style: IconButton.styleFrom(backgroundColor: Brand.navy2),
-                  onPressed: () => setState(() => tab = 2),
-                  icon: const Icon(Icons.menu, color: Colors.white),
+                  onPressed: () => setState(() => page = 'details'),
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -178,15 +635,10 @@ class _RiderHomeState extends State<RiderHome> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('On Delivery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                      Text('Order ${o.id.replaceAll('_', '-')}', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                      const Text('On the way', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                      Text('${_km(o).toStringAsFixed(1)} km left', style: const TextStyle(color: Brand.soft, fontSize: 12)),
                     ],
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(20)),
-                  child: const Text('●  Online', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 12)),
                 ),
               ],
             ),
@@ -204,61 +656,34 @@ class _RiderHomeState extends State<RiderHome> {
               children: [
                 Row(
                   children: [
-                    CircleAvatar(
-                      radius: 28,
-                      backgroundImage: avatar == null ? null : NetworkImage(avatar),
-                      backgroundColor: Brand.navy3,
-                    ),
+                    CircleAvatar(radius: 28, backgroundImage: avatar == null ? null : NetworkImage(avatar), backgroundColor: Brand.navy3),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Kamal Perera', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                          Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
-                          Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                          const Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
+                          const Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                         ],
                       ),
                     ),
-                    const Text('🛵', style: TextStyle(fontSize: 28)),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Row(
-                  children: [
-                    Expanded(child: _Metric(icon: Icons.schedule, label: 'ETA', value: '12 – 15 min')),
-                    SizedBox(width: 10),
-                    Expanded(child: _Metric(icon: Icons.place, label: 'Distance', value: '2.3 km')),
+                    IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(vertical: 14)),
-                        onPressed: () {},
-                        icon: const Icon(Icons.call),
-                        label: const Text('Call'),
-                      ),
-                    ),
+                    Expanded(child: _metric(Icons.schedule, 'ETA', '${(_km(o) * 4).round().clamp(8, 40)} min')),
                     const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'rider')),
-                        ),
-                        icon: const Icon(Icons.chat_bubble),
-                        label: const Text('Chat'),
-                      ),
-                    ),
+                    Expanded(child: _metric(Icons.place, 'Distance', '${_km(o).toStringAsFixed(1)} km')),
                   ],
                 ),
-                TextButton(
-                  onPressed: () => OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered),
-                  child: const Text('Mark delivered', style: TextStyle(color: Brand.soft)),
+                const SizedBox(height: 12),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(48)),
+                  onPressed: () => _deliver(o),
+                  child: const Text('Mark delivered', style: TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ],
             ),
@@ -268,53 +693,7 @@ class _RiderHomeState extends State<RiderHome> {
     );
   }
 
-  Widget _earn(List<Order> orders) {
-    final done = orders.where((o) => o.status == OrderStatus.delivered).toList();
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('Earnings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(16)),
-            child: Text('Rs. ${done.length * 150}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          ),
-          ...done.map((o) => ListTile(title: Text(o.id), trailing: const Text('+ Rs. 150'))),
-        ],
-      ),
-    );
-  }
-
-  Widget _profile() {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(OrderRepository.instance.user?.name ?? 'Kamal Perera', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          const Text('Delivery Partner', style: TextStyle(color: Brand.soft)),
-          const SizedBox(height: 12),
-          Row(children: [
-            const SettingsButton(),
-            RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole),
-          ]),
-          const SizedBox(height: 24),
-          OutlinedButton(onPressed: () => OrderRepository.instance.logout(), child: const Text('Sign out')),
-        ],
-      ),
-    );
-  }
-}
-
-class _Metric extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  const _Metric({required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _metric(IconData icon, String label, String value) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Brand.navy3, borderRadius: BorderRadius.circular(14)),
@@ -336,6 +715,344 @@ class _Metric extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _delivered(Order? o) {
+    final pay = o == null ? 0 : _earn(o).round();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+        child: Column(
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(color: const Color(0xFFE8F8EE), borderRadius: BorderRadius.circular(28)),
+              child: const Center(child: Text('📦', style: TextStyle(fontSize: 48))),
+            ),
+            const SizedBox(height: 18),
+            const Text('Order Delivered!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white)),
+            const SizedBox(height: 8),
+            const Text('Great job! You completed the delivery successfully.', textAlign: TextAlign.center, style: TextStyle(color: Brand.soft)),
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+              child: Column(
+                children: [
+                  const Text('Earnings', style: TextStyle(color: Brand.soft)),
+                  Text('Rs. $pay', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+            const Spacer(),
+            TextButton(onPressed: () => setState(() => page = 'details'), child: const Text('View Order Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
+              onPressed: () => setState(() {
+                page = '';
+                tab = 0;
+              }),
+              child: const Text('Back to Home', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _earn(List<Order> list) {
+    final pay = list.fold<double>(0, (n, o) => n + _earn(o));
+    final dist = list.fold<double>(0, (n, o) => n + _km(o));
+    final buckets = List<double>.filled(7, 0);
+    for (final o in list) {
+      buckets[(o.timestamp.weekday + 6) % 7] += _earn(o);
+    }
+    final max = buckets.fold<double>(1, (a, b) => a > b ? a : b);
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        children: [
+          const Text('Earnings', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Text('Rs. ${pay.round()}', style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+          Text('${list.length} Deliveries · Today', style: const TextStyle(color: Brand.soft)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 120,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Container(
+                        height: (8 + (buckets[i] / max) * 110).clamp(8, 110),
+                        decoration: BoxDecoration(
+                          color: buckets[i] > 0 ? Brand.green : const Color(0xFF123D28),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Row(children: days.map((d) => Expanded(child: Text(d, textAlign: TextAlign.center, style: const TextStyle(color: Brand.soft, fontSize: 11, fontWeight: FontWeight.w700)))).toList()),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _kpi('Total Deliveries', '${list.length}', '')),
+              const SizedBox(width: 8),
+              Expanded(child: _kpi('Total Distance', '${dist.toStringAsFixed(1)} km', '')),
+              const SizedBox(width: 8),
+              Expanded(child: _kpi('Avg. per Delivery', list.isEmpty ? 'Rs. 0' : 'Rs. ${(pay / list.length).round()}', '')),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Recent Transactions', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 8),
+          if (list.isEmpty) const Text('Complete a delivery to see earnings.', style: TextStyle(color: Brand.soft)),
+          ...list.map((o) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(backgroundImage: _img(_thumbPath(o)), backgroundColor: Brand.navy3),
+                title: Text('#${o.id.replaceAll('_', '-')}'),
+                subtitle: Text(TimeOfDay.fromDateTime(o.timestamp).format(context), style: const TextStyle(color: Brand.soft)),
+                trailing: Text('+ Rs. ${_earn(o).round()}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _wallet(List<Order> list) {
+    final pay = list.fold<double>(0, (n, o) => n + _earn(o));
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        children: [
+          Row(
+            children: [
+              IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.navy2), onPressed: () => setState(() => page = ''), icon: const Icon(Icons.arrow_back, color: Colors.white)),
+              const SizedBox(width: 10),
+              const Text('Wallet', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(20)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Available Balance', style: TextStyle(color: Colors.white70)),
+                      Text('Rs. ${pay.round()}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Brand.green),
+                  onPressed: () {},
+                  child: const Text('Withdraw', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('Transaction', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ...list.map((o) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(backgroundImage: _img(_thumbPath(o)), backgroundColor: Brand.navy3),
+                title: Text('Order #${o.id.replaceAll('_', '-')}'),
+                trailing: Text('+ Rs. ${_earn(o).round()}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _profile(List<Order> orders) {
+    final u = OrderRepository.instance.user;
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        children: [
+          CircleAvatar(radius: 44, backgroundImage: _img('/img/avatar-rider.jpg'), backgroundColor: Brand.navy3),
+          const SizedBox(height: 8),
+          Text(u?.name ?? 'Rider', textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          const Text('Delivery Partner', textAlign: TextAlign.center, style: TextStyle(color: Brand.soft)),
+          const Text('★ 4.9 (120+)', textAlign: TextAlign.center, style: TextStyle(color: Brand.star, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _kpi('Completed', '${_done(orders).length}', '')),
+              const SizedBox(width: 8),
+              Expanded(child: _kpi('On Going', '${_ongoing(orders).length}', '')),
+              const SizedBox(width: 8),
+              Expanded(child: _kpi('Cancelled', '0', '')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _menu('My Documents', () => setState(() => page = 'docs')),
+          _menu('Vehicle Information', () => setState(() => page = 'vehicle')),
+          _menu('Bank Account', () => setState(() => page = 'wallet')),
+          _menu('Settings', () {}),
+          _menu('Help & Support', () => setState(() => page = 'help')),
+          const SizedBox(height: 8),
+          const SettingsButton(),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () => OrderRepository.instance.logout(),
+            child: const Text('Log Out', style: TextStyle(color: Color(0xFFFCA5A5), fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _menu(String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        onTap: onTap,
+        tileColor: Brand.navy2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        trailing: const Icon(Icons.chevron_right, color: Brand.soft),
+      ),
+    );
+  }
+
+  Widget _docs() {
+    const rows = ['NIC / ID Card', 'Driving License', 'Vehicle Registration', 'Profile Photo'];
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.navy2), onPressed: () => setState(() => page = ''), icon: const Icon(Icons.arrow_back, color: Colors.white)),
+            const SizedBox(width: 10),
+            const Text('My Documents', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 12),
+          ...rows.map((r) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(14)),
+                child: Row(children: [Expanded(child: Text(r, style: const TextStyle(fontWeight: FontWeight.w700))), const Text('Verified  ✓', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800))]),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _vehicle() {
+    final v = OrderRepository.instance.user?.vehicle ?? 'Honda Dio · BDX 1234';
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.navy2), onPressed: () => setState(() => page = ''), icon: const Icon(Icons.arrow_back, color: Colors.white)),
+            const SizedBox(width: 10),
+            const Text('Vehicle Information', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(v, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                const Divider(color: Color(0xFF1F2937)),
+                _kv('License Plate', 'BDX 1234'),
+                _kv('Vehicle Type', 'Motorcycle'),
+                _kv('Insurance', 'Valid (2026)'),
+                _kv('RC Book', 'Verified'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(children: [Expanded(child: Text(k, style: const TextStyle(color: Brand.soft))), Text(v, style: const TextStyle(fontWeight: FontWeight.w800))]),
+    );
+  }
+
+  Widget _help() {
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.navy2), onPressed: () => setState(() => page = ''), icon: const Icon(Icons.arrow_back, color: Colors.white)),
+            const SizedBox(width: 10),
+            const Text('Help & Support', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 12),
+          _menu('FAQs', () {}),
+          _menu('Contact Support', () {}),
+          _menu('Live Chat', () {}),
+          _menu('Report an Issue', () {}),
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(18)),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('QuickBite Rider Support Team', style: TextStyle(fontWeight: FontWeight.w800)),
+                SizedBox(height: 4),
+                Text('We are here to help you!', style: TextStyle(color: Color(0xFF9FE7B8))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mapIdle(List<Order> orders) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: TrackingMap(
+            destLat: lat ?? 8.335,
+            destLng: lng ?? 80.4108,
+            liveLat: lat,
+            liveLng: lng,
+            dark: true,
+          ),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+            child: Text(
+              online
+                  ? '${_available(orders).length} ready jobs nearby. Accept one, then Navigate to start live GPS.'
+                  : 'You are offline.',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
