@@ -71,6 +71,7 @@
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
+        if (API.user) { state.gate = 'app'; render(); return; }
         if (state.gate !== 'splash') return;
         state.gate = seenOnboard ? 'login' : 'onboard';
         render();

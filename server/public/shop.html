@@ -23,8 +23,10 @@
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
-      itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
-      reg: { shopName: '', ownerName: '', phone: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
+      itemDraft: null, shopDraft: null,
+      auth: (API.verifiedPhone && API.verifiedPhone('shop') && !API.user) ? 'register' : 'login',
+      fromReg: !!(API.verifiedPhone && API.verifiedPhone('shop') && !API.user),
+      reg: { shopName: '', ownerName: '', phone: (API.verifiedPhone && API.verifiedPhone('shop')) || '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '',
     };

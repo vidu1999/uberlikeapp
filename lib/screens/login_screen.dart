@@ -38,12 +38,21 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _phone = TextEditingController();
+    final repo = OrderRepository.instance;
+    _phone = TextEditingController(text: repo.verifiedPhone ?? '');
     if (widget.role == UserRole.shop || widget.role == UserRole.rider) {
       _name.text = '';
       _email.text = '';
     }
     if (widget.role == UserRole.rider) regRole = 'rider';
+    if (widget.role == UserRole.shop && repo.needsShopRegister) {
+      register = true;
+      fromRegister = true;
+    }
+    if (widget.role == UserRole.rider && repo.needsRiderRegister) {
+      register = true;
+      fromRegister = true;
+    }
   }
 
   @override

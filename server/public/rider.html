@@ -23,7 +23,10 @@
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
     const state = {
-      tab: 'home', screen: '', auth: 'splash', fromReg: false, orderId: null,
+      tab: 'home', screen: '',
+      auth: API.user ? 'home' : ((API.verifiedPhone && API.verifiedPhone('rider')) ? 'register' : 'splash'),
+      fromReg: !!(API.verifiedPhone && API.verifiedPhone('rider') && !API.user),
+      orderId: null,
       filter: 'new', online: true, mapHandle: null, liveLat: null, liveLng: null,
       loginId: '', loginPw: '',
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
@@ -546,19 +549,14 @@
           if (!id) { if (err) err.textContent = 'Enter your phone number.'; return; }
           b.disabled = true;
           const label = b.textContent;
-          b.textContent = 'Checking…';
+          b.textContent = 'Sending WhatsApp…';
           try {
-            const acc = await API.findAccount('rider', id);
-            if (!acc) {
-              state.auth = 'register';
-              state.reg.phone = API.normalizePhone ? API.normalizePhone(id) : id;
-              render(true);
-              return;
-            }
-            state.loginId = acc.phone || id;
+            const phone = API.normalizePhone ? API.normalizePhone(id) : id;
+            state.loginId = phone;
+            state.reg.phone = phone;
             API.setPendingRider(null);
             state.fromReg = false;
-            await goOtp(state.loginId);
+            await goOtp(phone);
           } catch (e) {
             if (err) err.textContent = e.message;
             b.disabled = false;
@@ -577,12 +575,22 @@
           if (err) err.textContent = 'Enter your name and phone.';
           return;
         }
-        API.setPendingRider({ name: state.reg.name.trim(), email: state.reg.email.trim(), phone: state.reg.phone.trim() });
-        state.loginId = state.reg.phone.trim();
+        const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+        API.setPendingRider({ name: state.reg.name.trim(), email: state.reg.email.trim(), phone });
+        state.loginId = phone;
         state.fromReg = true;
+        const verified = API.verifiedPhone && API.verifiedPhone('rider') === phone;
         regBtn.disabled = true;
-        try { await goOtp(state.loginId); }
-        catch (e) {
+        try {
+          if (verified) {
+            await API.completeRiderRegister();
+            state.tab = 'home';
+            startRiderGps();
+            render(true);
+            return;
+          }
+          await goOtp(phone);
+        } catch (e) {
           if (err) err.textContent = e.message;
           regBtn.disabled = false;
         }
@@ -712,7 +720,26 @@
           if (state.auth === 'download') { root.innerHTML = downloadView(); bindAuth(); return; }
           if (state.auth === 'otp') {
             root.innerHTML = otpView();
-            OtpLogin.bind({ role: 'rider', onReady: () => { state.auth = 'login'; state.tab = 'home'; startRiderGps(); render(true); } });
+            OtpLogin.bind({ role: 'rider', onReady: async (out) => {
+              if (out && out.needsRegister) {
+                try {
+                  await API.completeRiderRegister();
+                  state.tab = 'home';
+                  startRiderGps();
+                  render(true);
+                  return;
+                } catch (_) {
+                  state.auth = 'register';
+                  state.fromReg = true;
+                  state.reg.phone = out.phone || state.loginId;
+                  render(true);
+                  return;
+                }
+              }
+              state.tab = 'home';
+              startRiderGps();
+              render(true);
+            } });
             const pi = document.getElementById('phone');
             if (pi) pi.value = state.loginId;
             const phoneStep = root.querySelector('[data-step="phone"]');
@@ -795,12 +822,16 @@
       }
     }
 
-    if (!API.user) {
+    if (API.user) {
+      state.auth = 'home';
+    } else if (API.verifiedPhone && API.verifiedPhone('rider')) {
+      state.auth = 'register';
+      state.reg.phone = API.verifiedPhone('rider');
+      state.fromReg = true;
+    } else {
       setTimeout(() => {
         if (!API.user && state.auth === 'splash') { state.auth = 'login'; render(true); }
       }, 1600);
-    } else {
-      state.auth = 'login';
     }
     API.on(() => {
       if (!API.user && document.querySelector('[data-otp-root], [data-rider-auth]')) return;

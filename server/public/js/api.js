@@ -711,28 +711,42 @@
     return d;
   }
 
+  function storeGet(key) {
+    try {
+      return localStorage.getItem(key) || sessionStorage.getItem(key);
+    } catch (_) { return null; }
+  }
+  function storeSet(key, val) {
+    try { localStorage.setItem(key, val); } catch (_) {}
+    try { sessionStorage.setItem(key, val); } catch (_) {}
+  }
+  function storeDel(key) {
+    try { localStorage.removeItem(key); } catch (_) {}
+    try { sessionStorage.removeItem(key); } catch (_) {}
+  }
+
   function pendingShop() {
     if (API._pendingShop) return API._pendingShop;
-    try { return JSON.parse(sessionStorage.getItem('sd_pending_shop') || 'null'); } catch (_) { return null; }
+    try { return JSON.parse(storeGet('sd_pending_shop') || 'null'); } catch (_) { return null; }
   }
 
   API.setPendingShop = function (profile) {
     API._pendingShop = profile || null;
     try {
-      if (profile) sessionStorage.setItem('sd_pending_shop', JSON.stringify(profile));
-      else sessionStorage.removeItem('sd_pending_shop');
+      if (profile) storeSet('sd_pending_shop', JSON.stringify(profile));
+      else storeDel('sd_pending_shop');
     } catch (_) {}
   };
 
   function pendingRider() {
     if (API._pendingRider) return API._pendingRider;
-    try { return JSON.parse(sessionStorage.getItem('sd_pending_rider') || 'null'); } catch (_) { return null; }
+    try { return JSON.parse(storeGet('sd_pending_rider') || 'null'); } catch (_) { return null; }
   }
   API.setPendingRider = function (profile) {
     API._pendingRider = profile || null;
     try {
-      if (profile) sessionStorage.setItem('sd_pending_rider', JSON.stringify(profile));
-      else sessionStorage.removeItem('sd_pending_rider');
+      if (profile) storeSet('sd_pending_rider', JSON.stringify(profile));
+      else storeDel('sd_pending_rider');
     } catch (_) {}
   };
 
@@ -941,10 +955,10 @@
       if (existing) {
         API.setPendingShop(null);
         API.setPendingRider(null);
-        API._verified = null;
+        clearVerified(want);
         return enterAccount(want, phone);
       }
-      API._verified = { role: want, phone: phone };
+      persistVerified({ role: want, phone: phone });
       return { needsRegister: true, phone: phone, role: want };
     }
     return enterAccount(want, phone);
@@ -962,7 +976,7 @@
     const p = pendingShop() || {};
     if (!p.shopName && !p.ownerName) throw new Error('Register your shop first.');
     const user = await enterAccount('shop', phone);
-    API._verified = null;
+    clearVerified('shop');
     return user;
   };
 
@@ -970,21 +984,50 @@
     const phone = API.verifiedPhone('rider');
     if (!phone) throw new Error('Verify WhatsApp first.');
     const user = await enterAccount('rider', phone);
-    API._verified = null;
+    clearVerified('rider');
     return user;
   };
 
   function sessionKey(role) {
-    return 'sd_user_' + (role || API.roleHint || 'customer');
+    return 'sd_session_' + roleTag(role || API.roleHint || 'customer');
+  }
+  function sessionKeys(role) {
+    const tag = roleTag(role || API.roleHint || 'customer');
+    const keys = ['sd_session_' + tag, 'sd_user_' + tag, 'sd_user_' + (role || '')];
+    if (tag === 'customer') keys.push('sd_user_user', 'sd_user_customer', 'sd_session_user', 'sd_session_customer');
+    const out = [];
+    keys.forEach(function (k) { if (k && out.indexOf(k) < 0) out.push(k); });
+    return out;
+  }
+  function verifiedKey(role) {
+    return 'sd_verified_' + roleTag(role || API.roleHint || 'customer');
+  }
+  function persistVerified(v) {
+    API._verified = v || null;
+    try {
+      if (v && v.phone) storeSet(verifiedKey(v.role), JSON.stringify(v));
+    } catch (_) {}
+  }
+  function restoreVerified(role) {
+    try {
+      const raw = storeGet(verifiedKey(role));
+      if (!raw) return;
+      const v = JSON.parse(raw);
+      if (v && v.phone && sameRole(v.role, role)) API._verified = v;
+    } catch (_) {}
+  }
+  function clearVerified(role) {
+    API._verified = null;
+    storeDel(verifiedKey(role));
   }
 
   function saveSession() {
     if (!API.user) return;
     try {
-      const key = sessionKey(API.user.role);
       const payload = JSON.stringify({ user: API.user, token: API.token || null, ts: Date.now() });
-      localStorage.setItem(key, payload);
-      sessionStorage.removeItem(key);
+      sessionKeys(API.roleHint || API.user.role).forEach(function (k) { storeSet(k, payload); });
+      sessionKeys(API.user.role).forEach(function (k) { storeSet(k, payload); });
+      clearVerified(API.user.role);
     } catch (_) {}
   }
 
@@ -994,17 +1037,24 @@
     API.token = null;
     API.setPendingShop(null);
     API.setPendingRider(null);
+    clearVerified(role);
     try {
-      localStorage.removeItem(sessionKey(role));
-      sessionStorage.removeItem(sessionKey(role));
+      sessionKeys(role).forEach(storeDel);
+      sessionKeys(API.roleHint).forEach(storeDel);
     } catch (_) {}
     notify();
   };
 
   API.restore = function () {
     try {
-      const key = sessionKey(API.roleHint || 'customer');
-      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      const hint = roleTag(API.roleHint || 'customer');
+      restoreVerified(hint);
+      const keys = sessionKeys(hint);
+      let raw = null;
+      for (let i = 0; i < keys.length; i++) {
+        raw = storeGet(keys[i]);
+        if (raw) break;
+      }
       if (!raw) return;
       const data = JSON.parse(raw);
       if (data && data.user) {
@@ -1013,17 +1063,22 @@
       } else if (data && data.id) {
         API.user = data;
       }
+      if (API.user && !sameRole(API.user.role, hint)) {
+        API.user = null;
+        API.token = null;
+        return;
+      }
       if (API.user && (isDemoAccount(API.user) || isDemoShop(API.user.shopId))) {
         API.user = null;
         API.token = null;
-        try {
-          localStorage.removeItem(key);
-          sessionStorage.removeItem(key);
-        } catch (_) {}
+        keys.forEach(storeDel);
         return;
       }
       if (API.user && sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
-      if (API.user) saveSession();
+      if (API.user) {
+        clearVerified(hint);
+        saveSession();
+      }
     } catch (_) {}
   };
 

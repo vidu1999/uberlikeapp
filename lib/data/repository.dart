@@ -493,6 +493,7 @@ class OrderRepository {
         needsRiderRegister = false;
         verifiedPhone = null;
         pendingShop = null;
+        await _clearVerified();
         await _enterAccount(role, phone);
         return true;
       }
@@ -505,8 +506,10 @@ class OrderRepository {
         await _enterAccount('shop', phone);
         needsShopRegister = false;
         verifiedPhone = null;
+        await _clearVerified();
         return true;
       }
+      await _persistVerified(role, phone);
       return true;
     }
     await _enterAccount(role, phone);
@@ -523,6 +526,7 @@ class OrderRepository {
     await _enterAccount('shop', phone);
     needsShopRegister = false;
     verifiedPhone = null;
+    await _clearVerified();
   }
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
@@ -591,14 +595,47 @@ class OrderRepository {
     token = null;
     pendingShop = null;
     pendingRider = null;
+    needsShopRegister = false;
+    needsRiderRegister = false;
+    verifiedPhone = null;
+    _clearVerified();
     _persist();
   }
 
   static const _sessionKey = 'qb_session';
+  static const _verifiedKey = 'qb_verified';
+
+  Future<void> _persistVerified(String role, String phone) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_verifiedKey, jsonEncode({'role': role, 'phone': phone}));
+    } catch (_) {}
+  }
+
+  Future<void> _clearVerified() async {
+    verifiedPhone = null;
+    needsShopRegister = false;
+    needsRiderRegister = false;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_verifiedKey);
+    } catch (_) {}
+  }
 
   Future<void> restore() async {
     try {
       final p = await SharedPreferences.getInstance();
+      final vraw = p.getString(_verifiedKey);
+      if (vraw != null && vraw.isNotEmpty) {
+        final v = jsonDecode(vraw) as Map<String, dynamic>;
+        final role = '${v['role'] ?? ''}';
+        final phone = '${v['phone'] ?? ''}';
+        if (phone.isNotEmpty) {
+          verifiedPhone = phone;
+          needsShopRegister = role == 'shop';
+          needsRiderRegister = role == 'rider';
+        }
+      }
       final raw = p.getString(_sessionKey);
       if (raw == null || raw.isEmpty) return;
       final m = jsonDecode(raw) as Map<String, dynamic>;
@@ -609,6 +646,7 @@ class OrderRepository {
       }
       token = m['token']?.toString();
       userNotifier.value = u.role == 'shop' ? _withShopId(u) : u;
+      if (userNotifier.value != null) await _clearVerified();
     } catch (_) {}
   }
 
