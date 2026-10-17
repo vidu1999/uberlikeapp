@@ -194,7 +194,7 @@
         <div class="mark">${MARK}</div>
         <div class="brand">QuickBite<small>Rider</small></div>
         <h1>Welcome Back</h1>
-        <p class="sub">Sign in to continue</p>
+        <p class="sub">Sign in to continue. One phone number = one role (not User or Shop, and not two riders).</p>
         <label>Phone Number</label>
         <input id="loginId" inputmode="tel" placeholder="+94 7X XXX XXXX" value="${esc(state.loginId)}" />
         <label>Password</label>
@@ -214,7 +214,7 @@
         <div class="mark">${MARK}</div>
         <div class="brand">QuickBite<small>Rider</small></div>
         <h1>Create Account</h1>
-        <p class="sub">Join QuickBite and start earning today!</p>
+        <p class="sub">One phone number = one rider. This number cannot also be a User or Shop.</p>
         <div class="role-tabs">
           <button class="${r.role==='rider'?'on':''}" data-regrole="rider">Rider</button>
           <button class="${r.role==='shop'?'on':''}" data-regrole="shop">Shop</button>

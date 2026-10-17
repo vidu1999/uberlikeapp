@@ -9,7 +9,7 @@
   function render(opts) {
     const role = opts.role || 'customer';
     const title = opts.title || 'Enter your mobile number';
-    const sub = opts.sub || 'We’ll send a 4-digit code on WhatsApp. Free · no PIN.';
+    const sub = opts.sub || 'We’ll send a 4-digit code on WhatsApp. One phone number = one role.';
     const phone = opts.phone || DEFAULTS[role] || '';
     return `<div class="login otp-login" data-otp-root data-role="${role}">
       <div class="wordmark">Quick<em>Bite</em></div>

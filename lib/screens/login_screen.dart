@@ -259,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
             style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          const Text('We’ll send a 4-digit code on WhatsApp.', style: TextStyle(color: Color(0xFF9CA3AF))),
+          const Text('We’ll send a 4-digit code on WhatsApp. One phone number = one role.', style: TextStyle(color: Color(0xFF9CA3AF))),
           const SizedBox(height: 20),
           _field(_phone, 'Email or Phone Number', Icons.mail_outline, keyboard: TextInputType.phone),
           if (error != null) ...[

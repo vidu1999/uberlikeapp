@@ -269,8 +269,34 @@
     const y = b === 'user' ? 'customer' : b;
     return x === y;
   }
+  function phoneKey(raw) {
+    const d = normalizePhone(raw);
+    return d.length >= 9 ? d.slice(-9) : d;
+  }
   function phoneTakenError(acc) {
-    return new Error('This number is already a ' + roleLabel(acc.role) + ' account. Open the ' + roleLabel(acc.role) + ' app.');
+    const have = roleLabel(acc.role);
+    return new Error('This number is already a ' + have + ' account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the ' + have + ' app.');
+  }
+  function alreadyThisRoleError(role) {
+    const have = roleLabel(role);
+    return new Error('This number is already a ' + have + '. Login instead — one number cannot have two ' + have + ' accounts.');
+  }
+  function clearAccCache() {
+    API._accs = null;
+    API._accsAt = 0;
+  }
+  async function allAccounts() {
+    if (API._accs && Date.now() - API._accsAt < 4000) return API._accs;
+    let rows = [];
+    if (sbConfigured()) {
+      try { rows = await sbGet('accounts?select=*'); } catch (_) {}
+    }
+    if (!rows || !rows.length) {
+      try { rows = await getJSON('/api/accounts') || []; } catch (_) { rows = []; }
+    }
+    API._accs = (rows || []).map(function (r) { return mapAccount(r); }).filter(function (a) { return a && a.id && !isDemoAccount(a); });
+    API._accsAt = Date.now();
+    return API._accs;
   }
   function scopeData() {
     API.shops = (API.shops || []).filter((s) => !isDemoShop(s.id));
@@ -323,23 +349,28 @@
     for (let i = 0; i < paths.length; i++) {
       try { await sbSend(paths[i], 'DELETE'); } catch (_) {}
     }
+    clearAccCache();
   }
   async function lookupPhone(phone) {
-    phone = normalizePhone(phone);
-    if (!phone) return null;
-    if (sbConfigured()) {
+    const key = phoneKey(phone);
+    if (!key) return null;
+    let list = (await allAccounts()).filter(function (a) { return phoneKey(a.phone) === key; });
+    if (!list.length && sbConfigured()) {
       try {
-        const rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(phone));
-        const hit = (rows || []).find((r) => !isDemoAccount(r));
-        if (hit) return mapAccount(hit);
+        const n = normalizePhone(phone);
+        const rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(n));
+        list = (rows || []).map(mapAccount).filter(function (a) { return a && !isDemoAccount(a); });
       } catch (_) {}
     }
-    try {
-      const list = await getJSON('/api/accounts');
-      const hit = (list || []).find((a) => normalizePhone(a.phone) === phone && !isDemoAccount(a));
-      if (hit) return hit;
-    } catch (_) {}
-    return null;
+    if (list.length > 1) {
+      const keep = list[0];
+      for (let i = 1; i < list.length; i++) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(list[i].id), 'DELETE'); } catch (_) {}
+      }
+      clearAccCache();
+      return keep;
+    }
+    return list[0] || null;
   }
 
   function nextOrderId() {
@@ -408,21 +439,37 @@
 
   API.login = async function (role, phone, pin) {
     pin = pin || '1234';
+    if (phone) {
+      const taken = await lookupPhone(phone);
+      if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
+      if (taken) {
+        API.user = taken;
+        API.token = 'sb_' + taken.id;
+        saveSession();
+        notify();
+        return API.user;
+      }
+    }
     if (sbConfigured()) {
       try {
         let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role);
-        if (phone) q += '&phone=eq.' + encodeURIComponent(phone);
+        if (phone) q += '&phone=eq.' + encodeURIComponent(normalizePhone(phone));
         const rows = await sbGet(q);
         const picked = (rows || []).find((a) => !isDemoAccount(a) && String(a.pin) === String(pin))
           || (rows || []).find((a) => !isDemoAccount(a));
         if (picked) {
-          API.user = mapAccount(picked);
+          const acc = mapAccount(picked);
+          const clash = await lookupPhone(acc.phone);
+          if (clash && !sameRole(clash.role, role)) throw phoneTakenError(clash);
+          API.user = acc;
           API.token = 'sb_' + picked.id;
           saveSession();
           notify();
           return API.user;
         }
-      } catch (_) {}
+      } catch (e) {
+        if (e && String(e.message || '').indexOf('already') >= 0) throw e;
+      }
     }
     const data = await getJSON('/api/login', {
       method: 'POST',
@@ -439,6 +486,13 @@
   API.register = async function (payload) {
     const role = payload.role === 'shop' || payload.role === 'rider' ? payload.role : 'customer';
     const phone = normalizePhone(payload.phone);
+    if (phone) {
+      const taken = await lookupPhone(phone);
+      if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
+      if (taken && sameRole(taken.role, role) && (role === 'shop' || role === 'rider')) {
+        throw alreadyThisRoleError(role);
+      }
+    }
     if (role === 'shop' || role === 'rider') {
       try {
         return await getJSON('/api/register', {
@@ -446,7 +500,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-      } catch (_) {
+      } catch (e) {
+        if (e && String(e.message || '').indexOf('already') >= 0) throw e;
         return {
           ok: true,
           app: role,
@@ -454,8 +509,6 @@
         };
       }
     }
-    const taken = await lookupPhone(phone);
-    if (taken && !sameRole(taken.role, 'customer')) throw phoneTakenError(taken);
     API.setPendingRider({
       name: payload.name || 'Guest',
       email: payload.email || '',
@@ -511,31 +564,13 @@
     const phone = normalizePhone(id);
     const email = String(id || '').includes('@') ? String(id).trim().toLowerCase() : '';
     let hit = null;
-    if (sbConfigured()) {
-      try {
-        let q = 'accounts?select=*';
-        if (email) q += '&email=eq.' + encodeURIComponent(email);
-        else q += '&phone=eq.' + encodeURIComponent(phone);
-        const rows = await sbGet(q);
-        hit = (rows || []).find((r) => !isDemoAccount(r)) || null;
-        if (hit) hit = mapAccount(hit);
-      } catch (_) {}
+    if (email) {
+      const list = await allAccounts();
+      hit = list.find(function (a) { return String(a.email || '').toLowerCase() === email; }) || null;
     }
-    if (!hit) {
-      try {
-        const list = await getJSON('/api/accounts');
-        hit = (list || []).find((a) => !isDemoAccount(a) && (
-          (phone && normalizePhone(a.phone) === phone) ||
-          (email && String(a.email || '').toLowerCase() === email)
-        )) || null;
-      } catch (_) {}
-    }
+    if (!hit) hit = await lookupPhone(phone);
     if (hit && !sameRole(hit.role, role)) throw phoneTakenError(hit);
     if (hit) return hit;
-    const local = API.recallShopProfile(phone);
-    if (role === 'shop' && local && local.shopId && !isDemoShop(local.shopId)) {
-      return { id: 'SHOP_LOCAL_' + phone.slice(-4), name: local.ownerName || 'Shop Owner', phone, role: 'shop', shopId: local.shopId, shopName: local.shopName };
-    }
     return null;
   };
 
@@ -543,24 +578,8 @@
     phone = normalizePhone(phone);
     const taken = await lookupPhone(phone);
     if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
-    let rows = [];
-    try {
-      rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(phone));
-    } catch (_) {}
-    let row = (rows || []).find((r) => !isDemoAccount(r) && sameRole(r.role, role));
-    if (!row && role === 'shop') {
-      const local = API.recallShopProfile(phone);
-      if (local && local.shopId && !isDemoShop(local.shopId)) {
-        row = {
-          id: 'SHOP_STAFF_' + phone.slice(-4),
-          name: local.ownerName || 'Shop Owner',
-          phone,
-          role: 'shop',
-          shop_id: local.shopId,
-          shopName: local.shopName,
-        };
-      }
-    }
+    let row = taken && sameRole(taken.role, role) ? taken : null;
+    if (row && row.shopId && !row.shop_id) row.shop_id = row.shopId;
     if (!row && role === 'shop') {
       const p = pendingShop() || {};
       if (!p.shopName && !p.ownerName) {
@@ -594,7 +613,13 @@
         role: 'shop',
         shop_id: shopId,
       };
-      try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
+      try { await sbSend('accounts', 'POST', [row]); } catch (_) {
+        clearAccCache();
+        const again = await lookupPhone(phone);
+        if (again && !sameRole(again.role, role)) throw phoneTakenError(again);
+        if (again) row = again;
+      }
+      clearAccCache();
       API.rememberShopProfile(phone, {
         shopId, shopName: shop.name, ownerName: row.name, address: shop.address, lat: shop.lat, lng: shop.lng,
       });
@@ -618,7 +643,13 @@
         row.vehicle = pr.vehicle || 'Honda Dio · BDX 1234';
         row.rating = 5;
       }
-      try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
+      try { await sbSend('accounts', 'POST', [row]); } catch (_) {
+        clearAccCache();
+        const again = await lookupPhone(phone);
+        if (again && !sameRole(again.role, role)) throw phoneTakenError(again);
+        if (again) row = again;
+      }
+      clearAccCache();
     }
     API.user = mapAccount(row);
     if (row.shopName) API.user.shopName = row.shopName;
@@ -647,7 +678,10 @@
       throw new Error('Enter a valid mobile number');
     }
     const taken = await lookupPhone(phone);
-    if (taken && !sameRole(taken.role, role || 'customer')) throw phoneTakenError(taken);
+    const want = role || 'customer';
+    if (taken && !sameRole(taken.role, want)) throw phoneTakenError(taken);
+    if (taken && sameRole(taken.role, want) && want === 'shop' && pendingShop()) throw alreadyThisRoleError('shop');
+    if (taken && sameRole(taken.role, want) && want === 'rider' && pendingRider()) throw alreadyThisRoleError('rider');
     const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     const smsToken = 'wa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';

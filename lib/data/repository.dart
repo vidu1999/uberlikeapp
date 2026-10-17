@@ -113,6 +113,10 @@ class OrderRepository {
     final y = b == 'user' ? 'customer' : b;
     return x == y;
   }
+  String _phoneKey(String raw) {
+    final d = _normPhone(raw);
+    return d.length >= 9 ? d.substring(d.length - 9) : d;
+  }
   String _roleLabel(String? role) {
     if (role == 'shop') return 'Shop';
     if (role == 'rider') return 'Rider';
@@ -120,20 +124,40 @@ class OrderRepository {
   }
   Never _phoneTaken(Map<String, dynamic> acc) {
     final label = _roleLabel('${acc['role']}');
-    throw Exception('This number is already a $label account. Open the $label app.');
+    throw Exception(
+      'This number is already a $label account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the $label app.',
+    );
+  }
+  Never _alreadyThisRole(String role) {
+    final label = _roleLabel(role);
+    throw Exception('This number is already a $label. Login instead — one number cannot have two $label accounts.');
+  }
+
+  Future<List<Map<String, dynamic>>> _allAccounts() async {
+    try {
+      final rows = await _sbGet('accounts?select=*');
+      return rows
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .where((m) => !_isDemoAccountMap(m))
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<Map<String, dynamic>?> _lookupPhone(String phone) async {
-    phone = _normPhone(phone);
-    if (phone.isEmpty) return null;
-    try {
-      final rows = await _sbGet('accounts?select=*&phone=eq.$phone');
-      for (final raw in rows) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        if (!_isDemoAccountMap(m)) return m;
+    final key = _phoneKey(phone);
+    if (key.isEmpty) return null;
+    var list = (await _allAccounts()).where((m) => _phoneKey('${m['phone'] ?? ''}') == key).toList();
+    if (list.isEmpty) return null;
+    if (list.length > 1) {
+      for (final extra in list.skip(1)) {
+        try {
+          await _sbDelete('accounts?id=eq.${extra['id']}');
+        } catch (_) {}
       }
-    } catch (_) {}
-    return null;
+    }
+    return list.first;
   }
 
   Future<Map<String, dynamic>?> findAccount(String role, String id) async {
@@ -141,28 +165,21 @@ class OrderRepository {
     final phone = _normPhone(id);
     final email = id.contains('@') ? id.trim().toLowerCase() : '';
     try {
-      var q = 'accounts?select=*';
-      q += email.isNotEmpty ? '&email=eq.$email' : '&phone=eq.$phone';
-      final rows = await _sbGet(q);
-      for (final raw in rows) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        if (_isDemoAccountMap(m)) continue;
-        if (!_sameRole('${m['role']}', role)) _phoneTaken(m);
-        return m;
+      if (email.isNotEmpty) {
+        final list = await _allAccounts();
+        for (final m in list) {
+          if ('${m['email'] ?? ''}'.toLowerCase() != email) continue;
+          if (!_sameRole('${m['role']}', role)) _phoneTaken(m);
+          return m;
+        }
+      }
+      final hit = await _lookupPhone(phone);
+      if (hit != null) {
+        if (!_sameRole('${hit['role']}', role)) _phoneTaken(hit);
+        return hit;
       }
     } catch (e) {
-      if (e is Exception && e.toString().contains('already a')) rethrow;
-    }
-    final local = await _recalledShop(phone);
-    if (role == 'shop' && local != null && (local['shopId'] ?? '').isNotEmpty && !_isDemoShop(local['shopId'])) {
-      return {
-        'id': 'SHOP_LOCAL_${phone.substring(phone.length - 4)}',
-        'name': local['ownerName'] ?? 'Shop Owner',
-        'phone': phone,
-        'role': 'shop',
-        'shop_id': local['shopId'],
-        'shopName': local['shopName'],
-      };
+      if (e is Exception && e.toString().contains('already')) rethrow;
     }
     return null;
   }
@@ -171,14 +188,9 @@ class OrderRepository {
     phone = _normPhone(phone);
     final taken = await _lookupPhone(phone);
     if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
-    final rows = await _sbGet('accounts?select=*&phone=eq.$phone');
     Map<String, dynamic> user;
-    final existing = rows
-        .map((raw) => Map<String, dynamic>.from(raw as Map))
-        .where((m) => !_isDemoAccountMap(m) && _sameRole('${m['role']}', role))
-        .toList();
-    if (existing.isNotEmpty) {
-      user = existing.first;
+    if (taken != null && _sameRole('${taken['role']}', role)) {
+      user = taken;
     } else if (role == 'shop') {
       final p = pendingShop;
       if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
@@ -279,6 +291,12 @@ class OrderRepository {
     if (phone.length < 10) throw Exception('Enter a valid mobile number');
     final taken = await _lookupPhone(phone);
     if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
+    if (taken != null && _sameRole('${taken['role']}', role) && role == 'shop' && pendingShop != null) {
+      _alreadyThisRole('shop');
+    }
+    if (taken != null && _sameRole('${taken['role']}', role) && role == 'rider' && pendingRider != null) {
+      _alreadyThisRole('rider');
+    }
     final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
     _otpPhone = phone;
     _otpRole = role;
@@ -376,10 +394,22 @@ class OrderRepository {
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
     await _loadSupabaseConfig();
+    if (phone != null && phone.isNotEmpty) {
+      final taken = await _lookupPhone(phone);
+      if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
+      if (taken != null) {
+        token = 'sb_${taken['id']}';
+        userNotifier.value = SessionUser.fromJson(taken);
+        connectedNotifier.value = true;
+        await _persist();
+        await refresh();
+        return true;
+      }
+    }
     if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) {
       try {
         var q = 'accounts?select=*&role=eq.$role';
-        if (phone != null && phone.isNotEmpty) q += '&phone=eq.$phone';
+        if (phone != null && phone.isNotEmpty) q += '&phone=eq.${_normPhone(phone)}';
         final rows = await _sbGet(q);
         Map<String, dynamic>? picked;
         for (final raw in rows) {

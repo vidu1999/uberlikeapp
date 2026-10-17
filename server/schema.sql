@@ -201,11 +201,18 @@ delete from accounts
 where id in ('USER_1','USER_2','SHOP_STAFF','RIDER_77')
    or phone in ('0771234567','0771112222','0772223333','0775556666');
 
--- One phone number, one account, one role.
+-- One phone number, one account, one role (match last 9 digits: 077… / 94…).
 delete from accounts a
-where a.ctid not in (select min(b.ctid) from accounts b group by b.phone);
+using accounts b
+where a.ctid > b.ctid
+  and right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 9)
+    = right(regexp_replace(coalesce(b.phone, ''), '\D', '', 'g'), 9)
+  and length(right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 9)) = 9;
 
 create unique index if not exists accounts_phone_uidx on accounts (phone);
+create unique index if not exists accounts_phone_tail_uidx
+  on accounts ((right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 9)))
+  where length(right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 9)) = 9;
 
 insert into app_state (id, payload, updated_at)
 values ('main', '{"shops":[],"items":[],"accounts":[],"orders":[],"messages":{},"seq":1000}'::jsonb, now())
