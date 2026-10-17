@@ -185,11 +185,12 @@
     }).addTo(map);
 
     L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map);
-    L.marker(pos.dest, { icon: destIcon() }).addTo(map);
+    const destLocked = [pos.dest[0], pos.dest[1]];
+    L.marker(destLocked, { icon: destIcon() }).addTo(map);
     let liveMarker = null;
     const live = window.QB_LIVE;
     if (live && live.lat != null) {
-      liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), zIndexOffset: 600 }).addTo(map);
+      liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
     }
     let riderMarker = null;
     const layers = { glow: null, solid: null, dash: null };
@@ -217,12 +218,13 @@
       update(next) {
         if (!next) return;
         const p = positions(next);
+        p.dest = destLocked;
         const live = window.QB_LIVE;
         if (live && live.lat != null) {
-          if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), zIndexOffset: 600 }).addTo(map);
+          if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
           else liveMarker.setLatLng([live.lat, live.lng]);
         }
-        drawRoutes(map, layers, p.shopPos, p.dest, p.rider);
+        drawRoutes(map, layers, p.shopPos, destLocked, p.rider);
         if (p.rider) {
           if (!riderMarker) {
             riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);
@@ -247,7 +249,7 @@
       },
       locate(order2) {
         const p = positions(order2 || order);
-        const c = p.rider || p.dest;
+        const c = p.rider || destLocked;
         map.setView(c, Math.max(map.getZoom(), 14));
       },
       destroy() {

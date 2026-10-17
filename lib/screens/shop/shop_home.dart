@@ -35,15 +35,25 @@ class _ShopHomeState extends State<ShopHome> {
 
   String get shopId {
     final id = OrderRepository.instance.user?.shopId;
-    if (id != null && id.isNotEmpty) return id;
-    return 'SHOP_1';
+    if (id != null && id.isNotEmpty && id != 'null') return id;
+    if (OrderRepository.instance.user?.phone == '0772223333') return 'SHOP_1';
+    return '';
   }
 
   Shop get shop {
     for (final s in Catalog.shops) {
       if (s.id == shopId) return s;
     }
-    return Shop(id: shopId, name: 'My Shop', category: 'Bakery', rating: 5, isOpen: true, hours: '08:00 AM – 10:00 PM', image: '/img/shop-bakery.jpg');
+    final u = OrderRepository.instance.user;
+    return Shop(
+      id: shopId,
+      name: u?.shopName ?? 'My Shop',
+      category: 'Bakery',
+      rating: 5,
+      isOpen: true,
+      hours: '08:00 AM – 10:00 PM',
+      image: '/img/shop-bakery.jpg',
+    );
   }
 
   String get shopTitle => shop.name;

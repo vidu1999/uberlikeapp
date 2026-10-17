@@ -200,8 +200,8 @@ class Order {
           .map((e) => DeliveryItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       totalAmount: ((j['totalAmount'] ?? j['total_amount']) as num?)?.toDouble() ?? 0,
-      deliveryLat: (j['deliveryLat'] as num?)?.toDouble() ?? 6.9271,
-      deliveryLng: (j['deliveryLng'] as num?)?.toDouble() ?? 79.8612,
+      deliveryLat: ((j['deliveryLat'] ?? j['delivery_lat']) as num?)?.toDouble() ?? 8.3350,
+      deliveryLng: ((j['deliveryLng'] ?? j['delivery_lng']) as num?)?.toDouble() ?? 80.4108,
       riderLat: (j['riderLat'] as num?)?.toDouble(),
       riderLng: (j['riderLng'] as num?)?.toDouble(),
       timestamp: DateTime.tryParse('${j['timestamp'] ?? j['updated_at'] ?? ''}') ?? DateTime.now(),

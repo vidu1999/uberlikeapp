@@ -125,11 +125,11 @@
         window.QB_LIVE = { lat, lng, acc };
         paintLiveUi();
         const first = !state.loc._gps;
-        if (!state.loc.custom) setPlace(lat, lng, state.loc.label, false);
+        if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, state.loc.label, false);
         if (first) {
           state.loc._gps = true;
           const label = await labelAt(lat, lng);
-          if (!state.loc.custom) setPlace(lat, lng, label, false);
+          if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, label, false);
           if (state.loc.openMapOnce) {
             state.loc.openMapOnce = false;
             state.screen = 'locate';
@@ -488,7 +488,7 @@
         <div class="loc-sheet">
           <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live GPS <span data-loc-acc>${esc(gpsText())}</span></div>
           <b data-loc-label>${esc(state.loc.label)}</b>
-          <p class="loc-hint">Blue pulse is you. Drag the green pin to set delivery.</p>
+          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Drag the green pin to set the delivery address.'}</p>
           <p class="err" data-loc-err></p>
           <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
         </div>
@@ -662,6 +662,10 @@
         const live = API.orders.find((x) => x.id === state.trackId);
         if (live && live.status !== 'cancelled') state.screen = live.status === 'delivered' ? 'done' : 'track';
       }
+      const uid = API.user && API.user.id;
+      const phone = API.user && API.user.phone;
+      const active = (API.orders || []).some((o) => o.status !== 'delivered' && o.status !== 'cancelled' && (o.userId === uid || o.customerPhone === phone));
+      if (!active) state.loc.frozen = false;
       if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bindApp(); return; }
       if (state.screen === 'locate') {
         const keep = root.querySelector('[data-locate-root]') && state.locHandle;
@@ -811,6 +815,11 @@
       };
       const ok = document.querySelector('[data-loc-ok]');
       if (ok) ok.onclick = () => {
+        if (state.loc.frozen) {
+          state.screen = state.locFrom || 'home';
+          render();
+          return;
+        }
         const c = state.locHandle ? state.locHandle.getCenter() : { lat: state.loc.lat, lng: state.loc.lng };
         const d = state.loc._draft || c;
         setPlace(d.lat, d.lng, d.label || (labelEl && labelEl.textContent) || state.loc.label, true);
@@ -889,6 +898,8 @@
             deliveryLat: state.loc.lat, deliveryLng: state.loc.lng, items: state.cart,
           });
           state.cart = []; saveCart();
+          state.loc.custom = true;
+          state.loc.frozen = true;
           openTrack(order.id, true);
         } catch (e) { alert(e.message); place.disabled = false; }
       };

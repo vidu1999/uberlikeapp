@@ -9,9 +9,17 @@ import '../../widgets/tracking_map.dart';
 import '../chat_screen.dart';
 import 'delivered_screen.dart';
 
-class OrderTrackingScreen extends StatelessWidget {
+class OrderTrackingScreen extends StatefulWidget {
   final String orderId;
   const OrderTrackingScreen({super.key, required this.orderId});
+
+  @override
+  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
+}
+
+class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
+  double? _destLat;
+  double? _destLng;
 
   Shop? _shop(String id) {
     for (final s in Catalog.shops) {
@@ -29,19 +37,22 @@ class OrderTrackingScreen extends StatelessWidget {
         builder: (context, orders, _) {
           Order? order;
           for (final o in orders) {
-            if (o.id == orderId) {
+            if (o.id == widget.orderId) {
               order = o;
               break;
             }
           }
-          order ??= OrderRepository.instance.byId(orderId);
+          order ??= OrderRepository.instance.byId(widget.orderId);
           if (order == null) {
             return const Center(child: Text('Waiting for order…', style: TextStyle(color: Colors.white)));
           }
           if (order.status == OrderStatus.delivered) {
+            UserPlace.instance.unfreeze();
             return const DeliveredScreen();
           }
           final current = order;
+          _destLat ??= current.deliveryLat;
+          _destLng ??= current.deliveryLng;
           final shop = _shop(current.shopId);
           final base = AppConfig.normalize(AppConfig.baseUrl);
           final avatar = base.isEmpty ? null : '$base/img/avatar-rider.jpg';
@@ -52,8 +63,8 @@ class OrderTrackingScreen extends StatelessWidget {
                 child: ValueListenableBuilder<int>(
                   valueListenable: UserPlace.instance.liveNotifier,
                   builder: (_, __, ___) => TrackingMap(
-                    destLat: current.deliveryLat,
-                    destLng: current.deliveryLng,
+                    destLat: _destLat ?? current.deliveryLat,
+                    destLng: _destLng ?? current.deliveryLng,
                     riderLat: current.riderLat,
                     riderLng: current.riderLng,
                     shopLat: shop?.lat,

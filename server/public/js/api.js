@@ -215,6 +215,7 @@
   function mapAccount(r) {
     const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
     if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
+    if (r.shopName || r.shop_name) a.shopName = r.shopName || r.shop_name;
     if (r.vehicle) a.vehicle = r.vehicle;
     if (r.rating != null) a.rating = Number(r.rating);
     return a;
@@ -354,6 +355,16 @@
     } catch (_) {}
   };
 
+  function shopProfileKey(phone) {
+    return 'sd_shop_profile_' + normalizePhone(phone);
+  }
+  API.rememberShopProfile = function (phone, profile) {
+    try { localStorage.setItem(shopProfileKey(phone), JSON.stringify(profile)); } catch (_) {}
+  };
+  API.recallShopProfile = function (phone) {
+    try { return JSON.parse(localStorage.getItem(shopProfileKey(phone)) || 'null'); } catch (_) { return null; }
+  };
+
   API.findAccount = async function (role, id) {
     const phone = normalizePhone(id);
     const email = String(id || '').includes('@') ? String(id).trim().toLowerCase() : '';
@@ -375,7 +386,11 @@
       if (hit) return hit;
     } catch (_) {}
     if (role === 'shop' && phone === '0772223333') {
-      return { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shopId: 'SHOP_1' };
+      return { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shopId: 'SHOP_1', shopName: 'Kandy Bakers' };
+    }
+    const local = API.recallShopProfile(phone);
+    if (role === 'shop' && local && local.shopId) {
+      return { id: 'SHOP_LOCAL_' + phone.slice(-4), name: local.ownerName || 'Shop Owner', phone, role: 'shop', shopId: local.shopId, shopName: local.shopName };
     }
     return null;
   };
@@ -388,8 +403,21 @@
     } catch (_) {}
     let row = rows && rows[0];
     if (!row && role === 'shop' && phone === '0772223333') {
-      row = { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shop_id: 'SHOP_1' };
+      row = { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shop_id: 'SHOP_1', shopName: 'Kandy Bakers' };
       API.setPendingShop(null);
+    }
+    if (!row && role === 'shop') {
+      const local = API.recallShopProfile(phone);
+      if (local && local.shopId) {
+        row = {
+          id: 'SHOP_STAFF_' + phone.slice(-4),
+          name: local.ownerName || 'Shop Owner',
+          phone,
+          role: 'shop',
+          shop_id: local.shopId,
+          shopName: local.shopName,
+        };
+      }
     }
     if (!row && role === 'shop') {
       const p = pendingShop() || {};
@@ -425,6 +453,10 @@
         shop_id: shopId,
       };
       try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
+      API.rememberShopProfile(phone, {
+        shopId, shopName: shop.name, ownerName: row.name, address: shop.address, lat: shop.lat, lng: shop.lng,
+      });
+      row.shopName = shop.name;
       API.setPendingShop(null);
       try { API.shops.push(mapShop(shop)); } catch (_) {}
     }
@@ -444,9 +476,17 @@
       try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
     }
     API.user = mapAccount(row);
+    if (row.shopName) API.user.shopName = row.shopName;
     if (API.user && API.user.shopId) {
       const s = API.shops.find((x) => x.id === API.user.shopId);
       if (s && s.name) API.user.shopName = s.name;
+    }
+    if (role === 'shop' && API.user && API.user.shopId) {
+      API.rememberShopProfile(phone, {
+        shopId: API.user.shopId,
+        shopName: API.user.shopName || '',
+        ownerName: API.user.name,
+      });
     }
     API.token = 'sb_' + row.id;
     saveSession();

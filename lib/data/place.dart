@@ -17,6 +17,7 @@ class UserPlace {
   double lng = 80.4108;
   String label = 'Finding your location…';
   bool custom = false;
+  bool frozen = false;
   double? liveLat;
   double? liveLng;
   double? accuracyM;
@@ -101,7 +102,7 @@ class UserPlace {
     liveLng = pos.longitude;
     accuracyM = acc;
     liveNotifier.value++;
-    if (!custom) {
+    if (!custom && !frozen) {
       lat = pos.latitude;
       lng = pos.longitude;
       if (reverse || label == 'Finding your location…') {
@@ -111,7 +112,18 @@ class UserPlace {
     }
   }
 
+  void freezeDelivery() {
+    custom = true;
+    frozen = true;
+    notifier.value++;
+  }
+
+  void unfreeze() {
+    frozen = false;
+  }
+
   void setDelivery(double la, double ln, String lb, {bool asCustom = true}) {
+    if (frozen) return;
     lat = la;
     lng = ln;
     label = lb;

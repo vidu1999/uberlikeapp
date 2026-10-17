@@ -28,6 +28,16 @@ class OrderRepository {
   List<Order> get orders => ordersNotifier.value;
   SessionUser? get user => userNotifier.value;
 
+  void _maybeUnfreeze() {
+    final u = user;
+    if (u == null || u.role != 'customer') return;
+    final active = orders.any((o) =>
+        (o.userId == u.id || o.customerPhone == u.phone) &&
+        o.status != OrderStatus.delivered &&
+        o.status != OrderStatus.cancelled);
+    if (!active) UserPlace.instance.unfreeze();
+  }
+
   void seed() => start();
 
   void start() {
@@ -53,6 +63,25 @@ class OrderRepository {
   DateTime? _otpExp;
   Map<String, String>? pendingShop;
   bool openShopProfile = false;
+  static const _shopProfKey = 'qb_shop_profile_';
+
+  Future<void> _rememberShop(String phone, Map<String, String> p) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_shopProfKey${_normPhone(phone)}', jsonEncode(p));
+    } catch (_) {}
+  }
+
+  Future<Map<String, String>?> _recalledShop(String phone) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_shopProfKey${_normPhone(phone)}');
+      if (raw == null || raw.isEmpty) return null;
+      return Map<String, String>.from((jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', '$v')));
+    } catch (_) {
+      return null;
+    }
+  }
 
   String _normPhone(String raw) {
     var d = raw.replaceAll(RegExp(r'\D'), '');
@@ -78,6 +107,18 @@ class OrderRepository {
         'phone': phone,
         'role': 'shop',
         'shop_id': 'SHOP_1',
+        'shopName': 'Kandy Bakers',
+      };
+    }
+    final local = await _recalledShop(phone);
+    if (role == 'shop' && local != null && (local['shopId'] ?? '').isNotEmpty) {
+      return {
+        'id': 'SHOP_LOCAL_${phone.substring(phone.length - 4)}',
+        'name': local['ownerName'] ?? 'Shop Owner',
+        'phone': phone,
+        'role': 'shop',
+        'shop_id': local['shopId'],
+        'shopName': local['shopName'],
       };
     }
     return null;
@@ -138,6 +179,15 @@ class OrderRepository {
       try {
         await _sbWrite('accounts', 'POST', [user]);
       } catch (_) {}
+      user['shopName'] = shop['name'];
+      await _rememberShop(phone, {
+        'shopId': shopId,
+        'shopName': '${shop['name']}',
+        'ownerName': '${user['name']}',
+        'address': '${shop['address']}',
+        'lat': '${shop['lat']}',
+        'lng': '${shop['lng']}',
+      });
       pendingShop = null;
     } else {
       user = {
@@ -157,9 +207,25 @@ class OrderRepository {
       } catch (_) {}
     }
     token = 'sb_${user['id']}';
+    if (role == 'shop') {
+      user['shopId'] = user['shopId'] ?? user['shop_id'];
+      if (user['shopId'] == null || '${user['shopId']}'.isEmpty) {
+        final rec = await _recalledShop(phone);
+        if (rec != null) {
+          user['shop_id'] = rec['shopId'];
+          user['shopId'] = rec['shopId'];
+          user['shopName'] = rec['shopName'];
+        }
+      }
+      if ((user['shopName'] == null || '${user['shopName']}'.isEmpty) && user['shopId'] != null) {
+        for (final s in Catalog.shops) {
+          if (s.id == user['shopId']) user['shopName'] = s.name;
+        }
+      }
+      openShopProfile = true;
+    }
     userNotifier.value = SessionUser.fromJson(user);
     connectedNotifier.value = true;
-    if (role == 'shop') openShopProfile = true;
     await _persist();
     await refresh();
   }
@@ -444,6 +510,7 @@ class OrderRepository {
         );
       }
       connectedNotifier.value = true;
+      _maybeUnfreeze();
       return true;
     } catch (_) {
       return false;
@@ -487,6 +554,7 @@ class OrderRepository {
           });
         }
         connectedNotifier.value = true;
+        _maybeUnfreeze();
         return;
       }
     } catch (_) {}

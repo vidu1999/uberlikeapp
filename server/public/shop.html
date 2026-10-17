@@ -24,7 +24,7 @@
       tab: 'account', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
       itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
-      reg: { shopName: 'Kandy Bakers', ownerName: 'Nimal Perera', phone: '0772223333', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
+      reg: { shopName: '', ownerName: '', phone: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '0772223333',
     };
@@ -32,7 +32,11 @@
       '/img/shop-burger.jpg', '/img/shop-pizza.jpg', '/img/shop-bakery.jpg', '/img/cake-chocolate.jpg',
       '/img/cake-vanilla.jpg', '/img/iced-coffee.jpg', '/img/kottu.jpg', '/img/cookies.jpg',
     ];
-    function shopId() { return (API.user && API.user.shopId) || 'SHOP_1'; }
+    function shopId() {
+      if (API.user && API.user.shopId) return API.user.shopId;
+      if (API.user && API.user.phone === '0772223333') return 'SHOP_1';
+      return '';
+    }
     function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }
     function menuBucket(cat) {
       const c = String(cat || '').toLowerCase();
@@ -61,7 +65,7 @@
         name: s.name || (API.user && API.user.shopName) || 'My Shop',
         category: s.category || 'Bakery',
         rating: Number(s.rating || 0) || (sid === 'SHOP_1' ? 4.8 : 5),
-        reviews: Number(s.reviews || 0) || (sid === 'SHOP_1' ? 120 : 0),
+        reviews: Number(s.reviews || 0),
         hours: s.hours || '08:00 AM – 10:00 PM',
         image: s.image || '/img/shop-bakery.jpg',
         address: s.address || '',
@@ -417,8 +421,8 @@
       const s = myShop();
       const today = shopOrders().filter((o) => o.status !== 'cancelled');
       const sales = today.reduce((n, o) => n + (o.totalAmount || 0), 0);
-      const ordersN = today.length || (s.id === 'SHOP_1' ? 124 : today.length);
-      const revenue = sales || (s.id === 'SHOP_1' ? 284500 : sales);
+      const ordersN = today.length;
+      const revenue = sales;
       const rating = s.rating || 4.8;
       return `<div class="scroll sp-prof">
         <div class="sp-prof-hero"><img src="${esc(s.image)}" alt="" /></div>

@@ -46,6 +46,7 @@ class SessionUser {
   final String? address;
   final String? vehicle;
   final String? shopId;
+  final String? shopName;
   const SessionUser({
     required this.id,
     required this.name,
@@ -54,6 +55,7 @@ class SessionUser {
     this.address,
     this.vehicle,
     this.shopId,
+    this.shopName,
   });
 
   factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
@@ -64,6 +66,7 @@ class SessionUser {
         address: j['address']?.toString(),
         vehicle: j['vehicle']?.toString(),
         shopId: (j['shopId'] ?? j['shop_id'])?.toString(),
+        shopName: (j['shopName'] ?? j['shop_name'])?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -75,5 +78,7 @@ class SessionUser {
         'vehicle': vehicle,
         'shopId': shopId,
         'shop_id': shopId,
+        'shopName': shopName,
+        'shop_name': shopName,
       };
 }

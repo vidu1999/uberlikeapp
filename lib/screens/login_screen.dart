@@ -19,7 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _phone;
   final _name = TextEditingController(text: 'Vidura K Jayathilake');
   final _email = TextEditingController(text: 'vidurakavindadev@gmail.com');
-  final _shopName = TextEditingController(text: 'Kandy Bakers');
+  final _shopName = TextEditingController();
   final List<TextEditingController> _digits = List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focus = List.generate(4, (_) => FocusNode());
   bool busy = false;
@@ -40,8 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
             : '0775556666';
     _phone = TextEditingController(text: phone);
     if (widget.role == UserRole.shop) {
-      _name.text = 'Nimal Perera';
-      _email.text = 'shop@example.com';
+      _name.text = '';
+      _email.text = '';
     }
   }
 

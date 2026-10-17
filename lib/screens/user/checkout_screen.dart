@@ -34,6 +34,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not place order.')));
       return;
     }
+    UserPlace.instance.freezeDelivery();
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id)),
