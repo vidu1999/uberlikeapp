@@ -117,22 +117,23 @@ class OrderRepository {
     final d = _normPhone(raw);
     return d.length >= 9 ? d.substring(d.length - 9) : d;
   }
-  String _accountIdFor(String phone) => 'ACC_${_phoneKey(phone)}';
+  String _roleTag(String? role) {
+    if (role == 'shop') return 'shop';
+    if (role == 'rider') return 'rider';
+    return 'customer';
+  }
+  String _accountIdFor(String phone, String role) => 'ACC_${_roleTag(role)}_${_phoneKey(phone)}';
   String _shopIdFor(String phone) => 'SHOP_${_phoneKey(phone)}';
   String _roleLabel(String? role) {
     if (role == 'shop') return 'Shop';
     if (role == 'rider') return 'Rider';
     return 'User';
   }
-  Never _phoneTaken(Map<String, dynamic> acc) {
-    final label = _roleLabel('${acc['role']}');
-    throw Exception(
-      'This number is already a $label account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the $label app.',
-    );
-  }
   Never _alreadyThisRole(String role) {
     final label = _roleLabel(role);
-    throw Exception('This number is already a $label. Login instead — one number cannot have two $label accounts.');
+    throw Exception(
+      'This number already has a $label account. Login instead — you cannot create another $label with the same number. You can still use this number for the other apps.',
+    );
   }
 
   Future<List<Map<String, dynamic>>> _allAccounts() async {
@@ -147,16 +148,17 @@ class OrderRepository {
     }
   }
 
-  Future<Map<String, dynamic>?> _lookupPhone(String phone) async {
+  Future<Map<String, dynamic>?> _lookupPhone(String phone, String role) async {
     final key = _phoneKey(phone);
     if (key.isEmpty) return null;
-    final id = _accountIdFor(phone);
+    final id = _accountIdFor(phone, role);
     final n = _normPhone(phone);
     final variants = {n, key, '0$key', '94$key'};
     final byId = <String, Map<String, dynamic>>{};
     void add(Map<String, dynamic> m) {
       if (_isDemoAccountMap(m) || '${m['id']}'.isEmpty) return;
       if (_phoneKey('${m['phone'] ?? ''}') != key && '${m['id']}' != id) return;
+      if (!_sameRole('${m['role']}', role)) return;
       byId['${m['id']}'] = m;
     }
     try {
@@ -195,39 +197,26 @@ class OrderRepository {
         final list = await _allAccounts();
         for (final m in list) {
           if ('${m['email'] ?? ''}'.toLowerCase() != email) continue;
-          if (!_sameRole('${m['role']}', role)) _phoneTaken(m);
+          if (!_sameRole('${m['role']}', role)) continue;
           return m;
         }
       }
-      final hit = await _lookupPhone(phone);
-      if (hit != null) {
-        if (!_sameRole('${hit['role']}', role)) _phoneTaken(hit);
-        return hit;
-      }
-    } catch (e) {
-      if (e is Exception && e.toString().contains('already')) rethrow;
-    }
+      return await _lookupPhone(phone, role);
+    } catch (_) {}
     return null;
   }
 
   Future<void> _enterAccount(String role, String phone) async {
     phone = _normPhone(phone);
-    final taken = await _lookupPhone(phone);
-    if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
-    Map<String, dynamic>? user = taken != null && _sameRole('${taken['role']}', role) ? taken : null;
+    Map<String, dynamic>? user = await _lookupPhone(phone, role);
     if (user == null) {
       try {
-        final byId = await _sbGet('accounts?id=eq.${_accountIdFor(phone)}&select=*');
+        final byId = await _sbGet('accounts?id=eq.${_accountIdFor(phone, role)}&select=*');
         if (byId.isNotEmpty) {
           final acc = Map<String, dynamic>.from(byId.first as Map);
-          if (!_isDemoAccountMap(acc)) {
-            if (!_sameRole('${acc['role']}', role)) _phoneTaken(acc);
-            user = acc;
-          }
+          if (!_isDemoAccountMap(acc) && _sameRole('${acc['role']}', role)) user = acc;
         }
-      } catch (e) {
-        if (e is Exception && e.toString().contains('already')) rethrow;
-      }
+      } catch (_) {}
     }
     if (user == null && role == 'shop') {
       final p = pendingShop;
@@ -263,7 +252,7 @@ class OrderRepository {
       } catch (_) {}
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
       user = {
-        'id': _accountIdFor(phone),
+        'id': _accountIdFor(phone, 'shop'),
         'name': p['ownerName'] ?? 'Shop Owner',
         'phone': phone,
         'email': p['email'] ?? '',
@@ -274,8 +263,7 @@ class OrderRepository {
       try {
         await _sbWrite('accounts', 'POST', [user]);
       } catch (_) {
-        final again = await _lookupPhone(phone);
-        if (again != null && !_sameRole('${again['role']}', role)) _phoneTaken(again);
+        final again = await _lookupPhone(phone, 'shop');
         if (again != null) user = again;
       }
       user!['shopName'] = shop['name'];
@@ -292,7 +280,7 @@ class OrderRepository {
     if (user == null) {
       final pr = pendingRider;
       user = {
-        'id': _accountIdFor(phone),
+        'id': _accountIdFor(phone, role),
         'name': role == 'rider' ? (pr?['name'] ?? 'Rider') : (pr?['name'] ?? 'Guest'),
         'phone': phone,
         'email': pr?['email'] ?? '',
@@ -308,8 +296,7 @@ class OrderRepository {
       try {
         await _sbWrite('accounts', 'POST', [user]);
       } catch (_) {
-        final again = await _lookupPhone(phone);
-        if (again != null && !_sameRole('${again['role']}', role)) _phoneTaken(again);
+        final again = await _lookupPhone(phone, role);
         if (again != null) user = again;
       }
     }
@@ -344,14 +331,9 @@ class OrderRepository {
     await _loadSupabaseConfig();
     phone = _normPhone(phone);
     if (phone.length < 10) throw Exception('Enter a valid mobile number');
-    final taken = await _lookupPhone(phone);
-    if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
-    if (taken != null && _sameRole('${taken['role']}', role) && role == 'shop' && pendingShop != null) {
-      _alreadyThisRole('shop');
-    }
-    if (taken != null && _sameRole('${taken['role']}', role) && role == 'rider' && pendingRider != null) {
-      _alreadyThisRole('rider');
-    }
+    final taken = await _lookupPhone(phone, role);
+    if (taken != null && role == 'shop' && pendingShop != null) _alreadyThisRole('shop');
+    if (taken != null && role == 'rider' && pendingRider != null) _alreadyThisRole('rider');
     final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
     _otpPhone = phone;
     _otpRole = role;
@@ -450,8 +432,7 @@ class OrderRepository {
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
     await _loadSupabaseConfig();
     if (phone != null && phone.isNotEmpty) {
-      final taken = await _lookupPhone(phone);
-      if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
+      final taken = await _lookupPhone(phone, role);
       if (taken != null) {
         token = 'sb_${taken['id']}';
         userNotifier.value = SessionUser.fromJson(taken);

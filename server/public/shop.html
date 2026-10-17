@@ -130,7 +130,7 @@
       return `<div class="sp-auth" data-shop-auth="login">
         <div class="sp-mark">🏪</div>
         <h1>Welcome Back!</h1>
-        <p class="sub">Login to your shop account. One phone number = one role (not User or Rider, and not two shops).</p>
+        <p class="sub">Login to your shop. Same number can also be User and Rider — but only one Shop account.</p>
         <label>Email or Phone Number</label>
         <input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" />
         <p class="err" data-err></p>
@@ -221,7 +221,7 @@
       return `<div class="sp-auth" data-shop-auth="register">
         <div class="sp-mark">🏪</div>
         <h1>Create Your Shop Account</h1>
-        <p class="sub">One phone number = one shop. This number cannot also be a User or Rider.</p>
+        <p class="sub">Create your shop. Same number can also be User and Rider — not two shops.</p>
         <label>Shop Name</label>
         <input id="regShop" placeholder="e.g. Kandy Bakers" value="${esc(r.shopName)}" />
         <label>Owner Name</label>

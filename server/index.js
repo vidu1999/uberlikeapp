@@ -241,28 +241,23 @@ function phoneKey(raw) {
   return d.length >= 9 ? d.slice(-9) : d;
 }
 
-function accountByPhone(phone) {
+function accountByPhone(phone, role) {
   const key = phoneKey(phone);
   if (!key) return null;
-  return accounts.find((a) => phoneKey(a.phone) === key && !seed.isDemoAccount(a)) || null;
+  return accounts.find((a) => phoneKey(a.phone) === key && sameRole(a.role, role) && !seed.isDemoAccount(a)) || null;
 }
 
-function takenMessage(acc) {
-  const have = roleLabel(acc.role);
-  return 'This number is already a ' + have + ' account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the ' + have + ' app.';
+function alreadyRoleMessage(role) {
+  const have = roleLabel(role);
+  return 'This number already has a ' + have + ' account. Login instead — you cannot create another ' + have + ' with the same number.';
 }
 
 function userForVerifiedPhone(phone, role) {
-  let user = accountByPhone(phone);
-  if (user && !sameRole(user.role, role)) {
-    const err = new Error(takenMessage(user));
-    err.status = 409;
-    throw err;
-  }
+  let user = accountByPhone(phone, role);
   if (user) return user;
   const names = { customer: 'Guest', shop: 'Shop staff', rider: 'Courier' };
   user = {
-    id: 'ACC_' + phoneKey(phone),
+    id: 'ACC_' + (role === 'shop' ? 'shop' : role === 'rider' ? 'rider' : 'customer') + '_' + phoneKey(phone),
     name: names[role] || 'Guest',
     phone,
     pin: 'otp',
@@ -323,12 +318,6 @@ async function handleApi(req, res, url) {
         if (acc) phone = acc.phone;
       }
       const want = body.role || 'customer';
-      const taken = accountByPhone(phone);
-      if (taken && !sameRole(taken.role, want)) {
-        const err = new Error(takenMessage(taken));
-        err.status = 409;
-        throw err;
-      }
       const out = otp.sendOtp(phone, want);
       json(res, 200, out);
     } catch (err) {
@@ -456,40 +445,27 @@ async function handleApi(req, res, url) {
     const name = String(body.name || '').trim() || (role === 'shop' ? 'Shop owner' : role === 'rider' ? 'Rider' : 'Guest');
     const email = String(body.email || '').trim();
     const pin = String(body.password || body.pin || '1234').slice(0, 32);
-    const taken = accountByPhone(phone);
-    if (taken && !sameRole(taken.role, role)) {
-      json(res, 409, { error: takenMessage(taken) });
+    const taken = accountByPhone(phone, role);
+    if (taken && (role === 'shop' || role === 'rider')) {
+      json(res, 409, { error: alreadyRoleMessage(role) });
       return;
     }
-    if (taken && sameRole(taken.role, role) && (role === 'shop' || role === 'rider')) {
-      json(res, 409, { error: 'This number is already a ' + roleLabel(role) + '. Login instead — one number cannot have two ' + roleLabel(role) + ' accounts.' });
-      return;
-    }
-    let user = taken && sameRole(taken.role, role) ? taken : null;
+    let user = taken || null;
     if (!user) {
-      const existingId = accounts.find((a) => a.id === 'ACC_' + phoneKey(phone));
-      if (existingId && !sameRole(existingId.role, role)) {
-        json(res, 409, { error: takenMessage(existingId) });
-        return;
+      user = {
+        id: 'ACC_' + (role === 'shop' ? 'shop' : role === 'rider' ? 'rider' : 'customer') + '_' + phoneKey(phone),
+        name,
+        phone,
+        email,
+        pin,
+        role,
+        address: body.address || '',
+      };
+      if (role === 'rider') {
+        user.vehicle = 'Bike';
+        user.rating = 5;
       }
-      if (existingId) {
-        user = existingId;
-      } else {
-        user = {
-          id: 'ACC_' + phoneKey(phone),
-          name,
-          phone,
-          email,
-          pin,
-          role,
-          address: body.address || '',
-        };
-        if (role === 'rider') {
-          user.vehicle = 'Bike';
-          user.rating = 5;
-        }
-        accounts.push(user);
-      }
+      accounts.push(user);
     } else {
       user.name = name;
       if (email) user.email = email;

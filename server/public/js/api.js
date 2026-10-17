@@ -269,23 +269,24 @@
     const y = b === 'user' ? 'customer' : b;
     return x === y;
   }
+  function roleTag(role) {
+    if (role === 'shop') return 'shop';
+    if (role === 'rider') return 'rider';
+    return 'customer';
+  }
   function phoneKey(raw) {
     const d = normalizePhone(raw);
     return d.length >= 9 ? d.slice(-9) : d;
   }
-  function accountIdFor(phone) {
-    return 'ACC_' + phoneKey(phone);
+  function accountIdFor(phone, role) {
+    return 'ACC_' + roleTag(role) + '_' + phoneKey(phone);
   }
   function shopIdFor(phone) {
     return 'SHOP_' + phoneKey(phone);
   }
-  function phoneTakenError(acc) {
-    const have = roleLabel(acc.role);
-    return new Error('This number is already a ' + have + ' account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the ' + have + ' app.');
-  }
   function alreadyThisRoleError(role) {
     const have = roleLabel(role);
-    return new Error('This number is already a ' + have + '. Login instead — one number cannot have two ' + have + ' accounts.');
+    return new Error('This number already has a ' + have + ' account. Login instead — you cannot create another ' + have + ' with the same number. You can still use this number for the other apps.');
   }
   function clearAccCache() {
     API._accs = null;
@@ -357,10 +358,11 @@
     }
     clearAccCache();
   }
-  async function lookupPhone(phone) {
+  async function lookupPhone(phone, role) {
     const key = phoneKey(phone);
     if (!key) return null;
-    const id = accountIdFor(phone);
+    const want = roleTag(role || 'customer');
+    const id = accountIdFor(phone, want);
     const n = normalizePhone(phone);
     const variants = [n, key, '0' + key, '94' + key];
     const byId = {};
@@ -369,6 +371,7 @@
       const a = mapAccount(raw);
       if (!a || !a.id || isDemoAccount(a)) return;
       if (phoneKey(a.phone) !== key && a.id !== id) return;
+      if (!sameRole(a.role, want)) return;
       byId[a.id] = a;
     }
     if (sbConfigured()) {
@@ -391,6 +394,28 @@
     }
     if (list.length > 1) clearAccCache();
     return keep;
+  }
+
+  async function saveAccount(row) {
+    const orig = normalizePhone(row.phone);
+    row.phone = orig;
+    try {
+      await sbSend('accounts', 'POST', [row]);
+      clearAccCache();
+      return row;
+    } catch (_) {}
+    const key = phoneKey(orig);
+    const alts = sameRole(row.role, 'shop') ? ['94' + key] : sameRole(row.role, 'rider') ? [key] : [];
+    for (let i = 0; i < alts.length; i++) {
+      try {
+        await sbSend('accounts', 'POST', [Object.assign({}, row, { phone: alts[i] })]);
+        clearAccCache();
+        row.phone = orig;
+        return row;
+      } catch (_) {}
+    }
+    clearAccCache();
+    return (await lookupPhone(orig, row.role)) || row;
   }
 
   function nextOrderId() {
@@ -460,8 +485,7 @@
   API.login = async function (role, phone, pin) {
     pin = pin || '1234';
     if (phone) {
-      const taken = await lookupPhone(phone);
-      if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
+      const taken = await lookupPhone(phone, role);
       if (taken) {
         API.user = taken;
         API.token = 'sb_' + taken.id;
@@ -472,24 +496,20 @@
     }
     if (sbConfigured()) {
       try {
-        let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role);
+        let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role === 'user' ? 'customer' : role);
         if (phone) q += '&phone=eq.' + encodeURIComponent(normalizePhone(phone));
         const rows = await sbGet(q);
         const picked = (rows || []).find((a) => !isDemoAccount(a) && String(a.pin) === String(pin))
           || (rows || []).find((a) => !isDemoAccount(a));
         if (picked) {
           const acc = mapAccount(picked);
-          const clash = await lookupPhone(acc.phone);
-          if (clash && !sameRole(clash.role, role)) throw phoneTakenError(clash);
           API.user = acc;
           API.token = 'sb_' + picked.id;
           saveSession();
           notify();
           return API.user;
         }
-      } catch (e) {
-        if (e && String(e.message || '').indexOf('already') >= 0) throw e;
-      }
+      } catch (_) {}
     }
     const data = await getJSON('/api/login', {
       method: 'POST',
@@ -507,11 +527,8 @@
     const role = payload.role === 'shop' || payload.role === 'rider' ? payload.role : 'customer';
     const phone = normalizePhone(payload.phone);
     if (phone) {
-      const taken = await lookupPhone(phone);
-      if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
-      if (taken && sameRole(taken.role, role) && (role === 'shop' || role === 'rider')) {
-        throw alreadyThisRoleError(role);
-      }
+      const taken = await lookupPhone(phone, role);
+      if (taken && (role === 'shop' || role === 'rider')) throw alreadyThisRoleError(role);
     }
     if (role === 'shop' || role === 'rider') {
       try {
@@ -586,31 +603,25 @@
     let hit = null;
     if (email) {
       const list = await allAccounts();
-      hit = list.find(function (a) { return String(a.email || '').toLowerCase() === email; }) || null;
+      hit = list.find(function (a) { return String(a.email || '').toLowerCase() === email && sameRole(a.role, role); }) || null;
     }
-    if (!hit) hit = await lookupPhone(phone);
-    if (hit && !sameRole(hit.role, role)) throw phoneTakenError(hit);
+    if (!hit) hit = await lookupPhone(phone, role);
     if (hit) return hit;
     return null;
   };
 
   async function enterAccount(role, phone) {
     phone = normalizePhone(phone);
-    const taken = await lookupPhone(phone);
-    if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
-    let row = taken && sameRole(taken.role, role) ? taken : null;
+    const taken = await lookupPhone(phone, role);
+    let row = taken || null;
     if (row && row.shopId && !row.shop_id) row.shop_id = row.shopId;
     if (!row) {
       try {
-        const byId = await sbGet('accounts?id=eq.' + encodeURIComponent(accountIdFor(phone)) + '&select=*');
-        if (byId && byId[0] && !isDemoAccount(byId[0])) {
-          const acc = mapAccount(byId[0]);
-          if (!sameRole(acc.role, role)) throw phoneTakenError(acc);
-          row = acc;
+        const byId = await sbGet('accounts?id=eq.' + encodeURIComponent(accountIdFor(phone, role)) + '&select=*');
+        if (byId && byId[0] && !isDemoAccount(byId[0]) && sameRole(byId[0].role, role)) {
+          row = mapAccount(byId[0]);
         }
-      } catch (e) {
-        if (e && String(e.message || '').indexOf('already') >= 0) throw e;
-      }
+      } catch (_) {}
     }
     if (!row && role === 'shop') {
       const p = pendingShop() || {};
@@ -644,7 +655,7 @@
         try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
       }
       row = {
-        id: accountIdFor(phone),
+        id: accountIdFor(phone, 'shop'),
         name: p.ownerName || 'Shop Owner',
         phone,
         email: p.email || '',
@@ -652,13 +663,7 @@
         role: 'shop',
         shop_id: shopId,
       };
-      try { await sbSend('accounts', 'POST', [row]); } catch (_) {
-        clearAccCache();
-        const again = await lookupPhone(phone);
-        if (again && !sameRole(again.role, role)) throw phoneTakenError(again);
-        if (again) row = again;
-      }
-      clearAccCache();
+      row = await saveAccount(row);
       API.rememberShopProfile(phone, {
         shopId, shopName: shop.name, ownerName: row.name, address: shop.address, lat: shop.lat, lng: shop.lng,
       });
@@ -669,7 +674,7 @@
     if (!row) {
       const pr = pendingRider() || {};
       row = {
-        id: accountIdFor(phone),
+        id: accountIdFor(phone, role),
         name: role === 'rider' ? (pr.name || 'Rider') : (pr.name || 'Guest'),
         phone,
         email: pr.email || '',
@@ -682,13 +687,7 @@
         row.vehicle = pr.vehicle || 'Honda Dio · BDX 1234';
         row.rating = 5;
       }
-      try { await sbSend('accounts', 'POST', [row]); } catch (_) {
-        clearAccCache();
-        const again = await lookupPhone(phone);
-        if (again && !sameRole(again.role, role)) throw phoneTakenError(again);
-        if (again) row = again;
-      }
-      clearAccCache();
+      row = await saveAccount(row);
     }
     API.user = mapAccount(row);
     if (row.shopName) API.user.shopName = row.shopName;
@@ -716,11 +715,10 @@
     if (!/^07\d{8}$/.test(phone) && !/^\d{10,15}$/.test(phone)) {
       throw new Error('Enter a valid mobile number');
     }
-    const taken = await lookupPhone(phone);
     const want = role || 'customer';
-    if (taken && !sameRole(taken.role, want)) throw phoneTakenError(taken);
-    if (taken && sameRole(taken.role, want) && want === 'shop' && pendingShop()) throw alreadyThisRoleError('shop');
-    if (taken && sameRole(taken.role, want) && want === 'rider' && pendingRider()) throw alreadyThisRoleError('rider');
+    const taken = await lookupPhone(phone, want);
+    if (taken && want === 'shop' && pendingShop()) throw alreadyThisRoleError('shop');
+    if (taken && want === 'rider' && pendingRider()) throw alreadyThisRoleError('rider');
     const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     const smsToken = 'wa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';

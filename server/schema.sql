@@ -201,17 +201,23 @@ delete from accounts
 where id in ('USER_1','USER_2','SHOP_STAFF','RIDER_77')
    or phone in ('0771234567','0771112222','0772223333','0775556666');
 
--- One phone number, one account, one role (match last 9 digits: 077… / 94…).
+-- Same number may be User + Shop + Rider. Not two accounts of the same role.
 delete from accounts a
 using accounts b
 where a.ctid > b.ctid
   and right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 9)
     = right(regexp_replace(coalesce(b.phone, ''), '\D', '', 'g'), 9)
-  and length(right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 9)) = 9;
+  and length(right(regexp_replace(coalesce(a.phone, ''), '\D', '', 'g'), 9)) = 9
+  and case when a.role in ('user','customer') then 'customer' else coalesce(a.role, '') end
+    = case when b.role in ('user','customer') then 'customer' else coalesce(b.role, '') end;
 
-create unique index if not exists accounts_phone_uidx on accounts (phone);
-create unique index if not exists accounts_phone_tail_uidx
-  on accounts ((right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 9)))
+drop index if exists accounts_phone_uidx;
+drop index if exists accounts_phone_tail_uidx;
+create unique index if not exists accounts_phone_role_uidx
+  on accounts (
+    (right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 9)),
+    (case when role in ('user', 'customer') then 'customer' else coalesce(role, '') end)
+  )
   where length(right(regexp_replace(coalesce(phone, ''), '\D', '', 'g'), 9)) = 9;
 
 insert into app_state (id, payload, updated_at)

@@ -46,7 +46,7 @@ node server/index.js
 
 Open `http://localhost:3000`.
 
-Sign in with your own mobile number. WhatsApp sends a 4-digit code. Each number can be only one role (User, Shop, or Rider). After OTP, that account and its shops/orders are saved in Supabase — no demo catalog.
+Sign in with your own mobile number. WhatsApp sends a 4-digit code. The same number can be User, Shop, and Rider, but you cannot create two accounts in the same role. After OTP, that account is saved in Supabase — no demo catalog.
 
 Included: search, shop menus, cart, checkout, kitchen board, menu sold-out toggles, rider jobs, live OSM map, in-order chat, cash on delivery, ratings, earnings.
 
