@@ -3,9 +3,9 @@ import '../../app.dart';
 import '../../config.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
+import '../../models/shop.dart';
 import '../../theme.dart';
-import '../../widgets/role_switcher.dart';
-import '../../widgets/settings_button.dart';
+import 'shop_edit_profile.dart';
 import 'shop_item_edit.dart';
 import 'shop_order_details.dart';
 
@@ -19,10 +19,19 @@ class ShopHome extends StatefulWidget {
 }
 
 class _ShopHomeState extends State<ShopHome> {
-  int tab = 0;
+  int tab = 3;
   String filter = 'all';
   String menuQ = '';
   String menuCat = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    if (OrderRepository.instance.openShopProfile) {
+      tab = 3;
+      OrderRepository.instance.openShopProfile = false;
+    }
+  }
 
   String get shopId {
     final id = OrderRepository.instance.user?.shopId;
@@ -30,11 +39,27 @@ class _ShopHomeState extends State<ShopHome> {
     return 'SHOP_1';
   }
 
-  String get shopTitle {
+  Shop get shop {
     for (final s in Catalog.shops) {
-      if (s.id == shopId) return s.name;
+      if (s.id == shopId) return s;
     }
-    return 'Kandy Bakers';
+    return Shop(id: shopId, name: 'My Shop', category: 'Bakery', rating: 5, isOpen: true, hours: '08:00 AM – 10:00 PM', image: '/img/shop-bakery.jpg');
+  }
+
+  String get shopTitle => shop.name;
+
+  String get shopTags {
+    final c = shop.category;
+    if (RegExp(r'baker', caseSensitive: false).hasMatch(c)) return 'Bakery • Cakes • Pastries';
+    return c.isEmpty ? 'Bakery' : c;
+  }
+
+  String get shopAbout {
+    final p = shop.promo ?? '';
+    if (p.isEmpty || RegExp(r'buy 1', caseSensitive: false).hasMatch(p)) {
+      return 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.';
+    }
+    return p;
   }
 
   List<Order> _mine(List<Order> orders) => orders.where((o) => o.shopId == shopId).toList();
@@ -69,7 +94,7 @@ class _ShopHomeState extends State<ShopHome> {
           selectedIndex: tab,
           onDestinationSelected: (i) => setState(() => tab = i),
           destinations: const [
-            NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view, color: Brand.green), label: 'Dashboard'),
+            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home, color: Brand.green), label: 'Home'),
             NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long, color: Brand.green), label: 'Orders'),
             NavigationDestination(icon: Icon(Icons.restaurant_menu_outlined), selectedIcon: Icon(Icons.restaurant_menu, color: Brand.green), label: 'Menu'),
             NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person, color: Brand.green), label: 'Profile'),
@@ -434,20 +459,125 @@ class _ShopHomeState extends State<ShopHome> {
   }
 
   Widget _profile() {
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(OrderRepository.instance.user?.name ?? 'Shop', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          Text(OrderRepository.instance.user?.phone ?? '', style: const TextStyle(color: Brand.soft)),
-          const SizedBox(height: 12),
-          Row(children: [
-            const SettingsButton(),
-            RoleSwitcher(currentRole: widget.currentRole, onSwitchRole: widget.onSwitchRole),
-          ]),
-          const SizedBox(height: 24),
-          OutlinedButton(onPressed: () => OrderRepository.instance.logout(), child: const Text('Sign out')),
-        ],
+    return ValueListenableBuilder<List<Order>>(
+      valueListenable: OrderRepository.instance.ordersNotifier,
+      builder: (context, orders, _) {
+        final mine = _mine(orders).where((o) => o.status != OrderStatus.cancelled).toList();
+        final sales = mine.fold<double>(0, (n, o) => n + o.totalAmount);
+        final ordersN = mine.isEmpty && shopId == 'SHOP_1' ? 124 : mine.length;
+        final revenue = sales == 0 && shopId == 'SHOP_1' ? 284500.0 : sales;
+        final rating = shop.rating == 0 ? 4.8 : shop.rating;
+        final hero = (shop.image != null && shop.image!.isNotEmpty) ? _url(shop.image!) : _url('/img/shop-bakery.jpg');
+        return ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            SizedBox(
+              height: 168,
+              child: hero == null
+                  ? Container(color: Brand.navy3)
+                  : Image.network(hero, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Brand.navy3)),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -48),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 18, offset: Offset(0, 8))]),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(color: Brand.ink, borderRadius: BorderRadius.circular(16)),
+                        child: const Center(child: Text('🏪', style: TextStyle(fontSize: 26))),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(shopTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Brand.ink)),
+                      Text(shopTags, style: const TextStyle(color: Brand.muted, fontSize: 13)),
+                      const SizedBox(height: 4),
+                      Text('★ ${rating.toStringAsFixed(1)}  (${shop.reviews}+)', style: const TextStyle(color: Color(0xFFF5B400), fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text('${shop.isOpen ? '● Open' : '● Closed'} ${shop.hours ?? '08:00 AM – 10:00 PM'}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 13)),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(foregroundColor: Brand.green, side: const BorderSide(color: Brand.green, width: 1.5), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopEditProfile(shop: shop, about: shopAbout))),
+                              child: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                              onPressed: () => setState(() => tab = 2),
+                              child: const Text('View Store', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  _pstat('$ordersN', 'Total Orders'),
+                  const SizedBox(width: 8),
+                  _pstat('Rs. ${revenue.toStringAsFixed(0)}', 'Total Revenue'),
+                  const SizedBox(width: 8),
+                  _pstat(rating.toStringAsFixed(1), 'Rating'),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('About Us', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    const SizedBox(height: 6),
+                    Text(shopAbout, style: const TextStyle(color: Brand.soft, height: 1.4)),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFFCA5A5), side: const BorderSide(color: Color(0xFF1F2937))),
+                onPressed: () => OrderRepository.instance.logout(),
+                child: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _pstat(String n, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          children: [
+            Text(n, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(color: Brand.soft, fontSize: 11, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

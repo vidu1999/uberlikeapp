@@ -9,6 +9,9 @@ class Shop {
   final String? image;
   final double? km;
   final int reviews;
+  final String? hours;
+  final String? address;
+  final String? promo;
   const Shop({
     required this.id,
     required this.name,
@@ -20,6 +23,9 @@ class Shop {
     this.image,
     this.km,
     this.reviews = 0,
+    this.hours,
+    this.address,
+    this.promo,
   });
 
   factory Shop.fromJson(Map<String, dynamic> j) => Shop(
@@ -33,6 +39,9 @@ class Shop {
         image: j['image']?.toString(),
         km: (j['km'] as num?)?.toDouble(),
         reviews: (j['reviews'] as num?)?.toInt() ?? 0,
+        hours: j['hours']?.toString(),
+        address: j['address']?.toString(),
+        promo: (j['promo'] ?? j['about'])?.toString(),
       );
 }
 

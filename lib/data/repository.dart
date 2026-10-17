@@ -52,6 +52,7 @@ class OrderRepository {
   String? _otpBody;
   DateTime? _otpExp;
   Map<String, String>? pendingShop;
+  bool openShopProfile = false;
 
   String _normPhone(String raw) {
     var d = raw.replaceAll(RegExp(r'\D'), '');
@@ -118,6 +119,8 @@ class OrderRepository {
         'hours': '08:00 AM – 10:00 PM',
         'address': 'Sri Lanka',
         'image': '/img/shop-bakery.jpg',
+        'promo':
+            'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
       };
       try {
         await _sbWrite('shops', 'POST', [shop]);
@@ -156,6 +159,7 @@ class OrderRepository {
     token = 'sb_${user['id']}';
     userNotifier.value = SessionUser.fromJson(user);
     connectedNotifier.value = true;
+    if (role == 'shop') openShopProfile = true;
     await _persist();
     await refresh();
   }
@@ -643,6 +647,28 @@ class OrderRepository {
           'ts': DateTime.now().millisecondsSinceEpoch,
         }
       ]);
+    } catch (_) {}
+    await refresh();
+  }
+
+  Future<void> saveShop({
+    required String id,
+    required String name,
+    String category = 'Bakery',
+    String hours = '08:00 AM – 10:00 PM',
+    String about = '',
+    String? image,
+    bool isOpen = true,
+  }) async {
+    try {
+      await _sbWrite('shops?id=eq.$id', 'PATCH', {
+        'name': name,
+        'category': category,
+        'hours': hours,
+        'promo': about,
+        'image': image ?? '/img/shop-bakery.jpg',
+        'is_open': isOpen,
+      });
     } catch (_) {}
     await refresh();
   }

@@ -412,6 +412,7 @@
         hours: '08:00 AM – 10:00 PM',
         address: 'Sri Lanka',
         image: '/img/shop-bakery.jpg',
+        promo: 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
       };
       try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
       row = {
@@ -443,6 +444,10 @@
       try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
     }
     API.user = mapAccount(row);
+    if (API.user && API.user.shopId) {
+      const s = API.shops.find((x) => x.id === API.user.shopId);
+      if (s && s.name) API.user.shopName = s.name;
+    }
     API.token = 'sb_' + row.id;
     saveSession();
     notify(true);
@@ -672,6 +677,30 @@
     if (hit) hit.isAvailable = !!isAvailable;
     notify(true);
     return API.refresh();
+  };
+
+  API.saveShop = async function (shop) {
+    const id = shop.id;
+    if (!id) throw new Error('Missing shop');
+    const row = {
+      name: shop.name,
+      category: shop.category || 'Bakery',
+      hours: shop.hours || '08:00 AM – 10:00 PM',
+      address: shop.address || '',
+      image: shop.image || '/img/shop-bakery.jpg',
+      promo: shop.promo || shop.about || '',
+      is_open: shop.isOpen !== false,
+    };
+    if (sbConfigured()) {
+      await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', row);
+    }
+    const mapped = mapShop(Object.assign({}, shop, row, { id, is_open: row.is_open }));
+    const i = API.shops.findIndex((s) => s.id === id);
+    if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
+    else API.shops.push(mapped);
+    notify(true);
+    try { await API.refresh(); } catch (_) {}
+    return mapped;
   };
 
   API.saveItem = async function (item) {

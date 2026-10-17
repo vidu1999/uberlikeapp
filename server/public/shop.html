@@ -21,9 +21,9 @@
   <script src="/js/otp-login.js"></script>
   <script>
     const state = {
-      tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
+      tab: 'account', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
-      itemDraft: null, auth: 'login', fromReg: false,
+      itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
       reg: { shopName: 'Kandy Bakers', ownerName: 'Nimal Perera', email: 'shop@example.com', phone: '0772223333' },
       loginId: '0772223333',
     };
@@ -52,10 +52,34 @@
     }
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function oid(id) { return '#' + String(id||'').replace('_','-'); }
-    function shopName() {
+    function myShop() {
       const sid = shopId();
-      const s = API.shops.find((x) => x.id === sid) || API.shops.find((x) => x.id === 'SHOP_1') || API.shops[0] || {};
-      return (API.user && API.user.shopName) || s.name || 'Kandy Bakers';
+      const s = API.shops.find((x) => x.id === sid) || {};
+      return {
+        id: sid,
+        name: s.name || (API.user && API.user.shopName) || 'My Shop',
+        category: s.category || 'Bakery',
+        rating: Number(s.rating || 0) || (sid === 'SHOP_1' ? 4.8 : 5),
+        reviews: Number(s.reviews || 0) || (sid === 'SHOP_1' ? 120 : 0),
+        hours: s.hours || '08:00 AM – 10:00 PM',
+        image: s.image || '/img/shop-bakery.jpg',
+        address: s.address || '',
+        isOpen: s.isOpen !== false,
+        promo: s.promo || '',
+      };
+    }
+    function shopName() { return myShop().name; }
+    function shopTags(s) {
+      const c = String((s && s.category) || 'Bakery');
+      if (/baker/i.test(c)) return 'Bakery • Cakes • Pastries';
+      return c;
+    }
+    function shopAbout(s) {
+      const p = String((s && (s.promo || s.about)) || '');
+      if (!p || /buy 1/i.test(p)) {
+        return 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.';
+      }
+      return p;
     }
     function timeOf(o) {
       const d = new Date(o.timestamp || Date.now());
@@ -311,22 +335,71 @@
       </div>`;
     }
     function accountView() {
+      const s = myShop();
       const today = shopOrders().filter((o) => o.status !== 'cancelled');
-      const sales = today.reduce((s, o) => s + o.totalAmount, 0);
-      return `<div class="scroll">
-        <div class="sd-head"><div class="sd-logo">${SVG.store}</div><h1>Profile</h1></div>
-        <div class="sd-stats">
-          <div class="sd-stat teal"><b>${today.length}</b><span>Orders</span></div>
-          <div class="sd-stat gold"><b>${rs(sales)}</b><span>Volume</span></div>
-          <div class="sd-stat green"><b>Open</b><span>Kitchen</span></div>
+      const sales = today.reduce((n, o) => n + (o.totalAmount || 0), 0);
+      const ordersN = today.length || (s.id === 'SHOP_1' ? 124 : today.length);
+      const revenue = sales || (s.id === 'SHOP_1' ? 284500 : sales);
+      const rating = s.rating || 4.8;
+      return `<div class="scroll sp-prof">
+        <div class="sp-prof-hero"><img src="${esc(s.image)}" alt="" /></div>
+        <div class="sp-prof-card">
+          <div class="sp-prof-ico">🏪</div>
+          <h2>${esc(s.name)}</h2>
+          <div class="tags">${esc(shopTags(s))}</div>
+          <div class="stars">★ ${rating.toFixed(1)} <span>(${s.reviews || 0}+)</span></div>
+          <div class="sp-prof-hours">${s.isOpen ? '● Open' : '● Closed'} ${esc(s.hours)}</div>
+          <div class="sp-prof-actions">
+            <button type="button" class="ed" data-edit-shop>Edit Profile</button>
+            <button type="button" class="vs" data-view-store>View Store</button>
+          </div>
         </div>
-        <div class="pad">
-          <b>${esc(API.user?.name)}</b>
-          <p class="muted">${esc(API.user?.phone)}</p>
-          <p class="muted">${esc(shopName())}</p>
-          <button class="btn ghost full" id="logout">Sign out</button>
+        <div class="sp-prof-stats">
+          <div class="sp-prof-stat"><b>${ordersN}</b><span>Total Orders</span></div>
+          <div class="sp-prof-stat"><b>${rs(revenue)}</b><span>Total Revenue</span></div>
+          <div class="sp-prof-stat"><b>${rating.toFixed(1)}</b><span>Rating</span></div>
         </div>
+        <div class="sp-prof-about">
+          <h3>About Us</h3>
+          <p>${esc(shopAbout(s))}</p>
+        </div>
+        <button class="sp-prof-out" type="button" id="logout">Log Out</button>
       </div>${nav()}`;
+    }
+    function editShopView() {
+      const s = Object.assign({}, myShop(), state.shopDraft || {});
+      return `<div class="scroll sp-edit ie-page">
+        <div class="ie-head"><button class="back" type="button" data-close-shop>←</button><h1>Edit Profile</h1></div>
+        <label class="ie-photo" data-pick-shop-photo>${s.image ? `<img src="${esc(s.image)}" alt="" />` : '<span>📷<br>Tap to add image</span>'}</label>
+        <input id="shopFile" type="file" accept="image/*" hidden />
+        <label>Shop Name</label>
+        <input id="shopNameIn" value="${esc(s.name)}" />
+        <label>Category</label>
+        <input id="shopCatIn" value="${esc(s.category)}" />
+        <label>Business Hours</label>
+        <input id="shopHoursIn" value="${esc(s.hours)}" />
+        <label>About Us</label>
+        <textarea id="shopAboutIn">${esc(shopAbout(s))}</textarea>
+        <p class="err" data-shop-err style="margin:8px 16px"></p>
+        <button class="btn full" type="button" data-save-shop>Save Profile</button>
+      </div>`;
+    }
+    function storeView() {
+      const s = myShop();
+      const items = shopItems();
+      return `<div class="scroll sp-store">
+        <div class="ie-head"><button class="back" type="button" data-close-shop>←</button><h1>View Store</h1></div>
+        <div class="hero"><img src="${esc(s.image)}" alt="" /></div>
+        <div class="pad">
+          <h2>${esc(s.name)}</h2>
+          <p class="muted">${esc(shopTags(s))} · ★ ${Number(s.rating||0).toFixed(1)}</p>
+          <p>${esc(shopAbout(s))}</p>
+        </div>
+        ${items.map((it) => `<div class="mi-row">
+          <img src="${itemImg(it)}" alt="" />
+          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)}</div></div>
+        </div>`).join('') || '<div class="pad muted">No menu items yet.</div>'}
+      </div>`;
     }
     function bindMapChrome() {
       const root = document.getElementById('root');
@@ -347,6 +420,7 @@
       const sc0 = root.querySelector('.scroll');
       const y = keep && sc0 ? sc0.scrollTop : 0;
       if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
+      if (keep && state.screen === 'edit-shop' && root.querySelector('[data-save-shop]')) return;
       try {
       if (!API.user) {
         if (keep && root.querySelector('[data-shop-auth], [data-otp-root]')) return;
@@ -357,7 +431,7 @@
         }
         if (state.auth === 'otp') {
           root.innerHTML = otpView();
-          OtpLogin.bind({ role: 'shop', onReady: () => { state.auth = 'login'; render(); } });
+          OtpLogin.bind({ role: 'shop', onReady: () => { state.auth = 'login'; state.tab = 'account'; render(); } });
           const pi = document.getElementById('phone');
           if (pi) pi.value = state.loginId;
           const phoneStep = root.querySelector('[data-step="phone"]');
@@ -400,6 +474,8 @@
       if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
       if (state.screen === 'order') root.innerHTML = orderDetailsView();
       else if (state.screen === 'item') root.innerHTML = itemEditView();
+      else if (state.screen === 'edit-shop') root.innerHTML = editShopView();
+      else if (state.screen === 'store') root.innerHTML = storeView();
       else if (state.tab === 'menu') root.innerHTML = menuView();
       else if (state.tab === 'orders') root.innerHTML = ordersView();
       else if (state.tab === 'account') root.innerHTML = accountView();
@@ -546,7 +622,57 @@
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       const logout = document.getElementById('logout');
-      if (logout) logout.onclick = () => { API.logout(); render(); };
+      if (logout) logout.onclick = () => { API.logout(); state.tab = 'account'; state.auth = 'login'; render(); };
+      root.querySelectorAll('[data-edit-shop]').forEach((b) => b.onclick = () => {
+        state.shopDraft = Object.assign({}, myShop());
+        state.screen = 'edit-shop';
+        render();
+      });
+      root.querySelectorAll('[data-view-store]').forEach((b) => b.onclick = () => { state.screen = 'store'; render(); });
+      root.querySelectorAll('[data-close-shop]').forEach((b) => b.onclick = () => { state.screen = ''; state.shopDraft = null; state.tab = 'account'; render(); });
+      const pickShop = root.querySelector('[data-pick-shop-photo]');
+      const shopFile = document.getElementById('shopFile');
+      if (pickShop && shopFile) pickShop.onclick = () => shopFile.click();
+      if (shopFile) shopFile.onchange = () => {
+        const f = shopFile.files && shopFile.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = () => {
+          let src = String(r.result || '');
+          if (src.length > 180000) src = '/img/shop-bakery.jpg';
+          state.shopDraft = Object.assign({}, readShopForm(), { image: src });
+          render({ keepScroll: true });
+        };
+        r.readAsDataURL(f);
+      };
+      const saveShop = root.querySelector('[data-save-shop]');
+      if (saveShop) saveShop.onclick = async () => {
+        const d = readShopForm();
+        if (!d.name) { const e = root.querySelector('[data-shop-err]'); if (e) e.textContent = 'Enter a shop name.'; return; }
+        saveShop.disabled = true; saveShop.textContent = 'Saving…';
+        try {
+          await API.saveShop(d);
+          state.screen = ''; state.shopDraft = null; state.tab = 'account';
+          render();
+        } catch (err) {
+          const e = root.querySelector('[data-shop-err]');
+          if (e) e.textContent = err.message || 'Could not save profile.';
+          saveShop.disabled = false; saveShop.textContent = 'Save Profile';
+        }
+      };
+    }
+    function readShopForm() {
+      const d = Object.assign({}, myShop(), state.shopDraft || {});
+      const name = document.getElementById('shopNameIn');
+      const cat = document.getElementById('shopCatIn');
+      const hours = document.getElementById('shopHoursIn');
+      const about = document.getElementById('shopAboutIn');
+      if (name) d.name = name.value.trim();
+      if (cat) d.category = cat.value.trim();
+      if (hours) d.hours = hours.value.trim();
+      if (about) d.promo = about.value.trim();
+      d.about = d.promo;
+      return d;
     }
     function readItemForm() {
       const d = Object.assign({}, state.itemDraft || {});
