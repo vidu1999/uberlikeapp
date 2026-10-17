@@ -339,6 +339,112 @@
       });
     }
   }
+  function phoneVariants(phone) {
+    const key = phoneKey(phone);
+    const n = normalizePhone(phone);
+    return [n, key, '0' + key, '94' + key, '+94' + key].filter(function (v, i, a) {
+      return v && a.indexOf(v) === i;
+    });
+  }
+
+  function dropLocalPhone(raw) {
+    const key = phoneKey(raw);
+    if (!key) return;
+    try {
+      ['customer', 'shop', 'rider', 'user'].forEach(function (role) {
+        const k = 'sd_user_' + role;
+        [localStorage, sessionStorage].forEach(function (store) {
+          try {
+            const raws = store.getItem(k);
+            if (!raws) return;
+            const data = JSON.parse(raws);
+            const p = (data && data.user && data.user.phone) || (data && data.phone);
+            if (!p || phoneKey(p) === key) store.removeItem(k);
+          } catch (_) {}
+        });
+      });
+      localStorage.removeItem(shopProfileKey(normalizePhone(raw)));
+      sessionStorage.removeItem('sd_pending_shop');
+      sessionStorage.removeItem('sd_pending_rider');
+    } catch (_) {}
+    if (API.user && phoneKey(API.user.phone) === key) {
+      API.user = null;
+      API.token = null;
+    }
+  }
+
+  async function wipePhone(raw) {
+    if (!sbConfigured()) return;
+    const key = phoneKey(raw);
+    if (!key) return;
+    const n = normalizePhone(raw);
+    const variants = phoneVariants(raw);
+    const shopIds = [shopIdFor(n)];
+    const accIds = ['customer', 'shop', 'rider'].map(function (r) { return accountIdFor(n, r); });
+    let accList = [];
+    try { accList = await sbGet('accounts?select=id,phone,role,shop_id') || []; } catch (_) {}
+    accList.forEach(function (a) {
+      if (!a) return;
+      if (phoneKey(a.phone) !== key && accIds.indexOf(a.id) < 0 && shopIds.indexOf(a.shop_id) < 0) return;
+      if (accIds.indexOf(a.id) < 0) accIds.push(a.id);
+      if (a.shop_id && shopIds.indexOf(a.shop_id) < 0) shopIds.push(a.shop_id);
+    });
+    let orderList = [];
+    try { orderList = await sbGet('orders?select=*') || []; } catch (_) {}
+    const orderIds = [];
+    orderList.forEach(function (o) {
+      const d = o.data || {};
+      const phones = [o.customer_phone, d.customerPhone, d.riderPhone];
+      const hit =
+        shopIds.indexOf(o.shop_id) >= 0 ||
+        shopIds.indexOf(d.shopId) >= 0 ||
+        accIds.indexOf(o.user_id) >= 0 ||
+        accIds.indexOf(d.userId) >= 0 ||
+        accIds.indexOf(d.riderId) >= 0 ||
+        phones.some(function (p) { return phoneKey(p) === key; });
+      if (hit) orderIds.push(o.id);
+    });
+    for (let i = 0; i < orderIds.length; i++) {
+      const id = orderIds[i];
+      try { await sbSend('messages?order_id=eq.' + encodeURIComponent(id), 'DELETE'); } catch (_) {}
+      try { await sbSend('orders?id=eq.' + encodeURIComponent(id), 'DELETE'); } catch (_) {}
+    }
+    for (let i = 0; i < shopIds.length; i++) {
+      const sid = shopIds[i];
+      try { await sbSend('menu_items?shop_id=eq.' + encodeURIComponent(sid), 'DELETE'); } catch (_) {}
+      try { await sbSend('shops?id=eq.' + encodeURIComponent(sid), 'DELETE'); } catch (_) {}
+    }
+    for (let i = 0; i < accIds.length; i++) {
+      try { await sbSend('accounts?id=eq.' + encodeURIComponent(accIds[i]), 'DELETE'); } catch (_) {}
+    }
+    for (let i = 0; i < variants.length; i++) {
+      try { await sbSend('accounts?phone=eq.' + encodeURIComponent(variants[i]), 'DELETE'); } catch (_) {}
+      try { await sbSend('otp_codes?phone=eq.' + encodeURIComponent(variants[i]), 'DELETE'); } catch (_) {}
+    }
+    dropLocalPhone(raw);
+    clearAccCache();
+  }
+
+  async function wipeTestNumber() {
+    if (API._phoneWiped || !sbConfigured()) return;
+    API._phoneWiped = true;
+    let force = '';
+    try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
+    const target = force || '0711789229';
+    const stamp = 'wipe_phone_' + phoneKey(target);
+    if (!force) {
+      try {
+        const rows = await sbGet('app_state?id=eq.' + encodeURIComponent(stamp) + '&select=id');
+        if (rows && rows.length) return;
+      } catch (_) {}
+    }
+    await wipePhone(target);
+    try { await sbSend('app_state?id=eq.' + encodeURIComponent(stamp), 'DELETE'); } catch (_) {}
+    try {
+      await sbSend('app_state', 'POST', [{ id: stamp, payload: { phone: normalizePhone(target), at: new Date().toISOString() } }]);
+    } catch (_) {}
+  }
+
   async function wipeDemo() {
     if (API._wipedDemo || !sbConfigured()) return;
     API._wipedDemo = true;
@@ -428,6 +534,7 @@
   }
 
   async function pullSupabase() {
+    await wipeTestNumber();
     await wipeDemo();
     const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
       sbGet('shops?select=*&order=id.asc'),
@@ -1104,6 +1211,11 @@
   } catch (_) {}
 
   API.restore();
+  dropLocalPhone('0711789229');
+  try {
+    const w = new URLSearchParams(location.search || '').get('wipe');
+    if (w) dropLocalPhone(w);
+  } catch (_) {}
   API.refresh().catch(() => {});
   setInterval(() => {
     if (sbConfigured()) API.refresh().catch(() => {});
