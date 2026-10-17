@@ -347,45 +347,41 @@
     });
   }
 
-  function dropLocalPhone(raw) {
+  function dropLocalShop(raw) {
     const key = phoneKey(raw);
     if (!key) return;
     try {
-      ['customer', 'shop', 'rider', 'user'].forEach(function (role) {
-        const k = 'sd_user_' + role;
-        [localStorage, sessionStorage].forEach(function (store) {
-          try {
-            const raws = store.getItem(k);
-            if (!raws) return;
-            const data = JSON.parse(raws);
-            const p = (data && data.user && data.user.phone) || (data && data.phone);
-            if (!p || phoneKey(p) === key) store.removeItem(k);
-          } catch (_) {}
-        });
+      [localStorage, sessionStorage].forEach(function (store) {
+        try {
+          const raws = store.getItem('sd_user_shop');
+          if (!raws) return;
+          const data = JSON.parse(raws);
+          const p = (data && data.user && data.user.phone) || (data && data.phone);
+          if (!p || phoneKey(p) === key) store.removeItem('sd_user_shop');
+        } catch (_) {}
       });
       localStorage.removeItem(shopProfileKey(normalizePhone(raw)));
       sessionStorage.removeItem('sd_pending_shop');
-      sessionStorage.removeItem('sd_pending_rider');
     } catch (_) {}
-    if (API.user && phoneKey(API.user.phone) === key) {
+    if (API.user && sameRole(API.user.role, 'shop') && phoneKey(API.user.phone) === key) {
       API.user = null;
       API.token = null;
     }
   }
 
-  async function wipePhone(raw) {
+  async function wipeShopRole(raw) {
     if (!sbConfigured()) return;
     const key = phoneKey(raw);
     if (!key) return;
     const n = normalizePhone(raw);
     const variants = phoneVariants(raw);
     const shopIds = [shopIdFor(n)];
-    const accIds = ['customer', 'shop', 'rider'].map(function (r) { return accountIdFor(n, r); });
+    const accIds = [accountIdFor(n, 'shop')];
     let accList = [];
     try { accList = await sbGet('accounts?select=id,phone,role,shop_id') || []; } catch (_) {}
     accList.forEach(function (a) {
-      if (!a) return;
-      if (phoneKey(a.phone) !== key && accIds.indexOf(a.id) < 0 && shopIds.indexOf(a.shop_id) < 0) return;
+      if (!a || !sameRole(a.role, 'shop')) return;
+      if (phoneKey(a.phone) !== key && accIds.indexOf(a.id) < 0) return;
       if (accIds.indexOf(a.id) < 0) accIds.push(a.id);
       if (a.shop_id && shopIds.indexOf(a.shop_id) < 0) shopIds.push(a.shop_id);
     });
@@ -394,15 +390,7 @@
     const orderIds = [];
     orderList.forEach(function (o) {
       const d = o.data || {};
-      const phones = [o.customer_phone, d.customerPhone, d.riderPhone];
-      const hit =
-        shopIds.indexOf(o.shop_id) >= 0 ||
-        shopIds.indexOf(d.shopId) >= 0 ||
-        accIds.indexOf(o.user_id) >= 0 ||
-        accIds.indexOf(d.userId) >= 0 ||
-        accIds.indexOf(d.riderId) >= 0 ||
-        phones.some(function (p) { return phoneKey(p) === key; });
-      if (hit) orderIds.push(o.id);
+      if (shopIds.indexOf(o.shop_id) >= 0 || shopIds.indexOf(d.shopId) >= 0) orderIds.push(o.id);
     });
     for (let i = 0; i < orderIds.length; i++) {
       const id = orderIds[i];
@@ -418,10 +406,14 @@
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(accIds[i]), 'DELETE'); } catch (_) {}
     }
     for (let i = 0; i < variants.length; i++) {
-      try { await sbSend('accounts?phone=eq.' + encodeURIComponent(variants[i]), 'DELETE'); } catch (_) {}
-      try { await sbSend('otp_codes?phone=eq.' + encodeURIComponent(variants[i]), 'DELETE'); } catch (_) {}
+      try {
+        await sbSend('accounts?phone=eq.' + encodeURIComponent(variants[i]) + '&role=eq.shop', 'DELETE');
+      } catch (_) {}
+      try {
+        await sbSend('otp_codes?phone=eq.' + encodeURIComponent(variants[i]) + '&role=eq.shop', 'DELETE');
+      } catch (_) {}
     }
-    dropLocalPhone(raw);
+    dropLocalShop(raw);
     clearAccCache();
   }
 
@@ -431,17 +423,17 @@
     let force = '';
     try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
     const target = force || '0711789229';
-    const stamp = 'wipe_phone_' + phoneKey(target);
+    const stamp = 'wipe_shop_role_' + phoneKey(target);
     if (!force) {
       try {
         const rows = await sbGet('app_state?id=eq.' + encodeURIComponent(stamp) + '&select=id');
         if (rows && rows.length) return;
       } catch (_) {}
     }
-    await wipePhone(target);
+    await wipeShopRole(target);
     try { await sbSend('app_state?id=eq.' + encodeURIComponent(stamp), 'DELETE'); } catch (_) {}
     try {
-      await sbSend('app_state', 'POST', [{ id: stamp, payload: { phone: normalizePhone(target), at: new Date().toISOString() } }]);
+      await sbSend('app_state', 'POST', [{ id: stamp, payload: { phone: normalizePhone(target), role: 'shop', at: new Date().toISOString() } }]);
     } catch (_) {}
   }
 
@@ -1211,10 +1203,10 @@
   } catch (_) {}
 
   API.restore();
-  dropLocalPhone('0711789229');
+  dropLocalShop('0711789229');
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');
-    if (w) dropLocalPhone(w);
+    if (w) dropLocalShop(w);
   } catch (_) {}
   API.refresh().catch(() => {});
   setInterval(() => {
