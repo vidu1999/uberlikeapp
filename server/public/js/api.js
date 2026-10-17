@@ -15,7 +15,19 @@
     return API.shops.find((s) => s.id === id) || { name: 'Shop', emoji: '🏪', lat: 6.93, lng: 79.85, eta: '20 min' };
   }
 
-  function notify() {
+  let _fp = null;
+  function fingerprint() {
+    const orders = (API.orders || []).map((o) =>
+      [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng].join(':')
+    ).join('|');
+    const items = (API.items || []).map((i) => i.id + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
+    const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
+    return [(API.user && API.user.id) || '', (API.shops || []).length, items, orders, msgs].join('~');
+  }
+  function notify(force) {
+    const fp = fingerprint();
+    if (!force && _fp === fp) return;
+    _fp = fp;
     API.listeners.forEach((fn) => {
       try { fn(API); } catch (e) { console.error(e); }
     });

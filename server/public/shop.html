@@ -188,8 +188,12 @@
         if (state.mapHandle && o) state.mapHandle.locate(o);
       };
     }
-    function render() {
+    function render(opts) {
       const root = document.getElementById('root');
+      const keep = !!(opts && opts.keepScroll);
+      const sc0 = root.querySelector('.scroll');
+      const y = keep && sc0 ? sc0.scrollTop : 0;
+      try {
       if (!API.user) {
         if (root.querySelector('[data-otp-root]')) return;
         root.innerHTML = loginView();
@@ -221,6 +225,12 @@
       else if (state.tab === 'account') root.innerHTML = accountView();
       else root.innerHTML = dashView();
       bind();
+      } finally {
+        if (keep) {
+          const sc = root.querySelector('.scroll');
+          if (sc) sc.scrollTop = y;
+        }
+      }
     }
     function bind() {
       const root = document.getElementById('root');
@@ -239,7 +249,7 @@
     }
     API.on(() => {
       if (!API.user && document.querySelector('[data-otp-root]')) return;
-      render();
+      render({ keepScroll: true });
     });
     render();
   </script>

@@ -134,8 +134,10 @@
             state.loc.openMapOnce = false;
             state.screen = 'locate';
             state.locFrom = 'home';
+            render();
+          } else {
+            render({ keepScroll: true });
           }
-          render();
         }
       };
       const onErr = (err) => {
@@ -179,7 +181,7 @@
       if (hit) hit.qty += 1;
       else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1, image: item.image });
       saveCart();
-      render();
+      render({ keepScroll: true });
     }
     function setQty(id, d) {
       const hit = state.cart.find((c) => c.id === id);
@@ -187,7 +189,7 @@
       hit.qty += d;
       if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
       saveCart();
-      render();
+      render({ keepScroll: true });
     }
 
     const SVG = {
@@ -619,8 +621,12 @@
       state.lockTrack = false; state.screen = 'home'; state.tab = 'home'; render();
     }
 
-    function render() {
+    function render(opts) {
       const root = document.getElementById('root');
+      const keep = !!(opts && opts.keepScroll);
+      const sc0 = root.querySelector('.scroll');
+      const y = keep && sc0 ? sc0.scrollTop : 0;
+      try {
       if (!API.user && state.gate !== 'app') {
         if (state.gate === 'splash') { root.innerHTML = splash(); return; }
         if (state.gate === 'onboard') { root.innerHTML = onboard(); bindGate(); return; }
@@ -683,6 +689,12 @@
       else if (state.tab === 'account') root.innerHTML = accountView();
       else root.innerHTML = homeView();
       bindApp();
+      } finally {
+        if (keep) {
+          const sc = root.querySelector('.scroll');
+          if (sc) sc.scrollTop = y;
+        }
+      }
     }
 
     function bindGate() {
@@ -825,8 +837,8 @@
       const root = document.getElementById('root');
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
       const q = document.getElementById('q');
-      if (q) q.oninput = (e) => { state.query = e.target.value; if (state.screen !== 'search') state.screen = 'search'; render(); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
-      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render(); });
+      if (q) q.oninput = (e) => { state.query = e.target.value; if (state.screen !== 'search') state.screen = 'search'; render({ keepScroll: true }); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render({ keepScroll: true }); });
       root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
       root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
@@ -834,7 +846,7 @@
         const id = b.dataset.fav;
         if (state.favs.includes(id)) state.favs = state.favs.filter((x) => x !== id);
         else state.favs.push(id);
-        saveFavs(); render();
+        saveFavs(); render({ keepScroll: true });
       });
       root.querySelectorAll('[data-add]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
@@ -842,8 +854,8 @@
         if (item) addToCart(item);
       });
       root.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { state.screen='home'; state.tab='home'; render(); });
-      root.querySelectorAll('[data-mtab]').forEach((b) => b.onclick = () => { state.menuTab = b.dataset.mtab; render(); });
-      root.querySelectorAll('[data-mcat]').forEach((b) => b.onclick = () => { state.menuCat = b.dataset.mcat; render(); });
+      root.querySelectorAll('[data-mtab]').forEach((b) => b.onclick = () => { state.menuTab = b.dataset.mtab; render({ keepScroll: true }); });
+      root.querySelectorAll('[data-mcat]').forEach((b) => b.onclick = () => { state.menuCat = b.dataset.mcat; render({ keepScroll: true }); });
       root.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
       root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
@@ -851,7 +863,7 @@
         state.screen = 'locate';
         render();
       });
-      root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render(); });
+      root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render({ keepScroll: true }); });
       const place = document.getElementById('place');
       if (place) place.onclick = async () => {
         const addr = document.getElementById('addr');
@@ -910,7 +922,7 @@
       if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {
         if (!API.user) return;
       }
-      render();
+      render({ keepScroll: true });
     });
     tryAutoGps();
     render();

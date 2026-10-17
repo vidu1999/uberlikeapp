@@ -154,8 +154,12 @@
       const loc = root.querySelector('[data-locate]');
       if (loc) loc.onclick = () => { if (state.mapHandle && order) state.mapHandle.locate(order); };
     }
-    function render(force) {
+    function render(force, opts) {
       const root = document.getElementById('root');
+      const keep = !force && !!(opts && opts.keepScroll);
+      const sc0 = root.querySelector('.scroll');
+      const y = keep && sc0 ? sc0.scrollTop : 0;
+      try {
       if (!API.user) {
         if (root.querySelector('[data-otp-root]')) return;
         root.innerHTML = loginView();
@@ -185,6 +189,12 @@
       if (state.tab === 'account') { root.innerHTML = accountView(); bind(); return; }
       root.innerHTML = jobsListView();
       bind();
+      } finally {
+        if (keep) {
+          const sc = root.querySelector('.scroll');
+          if (sc) sc.scrollTop = y;
+        }
+      }
     }
     function bind() {
       const root = document.getElementById('root');
@@ -221,7 +231,7 @@
     }
     API.on(() => {
       if (!API.user && document.querySelector('[data-otp-root]')) return;
-      render();
+      render(false, { keepScroll: true });
     });
     render();
   </script>
