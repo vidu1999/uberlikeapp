@@ -273,6 +273,12 @@
     const d = normalizePhone(raw);
     return d.length >= 9 ? d.slice(-9) : d;
   }
+  function accountIdFor(phone) {
+    return 'ACC_' + phoneKey(phone);
+  }
+  function shopIdFor(phone) {
+    return 'SHOP_' + phoneKey(phone);
+  }
   function phoneTakenError(acc) {
     const have = roleLabel(acc.role);
     return new Error('This number is already a ' + have + ' account. One phone number = one role. It cannot be User and Shop and Rider, and you cannot register it again. Open the ' + have + ' app.');
@@ -354,23 +360,37 @@
   async function lookupPhone(phone) {
     const key = phoneKey(phone);
     if (!key) return null;
-    let list = (await allAccounts()).filter(function (a) { return phoneKey(a.phone) === key; });
-    if (!list.length && sbConfigured()) {
+    const id = accountIdFor(phone);
+    const n = normalizePhone(phone);
+    const variants = [n, key, '0' + key, '94' + key];
+    const byId = {};
+    function add(raw) {
+      if (!raw) return;
+      const a = mapAccount(raw);
+      if (!a || !a.id || isDemoAccount(a)) return;
+      if (phoneKey(a.phone) !== key && a.id !== id) return;
+      byId[a.id] = a;
+    }
+    if (sbConfigured()) {
       try {
-        const n = normalizePhone(phone);
-        const rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(n));
-        list = (rows || []).map(mapAccount).filter(function (a) { return a && !isDemoAccount(a); });
+        (await sbGet('accounts?id=eq.' + encodeURIComponent(id) + '&select=*') || []).forEach(add);
       } catch (_) {}
-    }
-    if (list.length > 1) {
-      const keep = list[0];
-      for (let i = 1; i < list.length; i++) {
-        try { await sbSend('accounts?id=eq.' + encodeURIComponent(list[i].id), 'DELETE'); } catch (_) {}
+      for (let i = 0; i < variants.length; i++) {
+        try {
+          (await sbGet('accounts?phone=eq.' + encodeURIComponent(variants[i]) + '&select=*') || []).forEach(add);
+        } catch (_) {}
       }
-      clearAccCache();
-      return keep;
     }
-    return list[0] || null;
+    (await allAccounts()).forEach(add);
+    const list = Object.keys(byId).map(function (k) { return byId[k]; });
+    if (!list.length) return null;
+    const keep = byId[id] || list[0];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === keep.id) continue;
+      try { await sbSend('accounts?id=eq.' + encodeURIComponent(list[i].id), 'DELETE'); } catch (_) {}
+    }
+    if (list.length > 1) clearAccCache();
+    return keep;
   }
 
   function nextOrderId() {
@@ -580,32 +600,51 @@
     if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
     let row = taken && sameRole(taken.role, role) ? taken : null;
     if (row && row.shopId && !row.shop_id) row.shop_id = row.shopId;
+    if (!row) {
+      try {
+        const byId = await sbGet('accounts?id=eq.' + encodeURIComponent(accountIdFor(phone)) + '&select=*');
+        if (byId && byId[0] && !isDemoAccount(byId[0])) {
+          const acc = mapAccount(byId[0]);
+          if (!sameRole(acc.role, role)) throw phoneTakenError(acc);
+          row = acc;
+        }
+      } catch (e) {
+        if (e && String(e.message || '').indexOf('already') >= 0) throw e;
+      }
+    }
     if (!row && role === 'shop') {
       const p = pendingShop() || {};
       if (!p.shopName && !p.ownerName) {
         throw new Error('Register your shop first.');
       }
-      const shopId = 'SHOP_' + Date.now().toString(36).toUpperCase();
-      const shop = {
-        id: shopId,
-        name: p.shopName || 'New Shop',
-        category: 'Bakery',
-        rating: 5,
-        reviews: 0,
-        is_open: true,
-        lat: Number(p.lat) || 8.335,
-        lng: Number(p.lng) || 80.4108,
-        km: 0,
-        eta: '20–35 min',
-        fee: 200,
-        hours: '08:00 AM – 10:00 PM',
-        address: p.address || 'Sri Lanka',
-        image: '/img/shop-bakery.jpg',
-        promo: 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
-      };
-      try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
+      const shopId = shopIdFor(phone);
+      let shop = null;
+      try {
+        const existing = await sbGet('shops?id=eq.' + encodeURIComponent(shopId) + '&select=*');
+        if (existing && existing[0]) shop = mapShop(existing[0]);
+      } catch (_) {}
+      if (!shop) {
+        shop = {
+          id: shopId,
+          name: p.shopName || 'New Shop',
+          category: 'Bakery',
+          rating: 5,
+          reviews: 0,
+          is_open: true,
+          lat: Number(p.lat) || 8.335,
+          lng: Number(p.lng) || 80.4108,
+          km: 0,
+          eta: '20–35 min',
+          fee: 200,
+          hours: '08:00 AM – 10:00 PM',
+          address: p.address || 'Sri Lanka',
+          image: '/img/shop-bakery.jpg',
+          promo: 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
+        };
+        try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
+      }
       row = {
-        id: 'SHOP_STAFF_' + phone.slice(-4) + '_' + Date.now().toString(36),
+        id: accountIdFor(phone),
         name: p.ownerName || 'Shop Owner',
         phone,
         email: p.email || '',
@@ -630,7 +669,7 @@
     if (!row) {
       const pr = pendingRider() || {};
       row = {
-        id: String(role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
+        id: accountIdFor(phone),
         name: role === 'rider' ? (pr.name || 'Rider') : (pr.name || 'Guest'),
         phone,
         email: pr.email || '',

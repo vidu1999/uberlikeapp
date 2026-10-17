@@ -262,7 +262,7 @@ function userForVerifiedPhone(phone, role) {
   if (user) return user;
   const names = { customer: 'Guest', shop: 'Shop staff', rider: 'Courier' };
   user = {
-    id: (role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
+    id: 'ACC_' + phoneKey(phone),
     name: names[role] || 'Guest',
     phone,
     pin: 'otp',
@@ -467,20 +467,29 @@ async function handleApi(req, res, url) {
     }
     let user = taken && sameRole(taken.role, role) ? taken : null;
     if (!user) {
-      user = {
-        id: role.toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
-        name,
-        phone,
-        email,
-        pin,
-        role,
-        address: body.address || '',
-      };
-      if (role === 'rider') {
-        user.vehicle = 'Bike';
-        user.rating = 5;
+      const existingId = accounts.find((a) => a.id === 'ACC_' + phoneKey(phone));
+      if (existingId && !sameRole(existingId.role, role)) {
+        json(res, 409, { error: takenMessage(existingId) });
+        return;
       }
-      accounts.push(user);
+      if (existingId) {
+        user = existingId;
+      } else {
+        user = {
+          id: 'ACC_' + phoneKey(phone),
+          name,
+          phone,
+          email,
+          pin,
+          role,
+          address: body.address || '',
+        };
+        if (role === 'rider') {
+          user.vehicle = 'Bike';
+          user.rating = 5;
+        }
+        accounts.push(user);
+      }
     } else {
       user.name = name;
       if (email) user.email = email;

@@ -117,6 +117,8 @@ class OrderRepository {
     final d = _normPhone(raw);
     return d.length >= 9 ? d.substring(d.length - 9) : d;
   }
+  String _accountIdFor(String phone) => 'ACC_${_phoneKey(phone)}';
+  String _shopIdFor(String phone) => 'SHOP_${_phoneKey(phone)}';
   String _roleLabel(String? role) {
     if (role == 'shop') return 'Shop';
     if (role == 'rider') return 'Rider';
@@ -148,16 +150,40 @@ class OrderRepository {
   Future<Map<String, dynamic>?> _lookupPhone(String phone) async {
     final key = _phoneKey(phone);
     if (key.isEmpty) return null;
-    var list = (await _allAccounts()).where((m) => _phoneKey('${m['phone'] ?? ''}') == key).toList();
-    if (list.isEmpty) return null;
-    if (list.length > 1) {
-      for (final extra in list.skip(1)) {
-        try {
-          await _sbDelete('accounts?id=eq.${extra['id']}');
-        } catch (_) {}
-      }
+    final id = _accountIdFor(phone);
+    final n = _normPhone(phone);
+    final variants = {n, key, '0$key', '94$key'};
+    final byId = <String, Map<String, dynamic>>{};
+    void add(Map<String, dynamic> m) {
+      if (_isDemoAccountMap(m) || '${m['id']}'.isEmpty) return;
+      if (_phoneKey('${m['phone'] ?? ''}') != key && '${m['id']}' != id) return;
+      byId['${m['id']}'] = m;
     }
-    return list.first;
+    try {
+      for (final raw in await _sbGet('accounts?id=eq.$id&select=*')) {
+        add(Map<String, dynamic>.from(raw as Map));
+      }
+    } catch (_) {}
+    for (final v in variants) {
+      if (v.isEmpty) continue;
+      try {
+        for (final raw in await _sbGet('accounts?phone=eq.$v&select=*')) {
+          add(Map<String, dynamic>.from(raw as Map));
+        }
+      } catch (_) {}
+    }
+    for (final m in await _allAccounts()) {
+      add(m);
+    }
+    if (byId.isEmpty) return null;
+    final keep = byId[id] ?? byId.values.first;
+    for (final extra in byId.values) {
+      if ('${extra['id']}' == '${keep['id']}') continue;
+      try {
+        await _sbDelete('accounts?id=eq.${extra['id']}');
+      } catch (_) {}
+    }
+    return keep;
   }
 
   Future<Map<String, dynamic>?> findAccount(String role, String id) async {
@@ -188,16 +214,28 @@ class OrderRepository {
     phone = _normPhone(phone);
     final taken = await _lookupPhone(phone);
     if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
-    Map<String, dynamic> user;
-    if (taken != null && _sameRole('${taken['role']}', role)) {
-      user = taken;
-    } else if (role == 'shop') {
+    Map<String, dynamic>? user = taken != null && _sameRole('${taken['role']}', role) ? taken : null;
+    if (user == null) {
+      try {
+        final byId = await _sbGet('accounts?id=eq.${_accountIdFor(phone)}&select=*');
+        if (byId.isNotEmpty) {
+          final acc = Map<String, dynamic>.from(byId.first as Map);
+          if (!_isDemoAccountMap(acc)) {
+            if (!_sameRole('${acc['role']}', role)) _phoneTaken(acc);
+            user = acc;
+          }
+        }
+      } catch (e) {
+        if (e is Exception && e.toString().contains('already')) rethrow;
+      }
+    }
+    if (user == null && role == 'shop') {
       final p = pendingShop;
       if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
         throw Exception('Register your shop first.');
       }
-      final shopId = 'SHOP_${DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase()}';
-      final shop = {
+      final shopId = _shopIdFor(phone);
+      Map<String, dynamic> shop = {
         'id': shopId,
         'name': p['shopName'] ?? 'New Shop',
         'category': 'Bakery',
@@ -216,11 +254,16 @@ class OrderRepository {
             'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
       };
       try {
-        await _sbWrite('shops', 'POST', [shop]);
+        final existing = await _sbGet('shops?id=eq.$shopId&select=*');
+        if (existing.isNotEmpty) {
+          shop = Map<String, dynamic>.from(existing.first as Map);
+        } else {
+          await _sbWrite('shops', 'POST', [shop]);
+        }
       } catch (_) {}
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
       user = {
-        'id': 'SHOP_STAFF_${phone.substring(phone.length - 4)}_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
+        'id': _accountIdFor(phone),
         'name': p['ownerName'] ?? 'Shop Owner',
         'phone': phone,
         'email': p['email'] ?? '',
@@ -230,8 +273,12 @@ class OrderRepository {
       };
       try {
         await _sbWrite('accounts', 'POST', [user]);
-      } catch (_) {}
-      user['shopName'] = shop['name'];
+      } catch (_) {
+        final again = await _lookupPhone(phone);
+        if (again != null && !_sameRole('${again['role']}', role)) _phoneTaken(again);
+        if (again != null) user = again;
+      }
+      user!['shopName'] = shop['name'];
       await _rememberShop(phone, {
         'shopId': shopId,
         'shopName': '${shop['name']}',
@@ -241,10 +288,11 @@ class OrderRepository {
         'lng': '${shop['lng']}',
       });
       pendingShop = null;
-    } else {
+    }
+    if (user == null) {
       final pr = pendingRider;
       user = {
-        'id': '${role.toUpperCase()}_${phone.substring(phone.length - 4)}_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
+        'id': _accountIdFor(phone),
         'name': role == 'rider' ? (pr?['name'] ?? 'Rider') : (pr?['name'] ?? 'Guest'),
         'phone': phone,
         'email': pr?['email'] ?? '',
@@ -259,7 +307,14 @@ class OrderRepository {
       pendingRider = null;
       try {
         await _sbWrite('accounts', 'POST', [user]);
-      } catch (_) {}
+      } catch (_) {
+        final again = await _lookupPhone(phone);
+        if (again != null && !_sameRole('${again['role']}', role)) _phoneTaken(again);
+        if (again != null) user = again;
+      }
+    }
+    if (user == null) {
+      throw Exception('Could not save this account. Try again.');
     }
     token = 'sb_${user['id']}';
     if (role == 'shop') {
