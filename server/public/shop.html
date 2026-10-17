@@ -26,7 +26,7 @@
       itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
       reg: { shopName: '', ownerName: '', phone: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
-      loginId: '0772223333',
+      loginId: '',
     };
     const FOOD_IMGS = [
       '/img/shop-burger.jpg', '/img/shop-pizza.jpg', '/img/shop-bakery.jpg', '/img/cake-chocolate.jpg',
@@ -34,7 +34,6 @@
     ];
     function shopId() {
       if (API.user && API.user.shopId) return API.user.shopId;
-      if (API.user && API.user.phone === '0772223333') return 'SHOP_1';
       return '';
     }
     function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }
@@ -64,7 +63,7 @@
         id: sid,
         name: s.name || (API.user && API.user.shopName) || 'My Shop',
         category: s.category || 'Bakery',
-        rating: Number(s.rating || 0) || (sid === 'SHOP_1' ? 4.8 : 5),
+        rating: Number(s.rating || 0) || 5,
         reviews: Number(s.reviews || 0),
         hours: s.hours || '08:00 AM – 10:00 PM',
         image: s.image || '/img/shop-bakery.jpg',
@@ -807,9 +806,6 @@
       d.isAvailable = d.isAvailable !== false;
       if (state.itemId) d.id = state.itemId;
       return d;
-    }
-    if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
-      API.login('shop', '0772223333', '1234').catch(() => {});
     }
     API.on(() => {
       if (!API.user && document.querySelector('[data-otp-root], [data-shop-auth]')) return;

@@ -36,7 +36,6 @@ class _ShopHomeState extends State<ShopHome> {
   String get shopId {
     final id = OrderRepository.instance.user?.shopId;
     if (id != null && id.isNotEmpty && id != 'null') return id;
-    if (OrderRepository.instance.user?.phone == '0772223333') return 'SHOP_1';
     return '';
   }
 
@@ -479,8 +478,8 @@ class _ShopHomeState extends State<ShopHome> {
       builder: (context, orders, _) {
         final mine = _mine(orders).where((o) => o.status != OrderStatus.cancelled).toList();
         final sales = mine.fold<double>(0, (n, o) => n + o.totalAmount);
-        final ordersN = mine.isEmpty && shopId == 'SHOP_1' ? 124 : mine.length;
-        final revenue = sales == 0 && shopId == 'SHOP_1' ? 284500.0 : sales;
+        final ordersN = mine.length;
+        final revenue = sales;
         final rating = shop.rating == 0 ? 4.8 : shop.rating;
         final hero = (shop.image != null && shop.image!.isNotEmpty) ? _url(shop.image!) : _url('/img/shop-bakery.jpg');
         return ListView(

@@ -91,28 +91,70 @@ class OrderRepository {
     return d;
   }
 
+  static const _demoShops = {
+    'SHOP_1', 'SHOP_2', 'SHOP_3', 'SHOP_4', 'SHOP_5',
+    'SHOP_6', 'SHOP_7', 'SHOP_8', 'SHOP_9', 'SHOP_10', 'SHOP_11',
+  };
+  static const _demoAccounts = {'USER_1', 'USER_2', 'SHOP_STAFF', 'RIDER_77'};
+  static const _demoPhones = {'0771234567', '0771112222', '0772223333', '0775556666'};
+
+  bool _isDemoShop(String? id) => _demoShops.contains(id);
+  bool _isDemoPhone(String? phone) => _demoPhones.contains(_normPhone(phone ?? ''));
+  bool _isDemoAccountMap(Map<String, dynamic>? a) {
+    if (a == null) return false;
+    return _demoAccounts.contains('${a['id']}') || _isDemoPhone('${a['phone'] ?? ''}');
+  }
+  bool _isDemoUser(SessionUser? u) {
+    if (u == null) return false;
+    return _demoAccounts.contains(u.id) || _isDemoPhone(u.phone) || _isDemoShop(u.shopId);
+  }
+  bool _sameRole(String? a, String? b) {
+    final x = a == 'user' ? 'customer' : a;
+    final y = b == 'user' ? 'customer' : b;
+    return x == y;
+  }
+  String _roleLabel(String? role) {
+    if (role == 'shop') return 'Shop';
+    if (role == 'rider') return 'Rider';
+    return 'User';
+  }
+  Never _phoneTaken(Map<String, dynamic> acc) {
+    final label = _roleLabel('${acc['role']}');
+    throw Exception('This number is already a $label account. Open the $label app.');
+  }
+
+  Future<Map<String, dynamic>?> _lookupPhone(String phone) async {
+    phone = _normPhone(phone);
+    if (phone.isEmpty) return null;
+    try {
+      final rows = await _sbGet('accounts?select=*&phone=eq.$phone');
+      for (final raw in rows) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if (!_isDemoAccountMap(m)) return m;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<Map<String, dynamic>?> findAccount(String role, String id) async {
     await _loadSupabaseConfig();
     final phone = _normPhone(id);
     final email = id.contains('@') ? id.trim().toLowerCase() : '';
     try {
-      var q = 'accounts?select=*&role=eq.$role';
+      var q = 'accounts?select=*';
       q += email.isNotEmpty ? '&email=eq.$email' : '&phone=eq.$phone';
       final rows = await _sbGet(q);
-      if (rows.isNotEmpty) return Map<String, dynamic>.from(rows.first as Map);
-    } catch (_) {}
-    if (role == 'shop' && phone == '0772223333') {
-      return {
-        'id': 'SHOP_STAFF',
-        'name': 'Shop staff',
-        'phone': phone,
-        'role': 'shop',
-        'shop_id': 'SHOP_1',
-        'shopName': 'Kandy Bakers',
-      };
+      for (final raw in rows) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if (_isDemoAccountMap(m)) continue;
+        if (!_sameRole('${m['role']}', role)) _phoneTaken(m);
+        return m;
+      }
+    } catch (e) {
+      if (e is Exception && e.toString().contains('already a')) rethrow;
     }
     final local = await _recalledShop(phone);
-    if (role == 'shop' && local != null && (local['shopId'] ?? '').isNotEmpty) {
+    if (role == 'shop' && local != null && (local['shopId'] ?? '').isNotEmpty && !_isDemoShop(local['shopId'])) {
       return {
         'id': 'SHOP_LOCAL_${phone.substring(phone.length - 4)}',
         'name': local['ownerName'] ?? 'Shop Owner',
@@ -127,19 +169,16 @@ class OrderRepository {
 
   Future<void> _enterAccount(String role, String phone) async {
     phone = _normPhone(phone);
-    final rows = await _sbGet('accounts?select=*&role=eq.$role&phone=eq.$phone');
+    final taken = await _lookupPhone(phone);
+    if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
+    final rows = await _sbGet('accounts?select=*&phone=eq.$phone');
     Map<String, dynamic> user;
-    if (rows.isNotEmpty) {
-      user = Map<String, dynamic>.from(rows.first as Map);
-    } else if (role == 'shop' && phone == '0772223333') {
-      user = {
-        'id': 'SHOP_STAFF',
-        'name': 'Shop staff',
-        'phone': phone,
-        'role': 'shop',
-        'shop_id': 'SHOP_1',
-      };
-      pendingShop = null;
+    final existing = rows
+        .map((raw) => Map<String, dynamic>.from(raw as Map))
+        .where((m) => !_isDemoAccountMap(m) && _sameRole('${m['role']}', role))
+        .toList();
+    if (existing.isNotEmpty) {
+      user = existing.first;
     } else if (role == 'shop') {
       final p = pendingShop;
       if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
@@ -238,6 +277,8 @@ class OrderRepository {
     await _loadSupabaseConfig();
     phone = _normPhone(phone);
     if (phone.length < 10) throw Exception('Enter a valid mobile number');
+    final taken = await _lookupPhone(phone);
+    if (taken != null && !_sameRole('${taken['role']}', role)) _phoneTaken(taken);
     final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
     _otpPhone = phone;
     _otpRole = role;
@@ -343,12 +384,13 @@ class OrderRepository {
         Map<String, dynamic>? picked;
         for (final raw in rows) {
           final m = Map<String, dynamic>.from(raw as Map);
+          if (_isDemoAccountMap(m)) continue;
           if ('${m['pin']}' == pin) {
             picked = m;
             break;
           }
+          picked ??= m;
         }
-        picked ??= rows.isNotEmpty ? Map<String, dynamic>.from(rows.first as Map) : null;
         if (picked != null) {
           token = 'sb_${picked['id']}';
           userNotifier.value = SessionUser.fromJson(picked);
@@ -398,8 +440,13 @@ class OrderRepository {
       final raw = p.getString(_sessionKey);
       if (raw == null || raw.isEmpty) return;
       final m = jsonDecode(raw) as Map<String, dynamic>;
+      final u = SessionUser.fromJson(m);
+      if (_isDemoUser(u)) {
+        await p.remove(_sessionKey);
+        return;
+      }
       token = m['token']?.toString();
-      userNotifier.value = SessionUser.fromJson(m);
+      userNotifier.value = u;
     } catch (_) {}
   }
 
@@ -474,6 +521,80 @@ class OrderRepository {
     }
   }
 
+  Future<void> _sbDelete(String path) async {
+    final uri = _sb(path);
+    if (uri == null) return;
+    await http.delete(uri, headers: {
+      'apikey': AppConfig.supabaseAnon,
+      'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+      'Prefer': 'return=minimal',
+    }).timeout(const Duration(seconds: 8));
+  }
+
+  bool _wipedDemo = false;
+  Future<void> _wipeDemo() async {
+    if (_wipedDemo) return;
+    _wipedDemo = true;
+    const shopsIn =
+        '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
+    const paths = [
+      'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?shop_id=in.($shopsIn)',
+      'orders?user_id=in.("USER_1","USER_2")',
+      'menu_items?shop_id=in.($shopsIn)',
+      'shops?id=in.($shopsIn)',
+      'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
+      'accounts?phone=in.("0771234567","0771112222","0772223333","0775556666")',
+    ];
+    for (final p in paths) {
+      try {
+        await _sbDelete(p);
+      } catch (_) {}
+    }
+  }
+
+  List<Shop> _scopeShops(Iterable<Shop> shops) {
+    var list = shops.where((s) => !_isDemoShop(s.id)).toList();
+    final u = user;
+    if (u != null && u.role == 'shop') {
+      final sid = u.shopId ?? '';
+      list = list.where((s) => s.id == sid).toList();
+    }
+    return list;
+  }
+
+  List<CatalogItem> _scopeItems(Iterable<CatalogItem> items) {
+    var list = items.where((i) => !_isDemoShop(i.shopId)).toList();
+    final u = user;
+    if (u != null && u.role == 'shop') {
+      final sid = u.shopId ?? '';
+      list = list.where((i) => i.shopId == sid).toList();
+    }
+    return list;
+  }
+
+  List<Order> _scopeOrders(Iterable<Order> list) {
+    var next = list.where((o) => !_isDemoOrder(o)).toList();
+    final u = user;
+    if (u == null) return <Order>[];
+    if (u.role == 'customer' || u.role == 'user') {
+      return next.where((o) => o.userId == u.id || o.customerPhone == u.phone).toList();
+    }
+    if (u.role == 'shop') {
+      final sid = u.shopId ?? '';
+      return next.where((o) => o.shopId == sid).toList();
+    }
+    if (u.role == 'rider') {
+      return next.where((o) {
+        if (o.riderId == u.id || o.riderPhone == u.phone) return true;
+        if (o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)) return true;
+        return false;
+      }).toList();
+    }
+    return next;
+  }
+
   Map<String, dynamic> _orderRow(Order o) => {
         'id': o.id,
         'user_id': o.userId,
@@ -488,18 +609,17 @@ class OrderRepository {
 
   Future<bool> _refreshFromSupabase() async {
     try {
+      await _wipeDemo();
       final shopRows = await _sbGet('shops?select=*&order=id.asc');
       final itemRows = await _sbGet('menu_items?select=*&order=id.asc');
       final orderRows = await _sbGet('orders?select=*');
       final msgRows = await _sbGet('messages?select=*');
-      Catalog.set(
-        shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
-        itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+      final shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
+      final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
+      Catalog.set(shops, items);
+      ordersNotifier.value = _scopeOrders(
+        orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
       );
-      ordersNotifier.value = orderRows
-          .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
-          .where((o) => !_isDemoOrder(o))
-          .toList();
       messages.clear();
       for (final raw in msgRows) {
         final m = Map<String, dynamic>.from(raw as Map);
@@ -539,15 +659,14 @@ class OrderRepository {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final rawOrders = (data['orders'] as List?) ?? const [];
-        ordersNotifier.value = rawOrders
-            .map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map)))
-            .where((o) => !_isDemoOrder(o))
-            .toList();
+        ordersNotifier.value = _scopeOrders(
+          rawOrders.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+        );
         final rawShops = (data['shops'] as List?) ?? const [];
         final rawItems = (data['items'] as List?) ?? const [];
         Catalog.set(
-          rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
-          rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))).toList(),
+          _scopeShops(rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map)))),
+          _scopeItems(rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))),
         );
         messages.clear();
         final rawMsg = data['messages'];
@@ -612,9 +731,9 @@ class OrderRepository {
     final dlng = deliveryLng ?? UserPlace.instance.lng;
     final payload = {
       'shopId': cart.first.shopId,
-      'userId': u?.id ?? 'USER_1',
-      'customerName': u?.name ?? 'Vidura',
-      'customerPhone': u?.phone ?? '0771234567',
+      'userId': u?.id ?? '',
+      'customerName': u?.name ?? 'Guest',
+      'customerPhone': u?.phone ?? '',
       'address': address,
       'note': note,
       'paymentMethod': paymentMethod,
@@ -640,7 +759,7 @@ class OrderRepository {
     final shop = Catalog.shops.where((s) => s.id == cart.first.shopId).toList();
     final created = Order(
       id: 'ORD-${DateTime.now().millisecondsSinceEpoch % 1000000}',
-      userId: u?.id ?? 'USER_1',
+      userId: u?.id ?? '',
       shopId: cart.first.shopId,
       status: OrderStatus.pending,
       items: cart.map((e) => DeliveryItem(name: e.name, qty: e.qty, price: e.price)).toList(),
@@ -649,7 +768,7 @@ class OrderRepository {
       deliveryLng: dlng,
       timestamp: DateTime.now(),
       shopName: shop.isNotEmpty ? shop.first.name : 'Shop',
-      customerName: u?.name ?? 'Vidura',
+      customerName: u?.name ?? 'Guest',
     );
     await _pushOrder(created);
     cartNotifier.value = [];
@@ -691,7 +810,9 @@ class OrderRepository {
   }
 
   bool _isDemoOrder(Order o) {
-    return RegExp(r'^ORD-100[1-4]$').hasMatch(o.id) || o.id == 'ORD-NONE';
+    if (RegExp(r'^ORD-100[1-4]$').hasMatch(o.id) || o.id == 'ORD-NONE') return true;
+    if (_isDemoShop(o.shopId) || _demoAccounts.contains(o.userId) || _isDemoPhone(o.customerPhone)) return true;
+    return false;
   }
 
   Future<void> assignRider(String id, {String? riderId, String? riderName, String? riderPhone}) async {

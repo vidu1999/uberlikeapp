@@ -41,7 +41,7 @@
     const seenOnboard = localStorage.getItem('qb_onboard') === '1' || sessionStorage.getItem('qb_onboard') === '1';
     let restoredSession = !!API.user;
     const state = {
-      gate: API.user ? 'app' : (new URLSearchParams(location.search).get('demo') === '1' ? 'app' : 'splash'),
+      gate: API.user ? 'app' : 'splash',
       onboard: 0,
       tab: 'home',
       screen: 'home',
@@ -64,10 +64,10 @@
       lockTrack: false,
       regRole: 'customer',
       downloadRole: 'shop',
-      otp: { phone: '0771234567', smsToken: '', err: '' },
-      loginId: '0771234567',
-      loginPw: '1234',
-      reg: { name: 'Vidura K Jayathilake', phone: '0771234567', email: 'vidurakavindadev@gmail.com', password: '1234' },
+      otp: { phone: '', smsToken: '', err: '' },
+      loginId: '',
+      loginPw: '',
+      reg: { name: '', phone: '', email: '', password: '' },
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
@@ -346,7 +346,7 @@
         <div class="qb-mark">${MARK}</div>
         <h1>${shop ? 'Shop Owner app' : 'Rider app'}</h1>
         <p>${shop
-          ? 'Manage orders, mark food ready, and grow Kandy Bakers from the Shop app.'
+          ? 'Manage orders, mark food ready, and grow your shop from the Shop app.'
           : 'Go online, pick up orders, and deliver with live tracking from the Rider app.'}</p>
         <a class="btn-qb" style="display:block;text-decoration:none;margin-top:18px" href="${shop ? APK.shop : APK.rider}">Download ${shop ? 'Shop' : 'Rider'} APK</a>
         <a class="btn-ghost-qb" href="${shop ? '/shop.html' : '/rider.html'}" style="display:block;margin-top:8px">Open in browser</a>
@@ -398,7 +398,7 @@
           </button>`).join('')}
         </div>
         <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-go-search>See All ›</button></div>
-        ${filteredShops().slice(0,6).map(shopRow).join('') || '<div class="pad muted">Loading shops from database…</div>'}
+        ${filteredShops().slice(0,6).map(shopRow).join('') || '<div class="pad muted">No shops nearby yet. When a shop registers, they appear here.</div>'}
       </div>${cartbar()}${nav()}`;
     }
     function searchView() {
@@ -412,7 +412,7 @@
           </button>`).join('')}
         </div>
         <div class="sec-row"><h2>Popular Near You</h2></div>
-        ${filteredShops().map(shopRow).join('')}
+        ${filteredShops().map(shopRow).join('') || '<div class="pad muted">No shops nearby yet.</div>'}
       </div>${nav()}`;
     }
     function shopView() {
@@ -935,9 +935,6 @@
       };
     }
 
-    if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
-      API.login('customer', '0771234567', '1234').catch(() => {});
-    }
     API.on(() => {
       if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {
         if (!API.user) return;

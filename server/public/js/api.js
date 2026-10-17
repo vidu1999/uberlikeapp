@@ -204,7 +204,7 @@
     const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
     const res = await fetch(base + '/rest/v1/' + path, {
       method: method,
-      headers: sbHeaders(),
+      headers: sbHeaders(method === 'DELETE' ? { Prefer: 'return=minimal' } : null),
       body: body != null ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
@@ -237,9 +237,109 @@
     };
   }
 
+  const DEMO_SHOP_IDS = ['SHOP_1','SHOP_2','SHOP_3','SHOP_4','SHOP_5','SHOP_6','SHOP_7','SHOP_8','SHOP_9','SHOP_10','SHOP_11'];
+  const DEMO_ACCOUNT_IDS = ['USER_1','USER_2','SHOP_STAFF','RIDER_77'];
+  const DEMO_PHONES = ['0771234567','0771112222','0772223333','0775556666'];
+
+  function isDemoShop(id) {
+    return DEMO_SHOP_IDS.indexOf(String(id || '')) >= 0;
+  }
+  function isDemoPhone(phone) {
+    return DEMO_PHONES.indexOf(normalizePhone(phone || '')) >= 0;
+  }
+  function isDemoAccount(a) {
+    if (!a) return false;
+    return DEMO_ACCOUNT_IDS.indexOf(String(a.id || '')) >= 0 || isDemoPhone(a.phone);
+  }
   function isDemoOrder(o) {
     const id = String((o && o.id) || '');
-    return /^ORD-100[1-4]$/.test(id) || id === 'ORD-NONE';
+    if (/^ORD-100[1-4]$/.test(id) || id === 'ORD-NONE') return true;
+    if (isDemoShop(o && (o.shopId || o.shop_id))) return true;
+    if (DEMO_ACCOUNT_IDS.indexOf(String((o && (o.userId || o.user_id)) || '')) >= 0) return true;
+    if (isDemoPhone((o && (o.customerPhone || o.customer_phone)) || '')) return true;
+    return false;
+  }
+  function roleLabel(role) {
+    if (role === 'shop') return 'Shop';
+    if (role === 'rider') return 'Rider';
+    return 'User';
+  }
+  function sameRole(a, b) {
+    const x = a === 'user' ? 'customer' : a;
+    const y = b === 'user' ? 'customer' : b;
+    return x === y;
+  }
+  function phoneTakenError(acc) {
+    return new Error('This number is already a ' + roleLabel(acc.role) + ' account. Open the ' + roleLabel(acc.role) + ' app.');
+  }
+  function scopeData() {
+    API.shops = (API.shops || []).filter((s) => !isDemoShop(s.id));
+    API.items = (API.items || []).filter((it) => !isDemoShop(it.shopId));
+    API.orders = (API.orders || []).filter((o) => !isDemoOrder(o));
+    const u = API.user;
+    if (u && isDemoAccount(u)) {
+      API.user = null;
+      API.token = null;
+      try {
+        localStorage.removeItem(sessionKey(u.role));
+        sessionStorage.removeItem(sessionKey(u.role));
+      } catch (_) {}
+    }
+    const me = API.user;
+    if (!me) {
+      API.orders = [];
+      return;
+    }
+    if (me.role === 'customer' || me.role === 'user') {
+      const phone = normalizePhone(me.phone);
+      API.orders = API.orders.filter((o) => o.userId === me.id || normalizePhone(o.customerPhone) === phone);
+    } else if (me.role === 'shop') {
+      const sid = me.shopId;
+      API.shops = API.shops.filter((s) => s.id === sid);
+      API.items = API.items.filter((it) => it.shopId === sid);
+      API.orders = API.orders.filter((o) => o.shopId === sid);
+    } else if (me.role === 'rider') {
+      API.orders = API.orders.filter((o) => {
+        if (o.riderId === me.id || o.riderPhone === me.phone) return true;
+        if (o.status === 'ready' && !o.riderId) return true;
+        return false;
+      });
+    }
+  }
+  async function wipeDemo() {
+    if (API._wipedDemo || !sbConfigured()) return;
+    API._wipedDemo = true;
+    const shopsIn = DEMO_SHOP_IDS.map((id) => '"' + id + '"').join(',');
+    const paths = [
+      'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?shop_id=in.(' + shopsIn + ')',
+      'orders?user_id=in.("USER_1","USER_2")',
+      'menu_items?shop_id=in.(' + shopsIn + ')',
+      'shops?id=in.(' + shopsIn + ')',
+      'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
+      'accounts?phone=in.("0771234567","0771112222","0772223333","0775556666")',
+    ];
+    for (let i = 0; i < paths.length; i++) {
+      try { await sbSend(paths[i], 'DELETE'); } catch (_) {}
+    }
+  }
+  async function lookupPhone(phone) {
+    phone = normalizePhone(phone);
+    if (!phone) return null;
+    if (sbConfigured()) {
+      try {
+        const rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(phone));
+        const hit = (rows || []).find((r) => !isDemoAccount(r));
+        if (hit) return mapAccount(hit);
+      } catch (_) {}
+    }
+    try {
+      const list = await getJSON('/api/accounts');
+      const hit = (list || []).find((a) => normalizePhone(a.phone) === phone && !isDemoAccount(a));
+      if (hit) return hit;
+    } catch (_) {}
+    return null;
   }
 
   function nextOrderId() {
@@ -252,6 +352,7 @@
   }
 
   async function pullSupabase() {
+    await wipeDemo();
     const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
       sbGet('shops?select=*&order=id.asc'),
       sbGet('menu_items?select=*&order=id.asc'),
@@ -260,12 +361,13 @@
     ]);
     API.shops = (shopRows || []).map(mapShop);
     API.items = (itemRows || []).map(mapItem);
-    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r)).filter((o) => !isDemoOrder(o));
+    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r));
     API.messages = {};
     for (const m of msgRows || []) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
       list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts });
     }
+    scopeData();
     notify();
   }
 
@@ -298,8 +400,9 @@
     const data = await getJSON('/api/state');
     API.shops = data.shops;
     API.items = data.items;
-    API.orders = (data.orders || []).filter((o) => !isDemoOrder(o));
+    API.orders = data.orders || [];
     API.messages = data.messages || {};
+    scopeData();
     notify();
   };
 
@@ -310,7 +413,8 @@
         let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role);
         if (phone) q += '&phone=eq.' + encodeURIComponent(phone);
         const rows = await sbGet(q);
-        const picked = (rows || []).find((a) => String(a.pin) === String(pin)) || (rows && rows[0]);
+        const picked = (rows || []).find((a) => !isDemoAccount(a) && String(a.pin) === String(pin))
+          || (rows || []).find((a) => !isDemoAccount(a));
         if (picked) {
           API.user = mapAccount(picked);
           API.token = 'sb_' + picked.id;
@@ -332,12 +436,33 @@
     return data.user;
   };
 
-  API.register = function (payload) {
-    return getJSON('/api/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+  API.register = async function (payload) {
+    const role = payload.role === 'shop' || payload.role === 'rider' ? payload.role : 'customer';
+    const phone = normalizePhone(payload.phone);
+    if (role === 'shop' || role === 'rider') {
+      try {
+        return await getJSON('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } catch (_) {
+        return {
+          ok: true,
+          app: role,
+          web: role === 'shop' ? '/shop.html' : '/rider.html',
+        };
+      }
+    }
+    const taken = await lookupPhone(phone);
+    if (taken && !sameRole(taken.role, 'customer')) throw phoneTakenError(taken);
+    API.setPendingRider({
+      name: payload.name || 'Guest',
+      email: payload.email || '',
+      phone,
     });
+    const out = await API.sendOtp('customer', phone);
+    return { ok: true, next: 'otp', ...out };
   };
 
   function normalizePhone(raw) {
@@ -385,28 +510,30 @@
   API.findAccount = async function (role, id) {
     const phone = normalizePhone(id);
     const email = String(id || '').includes('@') ? String(id).trim().toLowerCase() : '';
+    let hit = null;
     if (sbConfigured()) {
       try {
-        let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role || 'shop');
+        let q = 'accounts?select=*';
         if (email) q += '&email=eq.' + encodeURIComponent(email);
         else q += '&phone=eq.' + encodeURIComponent(phone);
         const rows = await sbGet(q);
-        if (rows && rows[0]) return mapAccount(rows[0]);
+        hit = (rows || []).find((r) => !isDemoAccount(r)) || null;
+        if (hit) hit = mapAccount(hit);
       } catch (_) {}
     }
-    try {
-      const list = await getJSON('/api/accounts');
-      const hit = (list || []).find((a) => a.role === role && (
-        (phone && normalizePhone(a.phone) === phone) ||
-        (email && String(a.email || '').toLowerCase() === email)
-      ));
-      if (hit) return hit;
-    } catch (_) {}
-    if (role === 'shop' && phone === '0772223333') {
-      return { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shopId: 'SHOP_1', shopName: 'Kandy Bakers' };
+    if (!hit) {
+      try {
+        const list = await getJSON('/api/accounts');
+        hit = (list || []).find((a) => !isDemoAccount(a) && (
+          (phone && normalizePhone(a.phone) === phone) ||
+          (email && String(a.email || '').toLowerCase() === email)
+        )) || null;
+      } catch (_) {}
     }
+    if (hit && !sameRole(hit.role, role)) throw phoneTakenError(hit);
+    if (hit) return hit;
     const local = API.recallShopProfile(phone);
-    if (role === 'shop' && local && local.shopId) {
+    if (role === 'shop' && local && local.shopId && !isDemoShop(local.shopId)) {
       return { id: 'SHOP_LOCAL_' + phone.slice(-4), name: local.ownerName || 'Shop Owner', phone, role: 'shop', shopId: local.shopId, shopName: local.shopName };
     }
     return null;
@@ -414,18 +541,16 @@
 
   async function enterAccount(role, phone) {
     phone = normalizePhone(phone);
+    const taken = await lookupPhone(phone);
+    if (taken && !sameRole(taken.role, role)) throw phoneTakenError(taken);
     let rows = [];
     try {
-      rows = await sbGet('accounts?select=*&role=eq.' + encodeURIComponent(role) + '&phone=eq.' + encodeURIComponent(phone));
+      rows = await sbGet('accounts?select=*&phone=eq.' + encodeURIComponent(phone));
     } catch (_) {}
-    let row = rows && rows[0];
-    if (!row && role === 'shop' && phone === '0772223333') {
-      row = { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shop_id: 'SHOP_1', shopName: 'Kandy Bakers' };
-      API.setPendingShop(null);
-    }
+    let row = (rows || []).find((r) => !isDemoAccount(r) && sameRole(r.role, role));
     if (!row && role === 'shop') {
       const local = API.recallShopProfile(phone);
-      if (local && local.shopId) {
+      if (local && local.shopId && !isDemoShop(local.shopId)) {
         row = {
           id: 'SHOP_STAFF_' + phone.slice(-4),
           name: local.ownerName || 'Shop Owner',
@@ -521,6 +646,8 @@
     if (!/^07\d{8}$/.test(phone) && !/^\d{10,15}$/.test(phone)) {
       throw new Error('Enter a valid mobile number');
     }
+    const taken = await lookupPhone(phone);
+    if (taken && !sameRole(taken.role, role || 'customer')) throw phoneTakenError(taken);
     const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     const smsToken = 'wa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';
@@ -630,6 +757,15 @@
       } else if (data && data.id) {
         API.user = data;
       }
+      if (API.user && (isDemoAccount(API.user) || isDemoShop(API.user.shopId))) {
+        API.user = null;
+        API.token = null;
+        try {
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
+        } catch (_) {}
+        return;
+      }
       if (API.user) saveSession();
     } catch (_) {}
   };
@@ -655,7 +791,7 @@
       const deliveryFee = payload.deliveryFee != null ? Number(payload.deliveryFee) : 200;
       order = {
         id: nextOrderId(),
-        userId: payload.userId || (API.user && API.user.id) || 'USER_1',
+        userId: payload.userId || (API.user && API.user.id) || '',
         shopId: payload.shopId,
         shopName: shop.name,
         shopEmoji: shop.emoji,
@@ -778,7 +914,7 @@
     const id = item.id || ('ITM_' + Date.now().toString(36));
     const row = {
       id,
-      shop_id: item.shopId || item.shop_id || (API.user && API.user.shopId) || 'SHOP_1',
+      shop_id: item.shopId || item.shop_id || (API.user && API.user.shopId) || '',
       name: item.name,
       category: item.category || 'Food',
       price: Number(item.price || 0),
@@ -858,6 +994,7 @@
         API.items = data.items;
         API.orders = data.orders;
         API.messages = data.messages || {};
+        scopeData();
         notify();
       }
     };

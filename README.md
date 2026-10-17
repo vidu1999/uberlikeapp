@@ -34,10 +34,9 @@ Then open:
 | URL | App |
 | --- | --- |
 | `/` | Hub |
-| `/user?demo=1` | Customer (QuickBite, skip OTP) |
-| `/shop?demo=1` | Shop dashboard |
-| `/rider?demo=1` | Rider map |
 | `/user` | Customer with WhatsApp OTP |
+| `/shop` | Shop partner (register + WhatsApp OTP) |
+| `/rider` | Rider (register + WhatsApp OTP) |
 
 ## Live studio (optional, local)
 
@@ -47,11 +46,7 @@ node server/index.js
 
 Open `http://localhost:3000`.
 
-| Role | Phone | PIN |
-| --- | --- | --- |
-| Customer (Sahan) | 0771234567 | 1234 |
-| Shop (Nadeesha) | 0772223333 | 1234 |
-| Rider (Kamal) | 0775556666 | 1234 |
+Sign in with your own mobile number. WhatsApp sends a 4-digit code. Each number can be only one role (User, Shop, or Rider). After OTP, that account and its shops/orders are saved in Supabase — no demo catalog.
 
 Included: search, shop menus, cart, checkout, kitchen board, menu sold-out toggles, rider jobs, live OSM map, in-order chat, cash on delivery, ratings, earnings.
 

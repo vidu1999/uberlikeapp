@@ -38,31 +38,21 @@ function snapshot() {
 
 function applySnapshot(d) {
   if (!d || typeof d !== 'object') return;
-  if (Array.isArray(d.orders)) orders = d.orders;
-  if (d.messages && typeof d.messages === 'object') messages = d.messages;
+  const clean = seed.stripDemo(d);
+  if (Array.isArray(d.orders)) orders = clean.orders;
+  if (d.messages && typeof d.messages === 'object') messages = clean.messages;
   if (d.seq) seq = Number(d.seq) || seq;
-  if (Array.isArray(d.shops) && d.shops.length) shops = d.shops;
-  if (Array.isArray(d.items) && d.items.length) items = d.items;
-  if (Array.isArray(d.accounts) && d.accounts.length) accounts = d.accounts;
+  if (Array.isArray(d.shops)) shops = clean.shops;
+  if (Array.isArray(d.items)) items = clean.items;
+  if (Array.isArray(d.accounts)) accounts = clean.accounts;
 }
 
 function seedDemoIfEmpty() {
-  if (orders.length) return false;
-  orders = seed.demoOrders();
-  seq = 1004;
-  messages = {};
-  for (const o of orders) {
-    messages[o.id] = [
-      {
-        id: 'm0',
-        from: 'QuickBite',
-        role: 'system',
-        text: 'Demo order loaded from the database.',
-        ts: Date.now(),
-      },
-    ];
-  }
-  return true;
+  shops = shops.filter((s) => !seed.isDemoShop(s.id));
+  items = items.filter((i) => !seed.isDemoShop(i.shopId));
+  accounts = accounts.filter((a) => !seed.isDemoAccount(a));
+  orders = orders.filter((o) => !seed.isDemoOrder(o));
+  return false;
 }
 
 function load() {
@@ -85,7 +75,7 @@ async function hydrateFromCloud(opts) {
       await db.ensureSeed(false);
     }
     const cloud = await db.load();
-    if (cloud && ((cloud.shops && cloud.shops.length) || (cloud.orders && cloud.orders.length))) {
+    if (cloud) {
       applySnapshot(cloud);
       dbReady.cloud = true;
       dbReady.error = null;
@@ -234,8 +224,25 @@ function publicUser(u) {
   return rest;
 }
 
+function roleLabel(role) {
+  if (role === 'shop') return 'Shop';
+  if (role === 'rider') return 'Rider';
+  return 'User';
+}
+
+function sameRole(a, b) {
+  const x = a === 'user' ? 'customer' : a;
+  const y = b === 'user' ? 'customer' : b;
+  return x === y;
+}
+
 function userForVerifiedPhone(phone, role) {
-  let user = accounts.find((a) => a.role === role && a.phone === phone);
+  let user = accounts.find((a) => a.phone === phone && !seed.isDemoAccount(a));
+  if (user && !sameRole(user.role, role)) {
+    const err = new Error('This number is already a ' + roleLabel(user.role) + ' account. Open the ' + roleLabel(user.role) + ' app.');
+    err.status = 409;
+    throw err;
+  }
   if (user) return user;
   const names = { customer: 'Guest', shop: 'Shop staff', rider: 'Courier' };
   user = {
@@ -244,13 +251,12 @@ function userForVerifiedPhone(phone, role) {
     phone,
     pin: 'otp',
     role: role || 'customer',
-    address: 'New Town, Anuradhapura',
+    address: '',
   };
   if (role === 'rider') {
     user.vehicle = 'Bike';
     user.rating = 5;
   }
-  if (role === 'shop') user.shopId = 'ALL';
   accounts.push(user);
   save();
   return user;
@@ -300,7 +306,14 @@ async function handleApi(req, res, url) {
         const acc = accounts.find((a) => a.email && a.email.toLowerCase() === String(phone).toLowerCase());
         if (acc) phone = acc.phone;
       }
-      const out = otp.sendOtp(phone, body.role || 'customer');
+      const want = body.role || 'customer';
+      const taken = accounts.find((a) => a.phone === otp.normalizePhone(phone) && !seed.isDemoAccount(a));
+      if (taken && !sameRole(taken.role, want)) {
+        const err = new Error('This number is already a ' + roleLabel(taken.role) + ' account. Open the ' + roleLabel(taken.role) + ' app.');
+        err.status = 409;
+        throw err;
+      }
+      const out = otp.sendOtp(phone, want);
       json(res, 200, out);
     } catch (err) {
       json(res, err.status || 400, { error: err.message });
@@ -344,10 +357,10 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const role = body.role || 'customer';
     const pin = String(body.pin || '1234');
-    let user = accounts.find((a) => a.role === role && a.pin === pin && (!body.phone || a.phone === body.phone));
-    if (!user) user = accounts.find((a) => a.role === role && a.pin === pin);
+    let user = accounts.find((a) => a.role === role && !seed.isDemoAccount(a) && a.pin === pin && (!body.phone || a.phone === body.phone));
+    if (!user) user = accounts.find((a) => a.role === role && !seed.isDemoAccount(a) && a.pin === pin);
     if (!user) {
-      json(res, 401, { error: 'Invalid login. Demo PIN is 1234.' });
+      json(res, 401, { error: 'Use WhatsApp OTP to sign in.' });
       return;
     }
     const tok = token();
@@ -427,7 +440,12 @@ async function handleApi(req, res, url) {
     const name = String(body.name || '').trim() || (role === 'shop' ? 'Shop owner' : role === 'rider' ? 'Rider' : 'Guest');
     const email = String(body.email || '').trim();
     const pin = String(body.password || body.pin || '1234').slice(0, 32);
-    let user = accounts.find((a) => a.role === role && a.phone === phone);
+    const taken = accounts.find((a) => a.phone === phone && !seed.isDemoAccount(a));
+    if (taken && !sameRole(taken.role, role)) {
+      json(res, 409, { error: 'This number is already a ' + roleLabel(taken.role) + ' account. Open the ' + roleLabel(taken.role) + ' app.' });
+      return;
+    }
+    let user = taken && sameRole(taken.role, role) ? taken : null;
     if (!user) {
       user = {
         id: role.toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
@@ -436,13 +454,12 @@ async function handleApi(req, res, url) {
         email,
         pin,
         role,
-        address: body.address || 'No.123, Lake View Road, Anuradhapura',
+        address: body.address || '',
       };
       if (role === 'rider') {
         user.vehicle = 'Bike';
         user.rating = 5;
       }
-      if (role === 'shop') user.shopId = 'SHOP_1';
       accounts.push(user);
     } else {
       user.name = name;
@@ -489,13 +506,13 @@ async function handleApi(req, res, url) {
     const deliveryFee = body.deliveryFee != null ? Number(body.deliveryFee) : 200;
     const order = {
       id: `ORD-${++seq}`,
-      userId: body.userId || 'USER_1',
+      userId: body.userId || '',
       shopId: shop.id,
       shopName: shop.name,
       shopEmoji: shop.emoji,
-      customerName: body.customerName || 'Vidura',
-      customerPhone: body.customerPhone || '0771234567',
-      address: body.address || 'No.123, Lake View Road, Anuradhapura',
+      customerName: body.customerName || 'Guest',
+      customerPhone: body.customerPhone || '',
+      address: body.address || '',
       deliveryType: body.deliveryType || 'Standard',
       note: body.note || '',
       paymentMethod: body.paymentMethod || 'Cash on delivery',

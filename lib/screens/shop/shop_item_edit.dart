@@ -56,7 +56,7 @@ class _ShopItemEditState extends State<ShopItemEdit> {
       category: _cat,
       desc: _desc.text.trim(),
       image: _image,
-      shopId: widget.item?.shopId ?? OrderRepository.instance.user?.shopId ?? 'SHOP_1',
+      shopId: widget.item?.shopId ?? OrderRepository.instance.user?.shopId ?? '',
     );
     if (!mounted) return;
     Navigator.pop(context, true);

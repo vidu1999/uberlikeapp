@@ -216,7 +216,7 @@ class Order {
     final itemsRaw = (j['items'] as List?) ?? const [];
     return Order(
       id: '${j['id']}',
-      userId: '${j['userId'] ?? j['user_id'] ?? 'USER_1'}',
+      userId: '${j['userId'] ?? j['user_id'] ?? ''}',
       shopId: '${j['shopId'] ?? j['shop_id']}',
       riderId: (j['riderId'] ?? j['rider_id'])?.toString(),
       status: OrderStatusX.fromApi(j['status']?.toString()),

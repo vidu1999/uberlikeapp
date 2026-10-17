@@ -17,8 +17,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _phone;
-  final _name = TextEditingController(text: 'Vidura K Jayathilake');
-  final _email = TextEditingController(text: 'vidurakavindadev@gmail.com');
+  final _name = TextEditingController();
+  final _email = TextEditingController();
   final _shopName = TextEditingController();
   final _pw = TextEditingController();
   final _addr = TextEditingController();
@@ -38,12 +38,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    final phone = widget.role == UserRole.customer
-        ? '0771234567'
-        : widget.role == UserRole.shop
-            ? '0772223333'
-            : '0775556666';
-    _phone = TextEditingController(text: phone);
+    _phone = TextEditingController();
     if (widget.role == UserRole.shop || widget.role == UserRole.rider) {
       _name.text = '';
       _email.text = '';
@@ -133,8 +128,8 @@ class _LoginScreenState extends State<LoginScreen> {
         final p = acc['phone']?.toString();
         if (p != null && p.isNotEmpty) _phone.text = p;
       }
-      if (widget.role == UserRole.rider && register) {
-        if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
+      if ((widget.role == UserRole.rider || widget.role == UserRole.customer) && register) {
+        if (widget.role == UserRole.rider && (_name.text.trim().isEmpty || _phone.text.trim().isEmpty)) {
           setState(() {
             busy = false;
             error = 'Enter your name and phone.';

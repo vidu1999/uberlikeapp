@@ -266,46 +266,13 @@ async function loadTables() {
   return { shops, items, accounts, orders, messages, seq };
 }
 
-async function ensureSeed(force) {
-  if (name() !== 'supabase') return { seeded: false };
-  const existing = await rest('shops?select=id');
-  const empty = !existing || !existing.length;
-  if (!empty && !force) return { seeded: false, shops: existing.length };
-  await upsert('shops', seed.shops.map(shopRow));
-  await upsert('menu_items', seed.items.map(itemRow));
-  await upsert('accounts', seed.accounts.map(accountRow));
-  const orderRows = await rest('orders?select=id');
-  if (force || !orderRows || !orderRows.length) {
-    const demo = seed.demoOrders();
-    await upsert('orders', demo.map(orderRow));
-    const msgs = [];
-    for (const o of demo) {
-      msgs.push({
-        id: 'm0',
-        order_id: o.id,
-        sender: 'QuickBite',
-        role: 'system',
-        body: 'Demo order loaded from Supabase.',
-        ts: Date.now(),
-      });
-    }
-    if (msgs.length) await upsert('messages', msgs);
-  }
-  return { seeded: true };
+async function ensureSeed() {
+  return { seeded: false };
 }
 
 async function supabaseLoad() {
   const tables = await loadTables();
-  if (tables.shops.length) return tables;
-  try {
-    await ensureSeed(false);
-    return await loadTables();
-  } catch (err) {
-    console.error('Supabase seed failed:', err.message);
-  }
-  const rows = await rest('app_state?id=eq.main&select=payload');
-  const payload = Array.isArray(rows) && rows[0] ? rows[0].payload : null;
-  return payload || tables;
+  return seed.stripDemo(tables);
 }
 
 async function supabaseSave(payload) {

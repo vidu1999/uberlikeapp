@@ -96,7 +96,7 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => placing = true);
     final draft = Order(
       id: 'ORD_${DateTime.now().millisecondsSinceEpoch}',
-      userId: 'USER_1',
+      userId: OrderRepository.instance.user?.id ?? '',
       shopId: shop.id,
       status: OrderStatus.pending,
       items: [DeliveryItem(name: item.name, qty: 1, price: item.price)],
@@ -105,7 +105,7 @@ class _SearchScreenState extends State<SearchScreen> {
       deliveryLng: 80.4108,
       timestamp: DateTime.now(),
       shopName: shop.name,
-      customerName: 'Vidura',
+      customerName: OrderRepository.instance.user?.name ?? 'Guest',
     );
     final created = await OrderRepository.instance.addOrder(draft);
     if (!mounted) return;
