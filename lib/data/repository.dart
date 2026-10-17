@@ -51,6 +51,7 @@ class OrderRepository {
   String? _otpCode;
   String? _otpBody;
   DateTime? _otpExp;
+  Map<String, String>? pendingShop;
 
   String _normPhone(String raw) {
     var d = raw.replaceAll(RegExp(r'\D'), '');
@@ -59,25 +60,91 @@ class OrderRepository {
     return d;
   }
 
+  Future<Map<String, dynamic>?> findAccount(String role, String id) async {
+    await _loadSupabaseConfig();
+    final phone = _normPhone(id);
+    final email = id.contains('@') ? id.trim().toLowerCase() : '';
+    try {
+      var q = 'accounts?select=*&role=eq.$role';
+      q += email.isNotEmpty ? '&email=eq.$email' : '&phone=eq.$phone';
+      final rows = await _sbGet(q);
+      if (rows.isNotEmpty) return Map<String, dynamic>.from(rows.first as Map);
+    } catch (_) {}
+    if (role == 'shop' && phone == '0772223333') {
+      return {
+        'id': 'SHOP_STAFF',
+        'name': 'Shop staff',
+        'phone': phone,
+        'role': 'shop',
+        'shop_id': 'SHOP_1',
+      };
+    }
+    return null;
+  }
+
   Future<void> _enterAccount(String role, String phone) async {
+    phone = _normPhone(phone);
     final rows = await _sbGet('accounts?select=*&role=eq.$role&phone=eq.$phone');
     Map<String, dynamic> user;
     if (rows.isNotEmpty) {
       user = Map<String, dynamic>.from(rows.first as Map);
+    } else if (role == 'shop' && phone == '0772223333') {
+      user = {
+        'id': 'SHOP_STAFF',
+        'name': 'Shop staff',
+        'phone': phone,
+        'role': 'shop',
+        'shop_id': 'SHOP_1',
+      };
+      pendingShop = null;
+    } else if (role == 'shop') {
+      final p = pendingShop;
+      if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
+        throw Exception('Register your shop first.');
+      }
+      final shopId = 'SHOP_${DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase()}';
+      final shop = {
+        'id': shopId,
+        'name': p['shopName'] ?? 'New Shop',
+        'category': 'Bakery',
+        'rating': 5,
+        'reviews': 0,
+        'is_open': true,
+        'lat': 8.335,
+        'lng': 80.4108,
+        'km': 1,
+        'eta': '20–35 min',
+        'fee': 200,
+        'hours': '08:00 AM – 10:00 PM',
+        'address': 'Sri Lanka',
+        'image': '/img/shop-bakery.jpg',
+      };
+      try {
+        await _sbWrite('shops', 'POST', [shop]);
+      } catch (_) {}
+      Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
+      user = {
+        'id': 'SHOP_STAFF_${phone.substring(phone.length - 4)}_${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}',
+        'name': p['ownerName'] ?? 'Shop Owner',
+        'phone': phone,
+        'email': p['email'] ?? '',
+        'pin': 'otp',
+        'role': 'shop',
+        'shop_id': shopId,
+      };
+      try {
+        await _sbWrite('accounts', 'POST', [user]);
+      } catch (_) {}
+      pendingShop = null;
     } else {
       user = {
         'id': '${role.toUpperCase()}_${phone.substring(phone.length - 4)}',
-        'name': role == 'shop'
-            ? 'Shop staff'
-            : role == 'rider'
-                ? 'Courier'
-                : 'Guest',
+        'name': role == 'rider' ? 'Courier' : 'Guest',
         'phone': phone,
         'role': role,
         'pin': 'otp',
         'address': 'No.123, Lake View Road, Anuradhapura',
       };
-      if (role == 'shop') user['shop_id'] = 'SHOP_1';
       if (role == 'rider') {
         user['vehicle'] = 'Bike';
         user['rating'] = 5;
@@ -244,6 +311,7 @@ class OrderRepository {
   void logout() {
     userNotifier.value = null;
     token = null;
+    pendingShop = null;
     _persist();
   }
 

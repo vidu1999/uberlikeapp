@@ -341,22 +341,101 @@
     return d;
   }
 
+  function pendingShop() {
+    if (API._pendingShop) return API._pendingShop;
+    try { return JSON.parse(sessionStorage.getItem('sd_pending_shop') || 'null'); } catch (_) { return null; }
+  }
+
+  API.setPendingShop = function (profile) {
+    API._pendingShop = profile || null;
+    try {
+      if (profile) sessionStorage.setItem('sd_pending_shop', JSON.stringify(profile));
+      else sessionStorage.removeItem('sd_pending_shop');
+    } catch (_) {}
+  };
+
+  API.findAccount = async function (role, id) {
+    const phone = normalizePhone(id);
+    const email = String(id || '').includes('@') ? String(id).trim().toLowerCase() : '';
+    if (sbConfigured()) {
+      try {
+        let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role || 'shop');
+        if (email) q += '&email=eq.' + encodeURIComponent(email);
+        else q += '&phone=eq.' + encodeURIComponent(phone);
+        const rows = await sbGet(q);
+        if (rows && rows[0]) return mapAccount(rows[0]);
+      } catch (_) {}
+    }
+    try {
+      const list = await getJSON('/api/accounts');
+      const hit = (list || []).find((a) => a.role === role && (
+        (phone && normalizePhone(a.phone) === phone) ||
+        (email && String(a.email || '').toLowerCase() === email)
+      ));
+      if (hit) return hit;
+    } catch (_) {}
+    if (role === 'shop' && phone === '0772223333') {
+      return { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shopId: 'SHOP_1' };
+    }
+    return null;
+  };
+
   async function enterAccount(role, phone) {
+    phone = normalizePhone(phone);
     let rows = [];
     try {
       rows = await sbGet('accounts?select=*&role=eq.' + encodeURIComponent(role) + '&phone=eq.' + encodeURIComponent(phone));
     } catch (_) {}
     let row = rows && rows[0];
+    if (!row && role === 'shop' && phone === '0772223333') {
+      row = { id: 'SHOP_STAFF', name: 'Shop staff', phone, role: 'shop', shop_id: 'SHOP_1' };
+      API.setPendingShop(null);
+    }
+    if (!row && role === 'shop') {
+      const p = pendingShop() || {};
+      if (!p.shopName && !p.ownerName) {
+        throw new Error('Register your shop first.');
+      }
+      const shopId = 'SHOP_' + Date.now().toString(36).toUpperCase();
+      const shop = {
+        id: shopId,
+        name: p.shopName || 'New Shop',
+        category: 'Bakery',
+        rating: 5,
+        reviews: 0,
+        is_open: true,
+        lat: 8.335,
+        lng: 80.4108,
+        km: 1,
+        eta: '20–35 min',
+        fee: 200,
+        hours: '08:00 AM – 10:00 PM',
+        address: 'Sri Lanka',
+        image: '/img/shop-bakery.jpg',
+      };
+      try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
+      row = {
+        id: 'SHOP_STAFF_' + phone.slice(-4) + '_' + Date.now().toString(36),
+        name: p.ownerName || 'Shop Owner',
+        phone,
+        email: p.email || '',
+        pin: 'otp',
+        role: 'shop',
+        shop_id: shopId,
+      };
+      try { await sbSend('accounts', 'POST', [row]); } catch (_) {}
+      API.setPendingShop(null);
+      try { API.shops.push(mapShop(shop)); } catch (_) {}
+    }
     if (!row) {
       row = {
         id: String(role || 'user').toUpperCase() + '_' + phone.slice(-4) + '_' + Date.now().toString(36),
-        name: role === 'shop' ? 'Shop staff' : role === 'rider' ? 'Courier' : 'Guest',
+        name: role === 'rider' ? 'Courier' : 'Guest',
         phone,
         pin: 'otp',
         role: role || 'customer',
         address: 'No.123, Lake View Road, Anuradhapura',
       };
-      if (role === 'shop') row.shop_id = 'SHOP_1';
       if (role === 'rider') {
         row.vehicle = 'Bike';
         row.rating = 5;
@@ -366,9 +445,11 @@
     API.user = mapAccount(row);
     API.token = 'sb_' + row.id;
     saveSession();
-    notify();
+    notify(true);
     return API.user;
   }
+
+  API.normalizePhone = normalizePhone;
 
   API.sendOtp = async function (role, phone) {
     phone = normalizePhone(phone);
@@ -463,6 +544,7 @@
     const role = (API.user && API.user.role) || API.roleHint || 'customer';
     API.user = null;
     API.token = null;
+    API.setPendingShop(null);
     try {
       localStorage.removeItem(sessionKey(role));
       sessionStorage.removeItem(sessionKey(role));

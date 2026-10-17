@@ -23,7 +23,9 @@
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
-      itemDraft: null,
+      itemDraft: null, auth: 'login', fromReg: false,
+      reg: { shopName: 'Kandy Bakers', ownerName: 'Nimal Perera', email: 'shop@example.com', phone: '0772223333' },
+      loginId: '0772223333',
     };
     const FOOD_IMGS = [
       '/img/shop-burger.jpg', '/img/shop-pizza.jpg', '/img/shop-bakery.jpg', '/img/cake-chocolate.jpg',
@@ -39,8 +41,11 @@
     }
     function shopItems() {
       const sid = shopId();
-      const mine = API.items.filter((it) => it.shopId === sid);
-      return mine.length ? mine : API.items;
+      return API.items.filter((it) => it.shopId === sid);
+    }
+    function shopOrders() {
+      const sid = shopId();
+      return API.orders.filter((o) => o.shopId === sid);
     }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -48,8 +53,9 @@
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function oid(id) { return '#' + String(id||'').replace('_','-'); }
     function shopName() {
-      const s = API.shops.find((x) => x.id === 'SHOP_1') || API.shops[0] || {};
-      return s.name || 'Kandy Bakers';
+      const sid = shopId();
+      const s = API.shops.find((x) => x.id === sid) || API.shops.find((x) => x.id === 'SHOP_1') || API.shops[0] || {};
+      return (API.user && API.user.shopName) || s.name || 'Kandy Bakers';
     }
     function timeOf(o) {
       const d = new Date(o.timestamp || Date.now());
@@ -92,11 +98,45 @@
       </nav>`;
     }
     function loginView() {
+      return `<div class="sp-auth" data-shop-auth="login">
+        <div class="sp-mark">🏪</div>
+        <h1>Welcome Back!</h1>
+        <p class="sub">Login to your shop account</p>
+        <label>Email or Phone Number</label>
+        <input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" />
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-shop-login>Login</button>
+        <div class="or">or</div>
+        <button class="ghost" type="button" data-shop-login>Continue with Google</button>
+        <button class="ghost" type="button" data-shop-login>Continue with Apple</button>
+        <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
+      </div>`;
+    }
+    function registerView() {
+      const r = state.reg;
+      return `<div class="sp-auth" data-shop-auth="register">
+        <div class="sp-mark">🏪</div>
+        <h1>Create Your Shop Account</h1>
+        <p class="sub">Join QuickBite and start receiving orders</p>
+        <label>Shop Name</label>
+        <input id="regShop" placeholder="e.g. Kandy Bakers" value="${esc(r.shopName)}" />
+        <label>Owner Name</label>
+        <input id="regOwner" placeholder="e.g. Nimal Perera" value="${esc(r.ownerName)}" />
+        <label>Email Address</label>
+        <input id="regEmail" placeholder="e.g. shop@example.com" value="${esc(r.email)}" />
+        <label>Phone Number</label>
+        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" />
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-shop-register>Register</button>
+        <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
+      </div>`;
+    }
+    function otpView() {
       return OtpLogin.render({
         role: 'shop',
-        title: 'Shop sign in',
-        sub: 'We’ll send a 4-digit code on WhatsApp, then you enter the kitchen.',
-        phone: '0772223333',
+        title: 'Enter the 4-digit code',
+        sub: 'WhatsApp sent the code. Enter it to open your dashboard.',
+        phone: state.loginId,
       });
     }
     function orderCard(o) {
@@ -118,7 +158,7 @@
       </div>`;
     }
     function dashView() {
-      const orders = API.orders;
+      const orders = shopOrders();
       const pending = orders.filter((o) => o.status === 'pending').length;
       const preparing = orders.filter((o) => o.status === 'preparing').length;
       const ready = orders.filter((o) => o.status === 'ready').length;
@@ -159,7 +199,7 @@
       </div>${nav()}`;
     }
     function ordersView() {
-      const list = API.orders.filter((o) => {
+      const list = shopOrders().filter((o) => {
         if (state.filter === 'pending') return o.status === 'pending';
         if (state.filter === 'prep') return o.status === 'preparing';
         if (state.filter === 'ready') return o.status === 'ready';
@@ -271,7 +311,7 @@
       </div>`;
     }
     function accountView() {
-      const today = API.orders.filter((o) => o.status !== 'cancelled');
+      const today = shopOrders().filter((o) => o.status !== 'cancelled');
       const sales = today.reduce((s, o) => s + o.totalAmount, 0);
       return `<div class="scroll">
         <div class="sd-head"><div class="sd-logo">${SVG.store}</div><h1>Profile</h1></div>
@@ -309,9 +349,32 @@
       if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
       try {
       if (!API.user) {
-        if (root.querySelector('[data-otp-root]')) return;
+        if (keep && root.querySelector('[data-shop-auth], [data-otp-root]')) return;
+        if (state.auth === 'register') {
+          root.innerHTML = registerView();
+          bindAuth();
+          return;
+        }
+        if (state.auth === 'otp') {
+          root.innerHTML = otpView();
+          OtpLogin.bind({ role: 'shop', onReady: () => { state.auth = 'login'; render(); } });
+          const pi = document.getElementById('phone');
+          if (pi) pi.value = state.loginId;
+          const phoneStep = root.querySelector('[data-step="phone"]');
+          const codeStep = root.querySelector('[data-step="code"]');
+          if (phoneStep) phoneStep.classList.add('hidden');
+          if (codeStep) codeStep.classList.remove('hidden');
+          const sp = root.querySelector('[data-sent-phone]');
+          if (sp) sp.textContent = state.loginId;
+          const back = root.querySelector('[data-back-phone]');
+          if (back) back.onclick = () => {
+            state.auth = state.fromReg ? 'register' : 'login';
+            render();
+          };
+          return;
+        }
         root.innerHTML = loginView();
-        OtpLogin.bind({ role: 'shop', onReady: () => render() });
+        bindAuth();
         return;
       }
       if (state.trackId) {
@@ -348,6 +411,77 @@
           if (sc) sc.scrollTop = y;
         }
       }
+    }
+    function bindAuth() {
+      const root = document.getElementById('root');
+      const err = root.querySelector('[data-err]');
+      const goReg = root.querySelector('[data-go-reg]');
+      if (goReg) goReg.onclick = () => { state.auth = 'register'; render(); };
+      const goLogin = root.querySelector('[data-go-login]');
+      if (goLogin) goLogin.onclick = () => { state.auth = 'login'; render(); };
+      root.querySelectorAll('[data-shop-login]').forEach((b) => {
+        b.onclick = async () => {
+          const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
+          state.loginId = id;
+          if (err) err.textContent = '';
+          if (!id) {
+            if (err) err.textContent = 'Enter email or phone.';
+            return;
+          }
+          b.disabled = true;
+          const label = b.textContent;
+          b.textContent = 'Checking…';
+          try {
+            const acc = await API.findAccount('shop', id);
+            if (!acc) {
+              state.auth = 'register';
+              state.reg.phone = API.normalizePhone ? API.normalizePhone(id) : id;
+              if (String(id).includes('@')) state.reg.email = id;
+              render();
+              return;
+            }
+            state.loginId = acc.phone || id;
+            API.setPendingShop(null);
+            state.fromReg = false;
+            await API.sendOtp('shop', state.loginId);
+            state.auth = 'otp';
+            render();
+          } catch (e) {
+            if (err) err.textContent = e.message;
+            b.disabled = false;
+            b.textContent = label;
+          }
+        };
+      });
+      const regBtn = root.querySelector('[data-shop-register]');
+      if (regBtn) regBtn.onclick = async () => {
+        state.reg = {
+          shopName: (document.getElementById('regShop') || {}).value || '',
+          ownerName: (document.getElementById('regOwner') || {}).value || '',
+          email: (document.getElementById('regEmail') || {}).value || '',
+          phone: (document.getElementById('regPhone') || {}).value || '',
+        };
+        if (err) err.textContent = '';
+        if (!state.reg.shopName.trim() || !state.reg.ownerName.trim() || !state.reg.phone.trim()) {
+          if (err) err.textContent = 'Enter shop name, owner name, and phone.';
+          return;
+        }
+        regBtn.disabled = true;
+        regBtn.textContent = 'Sending WhatsApp…';
+        try {
+          const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+          state.loginId = phone;
+          API.setPendingShop({ shopName: state.reg.shopName.trim(), ownerName: state.reg.ownerName.trim(), email: state.reg.email.trim(), phone });
+          state.fromReg = true;
+          await API.sendOtp('shop', phone);
+          state.auth = 'otp';
+          render();
+        } catch (e) {
+          if (err) err.textContent = e.message;
+          regBtn.disabled = false;
+          regBtn.textContent = 'Register';
+        }
+      };
     }
     function bind() {
       const root = document.getElementById('root');
@@ -433,7 +567,7 @@
       API.login('shop', '0772223333', '1234').catch(() => {});
     }
     API.on(() => {
-      if (!API.user && document.querySelector('[data-otp-root]')) return;
+      if (!API.user && document.querySelector('[data-otp-root], [data-shop-auth]')) return;
       render({ keepScroll: true });
     });
     render();

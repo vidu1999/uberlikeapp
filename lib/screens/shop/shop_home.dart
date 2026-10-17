@@ -24,6 +24,21 @@ class _ShopHomeState extends State<ShopHome> {
   String menuQ = '';
   String menuCat = 'All';
 
+  String get shopId {
+    final id = OrderRepository.instance.user?.shopId;
+    if (id != null && id.isNotEmpty) return id;
+    return 'SHOP_1';
+  }
+
+  String get shopTitle {
+    for (final s in Catalog.shops) {
+      if (s.id == shopId) return s.name;
+    }
+    return 'Kandy Bakers';
+  }
+
+  List<Order> _mine(List<Order> orders) => orders.where((o) => o.shopId == shopId).toList();
+
   String? _url(String path) {
     final base = AppConfig.normalize(AppConfig.baseUrl);
     if (base.isEmpty) return null;
@@ -90,11 +105,12 @@ class _ShopHomeState extends State<ShopHome> {
     return ValueListenableBuilder<List<Order>>(
       valueListenable: OrderRepository.instance.ordersNotifier,
       builder: (context, orders, _) {
-        final pending = orders.where((o) => o.status == OrderStatus.pending).length;
-        final prep = orders.where((o) => o.status == OrderStatus.preparing).length;
-        final ready = orders.where((o) => o.status == OrderStatus.ready).length;
-        final way = orders.where((o) => o.status == OrderStatus.onTheWay).length;
-        final list = orders.where((o) {
+        final mine = _mine(orders);
+        final pending = mine.where((o) => o.status == OrderStatus.pending).length;
+        final prep = mine.where((o) => o.status == OrderStatus.preparing).length;
+        final ready = mine.where((o) => o.status == OrderStatus.ready).length;
+        final way = mine.where((o) => o.status == OrderStatus.onTheWay).length;
+        final list = mine.where((o) {
           if (filter == 'prep') return o.status == OrderStatus.preparing;
           if (filter == 'ready') return o.status == OrderStatus.ready;
           if (filter == 'way') return o.status == OrderStatus.onTheWay;
@@ -121,13 +137,13 @@ class _ShopHomeState extends State<ShopHome> {
                   ],
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
                   children: [
-                    Text('Kandy Bakers', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                    SizedBox(width: 10),
-                    Chip(
+                    Text(shopTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                    const SizedBox(width: 10),
+                    const Chip(
                       label: Text('Open', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 12)),
                       backgroundColor: Color(0xFF123D28),
                       visualDensity: VisualDensity.compact,
@@ -294,7 +310,7 @@ class _ShopHomeState extends State<ShopHome> {
     return ValueListenableBuilder<List<Order>>(
       valueListenable: OrderRepository.instance.ordersNotifier,
       builder: (context, orders, _) {
-        final list = orders.where((o) {
+        final list = _mine(orders).where((o) {
           if (filter == 'pending') return o.status == OrderStatus.pending;
           if (filter == 'prep') return o.status == OrderStatus.preparing;
           if (filter == 'ready') return o.status == OrderStatus.ready;
@@ -330,6 +346,7 @@ class _ShopHomeState extends State<ShopHome> {
   Widget _menu() {
     final q = menuQ.trim().toLowerCase();
     final list = Catalog.items.where((it) {
+      if (it.shopId != shopId) return false;
       if (menuCat != 'All' && _bucket(it.category) != menuCat) return false;
       if (q.isNotEmpty && !it.name.toLowerCase().contains(q) && !it.category.toLowerCase().contains(q)) return false;
       return true;

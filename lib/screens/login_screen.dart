@@ -18,11 +18,13 @@ class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _phone;
   final _name = TextEditingController(text: 'Vidura K Jayathilake');
   final _email = TextEditingController(text: 'vidurakavindadev@gmail.com');
+  final _shopName = TextEditingController(text: 'Kandy Bakers');
   final List<TextEditingController> _digits = List.generate(4, (_) => TextEditingController());
   final List<FocusNode> _focus = List.generate(4, (_) => FocusNode());
   bool busy = false;
   bool codeStep = false;
   bool register = false;
+  bool fromRegister = false;
   String regRole = 'customer';
   String? error;
   String phoneSent = '';
@@ -36,6 +38,10 @@ class _LoginScreenState extends State<LoginScreen> {
             ? '0772223333'
             : '0775556666';
     _phone = TextEditingController(text: phone);
+    if (widget.role == UserRole.shop) {
+      _name.text = 'Nimal Perera';
+      _email.text = 'shop@example.com';
+    }
   }
 
   @override
@@ -43,6 +49,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _phone.dispose();
     _name.dispose();
     _email.dispose();
+    _shopName.dispose();
     for (final c in _digits) {
       c.dispose();
     }
@@ -75,7 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _send() async {
-    if (register && (regRole == 'shop' || regRole == 'rider')) {
+    if (register && widget.role == UserRole.customer && (regRole == 'shop' || regRole == 'rider')) {
       _download(regRole);
       return;
     }
@@ -85,12 +92,42 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     AppConfig.baseUrl = AppConfig.normalize(AppConfig.baseUrl);
     try {
+      if (widget.role == UserRole.shop && !register) {
+        final acc = await OrderRepository.instance.findAccount('shop', _phone.text);
+        if (!mounted) return;
+        if (acc == null) {
+          setState(() {
+            busy = false;
+            register = true;
+            fromRegister = true;
+          });
+          return;
+        }
+        final p = acc['phone']?.toString();
+        if (p != null && p.isNotEmpty) _phone.text = p;
+      }
+      if (widget.role == UserRole.shop && register) {
+        if (_shopName.text.trim().isEmpty || _name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
+          setState(() {
+            busy = false;
+            error = 'Enter shop name, owner name, and phone.';
+          });
+          return;
+        }
+        OrderRepository.instance.pendingShop = {
+          'shopName': _shopName.text.trim(),
+          'ownerName': _name.text.trim(),
+          'email': _email.text.trim(),
+          'phone': _phone.text.trim(),
+        };
+      }
       final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
       if (!mounted) return;
       phoneSent = data?['phone']?.toString() ?? _phone.text;
       setState(() {
         busy = false;
         codeStep = true;
+        fromRegister = register;
         register = false;
       });
     } catch (e) {
@@ -111,16 +148,26 @@ class _LoginScreenState extends State<LoginScreen> {
       busy = true;
       error = null;
     });
-    final ok = await OrderRepository.instance.verifyOtp(_apiRole, phoneSent, _code);
-    if (!mounted) return;
-    setState(() => busy = false);
-    if (!ok) setState(() => error = 'That code does not match this phone number.');
+    try {
+      final ok = await OrderRepository.instance.verifyOtp(_apiRole, phoneSent, _code);
+      if (!mounted) return;
+      setState(() => busy = false);
+      if (!ok) setState(() => error = 'That code does not match this phone number.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (codeStep) return _otp();
+    if (register && widget.role == UserRole.shop) return _shopRegister();
     if (register && widget.role == UserRole.customer) return _register();
+    if (widget.role == UserRole.shop) return _shopLogin();
     return _login();
   }
 
@@ -272,6 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => setState(() {
             codeStep = false;
+            register = fromRegister;
             error = null;
           }),
         ),
@@ -342,6 +390,157 @@ class _LoginScreenState extends State<LoginScreen> {
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 16),
         ),
+      ),
+    );
+  }
+
+  Widget _shopLogin() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
+        children: [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.storefront, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text('Welcome Back!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('Login to your shop account', style: TextStyle(color: Color(0xFF6B7280))),
+          const SizedBox(height: 18),
+          _lightField(_phone, 'Email or Phone Number', keyboard: TextInputType.phone),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 54,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+              onPressed: busy ? null : _send,
+              child: Text(busy ? 'Checking…' : 'Login', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Center(child: Text('or', style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600))),
+          const SizedBox(height: 10),
+          _lightGhost('Continue with Google'),
+          const SizedBox(height: 8),
+          _lightGhost('Continue with Apple'),
+          const SizedBox(height: 18),
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() {
+                register = true;
+                error = null;
+              }),
+              child: const Text.rich(TextSpan(children: [
+                TextSpan(text: "Don't have an account? ", style: TextStyle(color: Color(0xFF6B7280))),
+                TextSpan(text: 'Sign Up', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              ])),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _shopRegister() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
+        children: [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.storefront, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text('Create Your Shop Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('Join QuickBite and start receiving orders', style: TextStyle(color: Color(0xFF6B7280))),
+          const SizedBox(height: 16),
+          _lightField(_shopName, 'Shop Name'),
+          const SizedBox(height: 10),
+          _lightField(_name, 'Owner Name'),
+          const SizedBox(height: 10),
+          _lightField(_email, 'Email Address', keyboard: TextInputType.emailAddress),
+          const SizedBox(height: 10),
+          _lightField(_phone, 'Phone Number', keyboard: TextInputType.phone),
+          if (error != null) ...[
+            const SizedBox(height: 10),
+            Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 54,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+              onPressed: busy ? null : _send,
+              child: Text(busy ? 'Sending WhatsApp…' : 'Register', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() {
+                register = false;
+                error = null;
+              }),
+              child: const Text.rich(TextSpan(children: [
+                TextSpan(text: 'Already have an account? ', style: TextStyle(color: Color(0xFF6B7280))),
+                TextSpan(text: 'Login', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+              ])),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF374151))),
+        const SizedBox(height: 6),
+        TextField(
+          controller: c,
+          keyboardType: keyboard,
+          decoration: InputDecoration(
+            hintText: label,
+            filled: true,
+            fillColor: const Color(0xFFF9FAFB),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _lightGhost(String label) {
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Brand.ink,
+          side: const BorderSide(color: Color(0xFFE5E7EB)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        ),
+        onPressed: busy ? null : _send,
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
   }
