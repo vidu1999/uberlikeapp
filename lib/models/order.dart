@@ -114,6 +114,7 @@ class Order {
   final DateTime timestamp;
   final String shopName;
   final String customerName;
+  final String? customerPhone;
   final String? riderName;
   final String? riderPhone;
 
@@ -132,6 +133,7 @@ class Order {
     required this.timestamp,
     required this.shopName,
     required this.customerName,
+    this.customerPhone,
     this.riderName,
     this.riderPhone,
   });
@@ -158,6 +160,7 @@ class Order {
       timestamp: timestamp,
       shopName: shopName,
       customerName: customerName,
+      customerPhone: customerPhone,
       riderName: riderName ?? this.riderName,
       riderPhone: this.riderPhone,
     );
@@ -178,6 +181,7 @@ class Order {
         'timestamp': timestamp.toIso8601String(),
         'shopName': shopName,
         'customerName': customerName,
+        'customerPhone': customerPhone,
         'riderName': riderName,
       };
 
@@ -203,6 +207,7 @@ class Order {
       timestamp: DateTime.tryParse('${j['timestamp'] ?? j['updated_at'] ?? ''}') ?? DateTime.now(),
       shopName: '${j['shopName'] ?? j['shop_name'] ?? ''}',
       customerName: '${j['customerName'] ?? j['customer_name'] ?? ''}',
+      customerPhone: (j['customerPhone'] ?? j['customer_phone'])?.toString(),
       riderName: j['riderName']?.toString(),
       riderPhone: j['riderPhone']?.toString(),
     );

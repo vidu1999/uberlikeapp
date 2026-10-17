@@ -6,6 +6,8 @@ import '../../models/order.dart';
 import '../../theme.dart';
 import '../../widgets/role_switcher.dart';
 import '../../widgets/settings_button.dart';
+import 'shop_item_edit.dart';
+import 'shop_order_details.dart';
 
 class ShopHome extends StatefulWidget {
   final UserRole currentRole;
@@ -19,6 +21,8 @@ class ShopHome extends StatefulWidget {
 class _ShopHomeState extends State<ShopHome> {
   int tab = 0;
   String filter = 'all';
+  String menuQ = '';
+  String menuCat = 'All';
 
   String? _url(String path) {
     final base = AppConfig.normalize(AppConfig.baseUrl);
@@ -38,7 +42,7 @@ class _ShopHomeState extends State<ShopHome> {
           index: tab,
           children: [
             _dash(),
-            _dash(),
+            _orders(),
             _menu(),
             _profile(),
           ],
@@ -229,7 +233,9 @@ class _ShopHomeState extends State<ShopHome> {
         bg = Brand.green;
     }
     final items = o.items.map((e) => '${e.name} x${e.qty}').join(', ');
-    return Container(
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopOrderDetails(orderId: o.id))),
+      child: Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
@@ -273,23 +279,139 @@ class _ShopHomeState extends State<ShopHome> {
           ),
         ],
       ),
+    ),
+    );
+  }
+
+  String _bucket(String cat) {
+    final c = cat.toLowerCase();
+    if (RegExp(r'drink|beverage|coffee|juice|tea|ice').hasMatch(c)) return 'Drinks';
+    if (RegExp(r'dessert|cake|sweet|cookie|bakery|pastry').hasMatch(c)) return 'Desserts';
+    return 'Food';
+  }
+
+  Widget _orders() {
+    return ValueListenableBuilder<List<Order>>(
+      valueListenable: OrderRepository.instance.ordersNotifier,
+      builder: (context, orders, _) {
+        final list = orders.where((o) {
+          if (filter == 'pending') return o.status == OrderStatus.pending;
+          if (filter == 'prep') return o.status == OrderStatus.preparing;
+          if (filter == 'ready') return o.status == OrderStatus.ready;
+          return true;
+        }).toList();
+        return SafeArea(
+          child: ListView(
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Text('Orders', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(children: [
+                  _tab('all', 'All'),
+                  _tab('pending', 'Pending'),
+                  _tab('prep', 'Preparing'),
+                  _tab('ready', 'Ready'),
+                ]),
+              ),
+              if (list.isEmpty)
+                const Padding(padding: EdgeInsets.all(24), child: Text('No orders in this tab.', style: TextStyle(color: Brand.soft))),
+              ...list.map(_orderCard),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _menu() {
-    return SafeArea(
-      child: ListView(
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ),
-          ...Catalog.items.map((it) => ListTile(
-                title: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('Rs. ${it.price.toStringAsFixed(0)}'),
-                trailing: Text(it.isAvailable ? 'Available' : 'Sold out', style: TextStyle(color: it.isAvailable ? Brand.green : Colors.red)),
-              )),
-        ],
+    final q = menuQ.trim().toLowerCase();
+    final list = Catalog.items.where((it) {
+      if (menuCat != 'All' && _bucket(it.category) != menuCat) return false;
+      if (q.isNotEmpty && !it.name.toLowerCase().contains(q) && !it.category.toLowerCase().contains(q)) return false;
+      return true;
+    }).toList();
+    return ColoredBox(
+      color: Colors.white,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            ListView(
+              padding: const EdgeInsets.only(bottom: 88),
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Text('Menu Items', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Brand.ink)),
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: ['All', 'Food', 'Drinks', 'Desserts'].map((c) {
+                      final on = menuCat == c;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(c),
+                          selected: on,
+                          selectedColor: Brand.green,
+                          labelStyle: TextStyle(color: on ? Colors.white : Brand.muted, fontWeight: FontWeight.w700),
+                          onSelected: (_) => setState(() => menuCat = c),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                  child: TextField(
+                    onChanged: (v) => setState(() => menuQ = v),
+                    style: const TextStyle(color: Brand.ink),
+                    decoration: InputDecoration(
+                      hintText: 'Search menu items…',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Brand.search,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                ...list.map((it) {
+                  final img = (it.image != null && it.image!.isNotEmpty) ? _url(it.image!) : null;
+                  return ListTile(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopItemEdit(item: it))),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: img == null
+                          ? Container(width: 56, height: 56, color: Brand.search)
+                          : Image.network(img, width: 56, height: 56, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(width: 56, height: 56, color: Brand.search)),
+                    ),
+                    title: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.ink)),
+                    subtitle: Text('Rs. ${it.price.toStringAsFixed(0)}', style: const TextStyle(color: Brand.muted, fontWeight: FontWeight.w700)),
+                    trailing: Switch(
+                      value: it.isAvailable,
+                      activeColor: Brand.green,
+                      onChanged: (v) => OrderRepository.instance.toggleItem(it.id, v),
+                    ),
+                  );
+                }),
+              ],
+            ),
+            Positioned(
+              right: 16,
+              bottom: 16,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopItemEdit())),
+                icon: const Icon(Icons.add),
+                label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

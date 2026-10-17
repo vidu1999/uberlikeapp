@@ -579,6 +579,35 @@ class OrderRepository {
     await refresh();
   }
 
+  Future<void> saveItem({
+    String? id,
+    required String name,
+    required double price,
+    String category = 'Food',
+    String desc = '',
+    String? image,
+    bool available = true,
+    String? shopId,
+  }) async {
+    final itemId = (id != null && id.isNotEmpty) ? id : 'ITM_${DateTime.now().millisecondsSinceEpoch}';
+    final sid = shopId ?? 'SHOP_1';
+    try {
+      await _sbWrite('menu_items', 'POST', [
+        {
+          'id': itemId,
+          'shop_id': sid,
+          'name': name,
+          'category': category,
+          'price': price,
+          'is_available': available,
+          'description': desc,
+          'image': image ?? '',
+        }
+      ]);
+    } catch (_) {}
+    await refresh();
+  }
+
   Future<void> toggleItem(String id, bool available) async {
     final uri = _uri('/api/items/$id');
     if (uri != null) {

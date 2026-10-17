@@ -20,7 +20,7 @@
     const orders = (API.orders || []).map((o) =>
       [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng].join(':')
     ).join('|');
-    const items = (API.items || []).map((i) => i.id + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
+    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
     return [(API.user && API.user.id) || '', (API.shops || []).length, items, orders, msgs].join('~');
   }
@@ -586,7 +586,34 @@
     if (sbConfigured()) {
       await sbSend('menu_items?id=eq.' + encodeURIComponent(id), 'PATCH', { is_available: isAvailable });
     }
+    const hit = API.items.find((i) => i.id === id);
+    if (hit) hit.isAvailable = !!isAvailable;
+    notify(true);
     return API.refresh();
+  };
+
+  API.saveItem = async function (item) {
+    const id = item.id || ('ITM_' + Date.now().toString(36));
+    const row = {
+      id,
+      shop_id: item.shopId || item.shop_id || (API.user && API.user.shopId) || 'SHOP_1',
+      name: item.name,
+      category: item.category || 'Food',
+      price: Number(item.price || 0),
+      is_available: item.isAvailable !== false,
+      description: item.desc || item.description || '',
+      image: item.image || '',
+    };
+    if (sbConfigured()) {
+      await sbSend('menu_items', 'POST', [row]);
+    }
+    const mapped = mapItem(row);
+    const i = API.items.findIndex((x) => x.id === id);
+    if (i >= 0) API.items[i] = mapped;
+    else API.items.push(mapped);
+    notify(true);
+    try { await API.refresh(); } catch (_) {}
+    return mapped;
   };
 
   API.sendMessage = async function (orderId, from, role, text) {
