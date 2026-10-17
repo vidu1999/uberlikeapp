@@ -38,7 +38,8 @@
     ];
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#fff"/><path d="M8 10.5c0-1.2.9-2.2 2.4-2.6V7h1.3v.8c1.4.3 2.4 1.2 2.4 2.4 0 1.6-1.4 2.2-2.7 2.5v2.2c.7-.1 1.3-.4 1.7-.8l.9.8c-.7.7-1.7 1.1-2.6 1.3V17h-1.3v-.8c-1.6-.3-2.6-1.3-2.6-2.7 0-1.5 1.2-2.2 2.6-2.5V10c-.6.2-1.1.5-1.1 1.1H8zm3.7 1.3c.7-.2 1.2-.4 1.2-.9s-.5-.8-1.2-.9v1.8zm-1.3 3.3v-1.8c-.7.2-1.2.5-1.2 1s.5.7 1.2.8z" fill="#00C853"/></svg>';
 
-    const seenOnboard = sessionStorage.getItem('qb_onboard') === '1';
+    const seenOnboard = localStorage.getItem('qb_onboard') === '1' || sessionStorage.getItem('qb_onboard') === '1';
+    let restoredSession = !!API.user;
     const state = {
       gate: API.user ? 'app' : (new URLSearchParams(location.search).get('demo') === '1' ? 'app' : 'splash'),
       onboard: 0,
@@ -129,8 +130,11 @@
           state.loc._gps = true;
           const label = await labelAt(lat, lng);
           if (!state.loc.custom) setPlace(lat, lng, label, false);
-          state.screen = 'locate';
-          state.locFrom = 'home';
+          if (state.loc.openMapOnce) {
+            state.loc.openMapOnce = false;
+            state.screen = 'locate';
+            state.locFrom = 'home';
+          }
           render();
         }
       };
@@ -631,7 +635,7 @@
         bindGate();
         return;
       }
-      if (!state.loc._gps) {
+      if (!state.loc._gps && !restoredSession) {
         if (!root.querySelector('[data-locperm]')) {
           root.innerHTML = locPermView();
           bindLocPerm();
@@ -683,7 +687,7 @@
 
     function bindGate() {
       const root = document.getElementById('root');
-      const skip = () => { sessionStorage.setItem('qb_onboard','1'); state.gate = 'login'; render(); };
+      const skip = () => { localStorage.setItem('qb_onboard','1'); state.gate = 'login'; render(); };
       root.querySelectorAll('[data-skip]').forEach((b) => b.onclick = skip);
       const next = root.querySelector('[data-next]');
       if (next) next.onclick = () => {
@@ -744,6 +748,7 @@
       btn.onclick = () => {
         btn.disabled = true;
         btn.textContent = 'Getting live GPS…';
+        state.loc.openMapOnce = true;
         const errEl = document.querySelector('[data-loc-err]');
         if (errEl) errEl.textContent = '';
         startLiveLocation();
@@ -890,8 +895,11 @@
       };
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => {
-        API.user = null; sessionStorage.removeItem('sd_user_customer');
-        state.gate = 'login'; render();
+        API.logout();
+        restoredSession = false;
+        state.gate = 'login';
+        state.loc._gps = false;
+        render();
       };
     }
 
@@ -905,6 +913,7 @@
       render();
     });
     tryAutoGps();
+    render();
   </script>
 </body>
 </html>

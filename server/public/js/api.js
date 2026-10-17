@@ -296,7 +296,7 @@
         if (picked) {
           API.user = mapAccount(picked);
           API.token = 'sb_' + picked.id;
-          try { sessionStorage.setItem('sd_user_' + (picked.role || API.roleHint), JSON.stringify(API.user)); } catch (_) {}
+          saveSession();
           notify();
           return API.user;
         }
@@ -309,7 +309,7 @@
     });
     API.user = data.user;
     API.token = data.token;
-    try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
+    saveSession();
     notify();
     return data.user;
   };
@@ -353,7 +353,7 @@
     }
     API.user = mapAccount(row);
     API.token = 'sb_' + row.id;
-    try { sessionStorage.setItem('sd_user_' + (API.user.role || API.roleHint), JSON.stringify(API.user)); } catch (_) {}
+    saveSession();
     notify();
     return API.user;
   }
@@ -424,7 +424,7 @@
       });
       API.user = data.user;
       API.token = data.token;
-      try { sessionStorage.setItem('sd_user_' + (data.user.role || API.roleHint), JSON.stringify(data.user)); } catch (_) {}
+      saveSession();
       notify();
       return data.user;
     }
@@ -433,10 +433,44 @@
     return enterAccount(role || 'customer', phone);
   };
 
+  function sessionKey(role) {
+    return 'sd_user_' + (role || API.roleHint || 'customer');
+  }
+
+  function saveSession() {
+    if (!API.user) return;
+    try {
+      const key = sessionKey(API.user.role);
+      const payload = JSON.stringify({ user: API.user, token: API.token || null, ts: Date.now() });
+      localStorage.setItem(key, payload);
+      sessionStorage.removeItem(key);
+    } catch (_) {}
+  }
+
+  API.logout = function () {
+    const role = (API.user && API.user.role) || API.roleHint || 'customer';
+    API.user = null;
+    API.token = null;
+    try {
+      localStorage.removeItem(sessionKey(role));
+      sessionStorage.removeItem(sessionKey(role));
+    } catch (_) {}
+    notify();
+  };
+
   API.restore = function () {
     try {
-      const raw = sessionStorage.getItem('sd_user_' + (API.roleHint || 'customer'));
-      if (raw) API.user = JSON.parse(raw);
+      const key = sessionKey(API.roleHint || 'customer');
+      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data && data.user) {
+        API.user = data.user;
+        API.token = data.token || null;
+      } else if (data && data.id) {
+        API.user = data;
+      }
+      if (API.user) saveSession();
     } catch (_) {}
   };
 

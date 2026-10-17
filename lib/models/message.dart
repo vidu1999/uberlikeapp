@@ -62,4 +62,13 @@ class SessionUser {
         address: j['address']?.toString(),
         vehicle: j['vehicle']?.toString(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'phone': phone,
+        'role': role,
+        'address': address,
+        'vehicle': vehicle,
+      };
 }

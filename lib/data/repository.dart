@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import 'place.dart';
@@ -88,6 +89,7 @@ class OrderRepository {
     token = 'sb_${user['id']}';
     userNotifier.value = SessionUser.fromJson(user);
     connectedNotifier.value = true;
+    await _persist();
     await refresh();
   }
 
@@ -210,6 +212,7 @@ class OrderRepository {
           token = 'sb_${picked['id']}';
           userNotifier.value = SessionUser.fromJson(picked);
           connectedNotifier.value = true;
+          await _persist();
           await refresh();
           return true;
         }
@@ -230,6 +233,7 @@ class OrderRepository {
         token = data['token']?.toString();
         userNotifier.value = SessionUser.fromJson(Map<String, dynamic>.from(data['user'] as Map));
         connectedNotifier.value = true;
+        await _persist();
         await refresh();
         return true;
       }
@@ -240,6 +244,35 @@ class OrderRepository {
   void logout() {
     userNotifier.value = null;
     token = null;
+    _persist();
+  }
+
+  static const _sessionKey = 'qb_session';
+
+  Future<void> restore() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString(_sessionKey);
+      if (raw == null || raw.isEmpty) return;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      token = m['token']?.toString();
+      userNotifier.value = SessionUser.fromJson(m);
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final u = userNotifier.value;
+      if (u == null) {
+        await p.remove(_sessionKey);
+        return;
+      }
+      await p.setString(
+        _sessionKey,
+        jsonEncode({...u.toJson(), 'token': token}),
+      );
+    } catch (_) {}
   }
 
   Future<void> _loadSupabaseConfig() async {

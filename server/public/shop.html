@@ -232,7 +232,7 @@
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
       const logout = document.getElementById('logout');
-      if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_shop'); render(); };
+      if (logout) logout.onclick = () => { API.logout(); render(); };
     }
     if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
       API.login('shop', '0772223333', '1234').catch(() => {});
@@ -241,6 +241,7 @@
       if (!API.user && document.querySelector('[data-otp-root]')) return;
       render();
     });
+    render();
   </script>
 </body>
 </html>

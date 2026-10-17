@@ -214,7 +214,7 @@
         await API.sendMessage(state.activeId, API.user.name, 'rider', text);
       };
       const logout = document.getElementById('logout');
-      if (logout) logout.onclick = () => { API.user = null; sessionStorage.removeItem('sd_user_rider'); render(true); };
+      if (logout) logout.onclick = () => { API.logout(); render(true); };
     }
     if (new URLSearchParams(location.search).get('demo') === '1' && !API.user) {
       API.login('rider', '0775556666', '1234').catch(() => {});
@@ -223,6 +223,7 @@
       if (!API.user && document.querySelector('[data-otp-root]')) return;
       render();
     });
+    render();
   </script>
 </body>
 </html>

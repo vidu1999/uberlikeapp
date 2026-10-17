@@ -26,17 +26,11 @@ class _CustomerHomeState extends State<CustomerHome> {
   String category = 'All';
   String query = '';
   final favs = <String>{};
-  bool _openedMap = false;
 
   @override
   void initState() {
     super.initState();
     UserPlace.instance.start();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted || _openedMap) return;
-      _openedMap = true;
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPickerScreen()));
-    });
   }
 
   String get _hello {
