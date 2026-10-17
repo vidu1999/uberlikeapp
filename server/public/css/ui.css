@@ -300,8 +300,12 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 .badge.pending { background: var(--teal); color: #fff; }
 .badge.preparing { background: #F5C518; color: #1a1200; }
 .badge.ready { background: var(--purple); color: #fff; }
-.badge.on_the_way { background: var(--blue); color: #fff; }
+.badge.accepted { background: var(--blue); color: #fff; }
+.badge.picked_up, .badge.on_the_way { background: var(--teal); color: #fff; }
 .badge.delivered { background: var(--g); color: #fff; }
+.btn-drop:disabled { opacity: .45; cursor: not-allowed; }
+.rd-near { font-size: 12px; color: #9CA3AF; text-align: center; margin: 10px 0 0; font-weight: 600; }
+.rd-near.ok { color: #00C853; font-weight: 800; }
 .badge.cancelled { background: #374151; color: #fff; }
 .sd-acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .sd-acts .btn { padding: 7px 10px; font-size: 12px; border-radius: 10px; }

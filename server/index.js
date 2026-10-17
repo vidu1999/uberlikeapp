@@ -218,11 +218,12 @@ function patchOrder(order, body) {
   if (body.riderLat !== undefined) order.riderLat = Number(body.riderLat);
   if (body.riderLng !== undefined) order.riderLng = Number(body.riderLng);
   if (body.rating !== undefined) order.rating = Number(body.rating);
-  if (body.status === 'on_the_way' && (order.riderLat == null || order.riderLng == null)) {
+  if ((body.status === 'accepted' || body.status === 'picked_up' || body.status === 'on_the_way') && (order.riderLat == null || order.riderLng == null)) {
     const shop = shopById(order.shopId);
     order.riderLat = shop ? shop.lat : 8.3514;
     order.riderLng = shop ? shop.lng : 80.3988;
   }
+  if (body.status === 'picked_up' || body.status === 'on_the_way') order.pickedUpAt = order.pickedUpAt || new Date().toISOString();
   if (body.status === 'delivered') order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
   return order;

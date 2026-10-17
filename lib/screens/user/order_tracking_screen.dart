@@ -72,6 +72,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     liveLat: UserPlace.instance.liveLat,
                     liveLng: UserPlace.instance.liveLng,
                     dark: true,
+                    toShop: current.status.headingToShop,
                   ),
                 ),
               ),
@@ -92,7 +93,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              current.status == OrderStatus.delivered ? 'Delivered' : 'On Delivery',
+                              current.status == OrderStatus.delivered
+                                  ? 'Delivered'
+                                  : current.status.headingToShop
+                                      ? 'Rider accepted'
+                                      : current.status.headingToCustomer
+                                          ? 'Picked up'
+                                          : 'On Delivery',
                               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
                             ),
                             Text('Order ${current.id.replaceAll('_', '-')}',
@@ -133,7 +140,16 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               children: [
                                 Text(current.riderName ?? 'Assigning courier…',
                                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
-                                const Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
+                                Text(
+                                  current.riderName == null
+                                      ? 'Waiting for a rider'
+                                      : current.status.headingToShop
+                                          ? 'Heading to the shop'
+                                          : current.status.headingToCustomer
+                                              ? 'Order picked up · on the way to you'
+                                              : 'Delivery Partner',
+                                  style: const TextStyle(color: Brand.soft, fontSize: 12),
+                                ),
                                 const Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white)),
                               ],
                             ),

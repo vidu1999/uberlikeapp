@@ -144,11 +144,11 @@ class _ShopHomeState extends State<ShopHome> {
         final pending = mine.where((o) => o.status == OrderStatus.pending).length;
         final prep = mine.where((o) => o.status == OrderStatus.preparing).length;
         final ready = mine.where((o) => o.status == OrderStatus.ready).length;
-        final way = mine.where((o) => o.status == OrderStatus.onTheWay).length;
+        final way = mine.where((o) => o.status.inRiderJob).length;
         final list = mine.where((o) {
           if (filter == 'prep') return o.status == OrderStatus.preparing;
           if (filter == 'ready') return o.status == OrderStatus.ready;
-          if (filter == 'way') return o.status == OrderStatus.onTheWay;
+          if (filter == 'way') return o.status.inRiderJob;
           return true;
         }).toList();
         final hero = _url('/img/shop-bakery.jpg');
@@ -275,9 +275,14 @@ class _ShopHomeState extends State<ShopHome> {
         badge = 'Ready';
         bg = Brand.purple;
         break;
-      case OrderStatus.onTheWay:
-        badge = 'On the Way';
+      case OrderStatus.accepted:
+        badge = 'Rider accepted';
         bg = Brand.blue;
+        break;
+      case OrderStatus.pickedUp:
+      case OrderStatus.onTheWay:
+        badge = 'Picked up';
+        bg = Brand.teal;
         break;
       default:
         badge = o.status.label;

@@ -51,11 +51,36 @@
       const u = me();
       return !!(o && (o.riderId === u.id || (u.phone && o.riderPhone === u.phone)));
     }
+    function headingToShop(o) {
+      return o && (o.status === 'accepted' || (o.status === 'ready' && o.riderId));
+    }
+    function headingToCustomer(o) {
+      return o && (o.status === 'picked_up' || o.status === 'on_the_way');
+    }
+    function liveJob(o) {
+      return headingToShop(o) || headingToCustomer(o);
+    }
     function available() {
       return (API.orders || []).filter((o) => o.status === 'ready' && !o.riderId);
     }
     function ongoing() {
-      return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || o.status === 'on_the_way'));
+      return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || liveJob(o)));
+    }
+    function shopPos(o) {
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      return [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)];
+    }
+    function metersTo(lat, lng, to) {
+      if (lat == null || lng == null || !to) return Infinity;
+      const km = typeof haversineKm === 'function' ? haversineKm([lat, lng], to) : 99;
+      return km * 1000;
+    }
+    const CLOSE_M = 200;
+    function closeToShop(o) {
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, shopPos(o)) <= CLOSE_M;
+    }
+    function closeToCust(o) {
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, [Number(o.deliveryLat), Number(o.deliveryLng)]) <= CLOSE_M;
     }
     function done() {
       return (API.orders || []).filter((o) => isMine(o) && o.status === 'delivered');
@@ -90,9 +115,9 @@
       const from = state.liveLat != null
         ? [state.liveLat, state.liveLng]
         : (o.riderLat != null ? [Number(o.riderLat), Number(o.riderLng)] : [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)]);
-      const to = [Number(o.deliveryLat), Number(o.deliveryLng)];
+      const to = headingToShop(o) ? shopPos(o) : [Number(o.deliveryLat), Number(o.deliveryLng)];
       const km = typeof haversineKm === 'function' ? haversineKm(from, to) : 2.4;
-      return Math.max(0.2, km);
+      return Math.max(0.05, km);
     }
     function telHref(phone) {
       if (!phone) return '';
@@ -116,15 +141,11 @@
       const push = (pos) => {
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
         state.liveLat = lat; state.liveLng = lng;
+        window.QB_LIVE = { lat, lng, acc: pos.coords.accuracy };
         if (!orderId) return;
         const o = (API.orders || []).find((x) => x.id === orderId);
-        const u = me();
-        const body = { riderLat: lat, riderLng: lng };
-        if (o && o.status !== 'on_the_way' && o.status !== 'delivered') {
-          body.status = 'on_the_way';
-          body.riderId = u.id; body.riderName = u.name; body.riderPhone = u.phone;
-        }
-        API.patch(orderId, body);
+        if (!o || o.status === 'delivered') return;
+        API.patch(orderId, { riderLat: lat, riderLng: lng });
       };
       navigator.geolocation.getCurrentPosition(push, () => {}, opt);
       if (gpsWatch != null) return;
@@ -135,7 +156,8 @@
       const opt = { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 };
       const onPos = (pos) => {
         state.liveLat = pos.coords.latitude; state.liveLng = pos.coords.longitude;
-        const live = ongoing().find((o) => o.status === 'on_the_way');
+        window.QB_LIVE = { lat: state.liveLat, lng: state.liveLng, acc: pos.coords.accuracy };
+        const live = ongoing().find((o) => liveJob(o));
         if (live) API.patch(live.id, { riderLat: state.liveLat, riderLng: state.liveLng });
       };
       if (!gpsStarted) {
@@ -265,7 +287,7 @@
           <button data-tab="profile"><span class="ico">${SVG.profile}</span>Profile</button>
         </div>
         <div class="rd-sec"><h2>Available Orders</h2><button data-tab="orders">See all</button></div>
-        ${state.online ? (jobs.map((o) => jobCard(o, { accept: true })).join('') || '<div class="pad muted">No ready jobs yet. When a shop taps Food is ready, it shows here.</div>')
+        ${state.online ? (jobs.map((o) => jobCard(o, { accept: true })).join('') || '<div class="pad muted">No ready jobs yet. When a shop taps Food is ready, Accept and go to the shop first.</div>')
           : '<div class="pad muted">Go Online to see nearby orders.</div>'}
       </div>${nav()}`;
     }
@@ -287,11 +309,13 @@
     function detailsView() {
       const o = (API.orders || []).find((x) => x.id === state.orderId);
       if (!o) return homeView();
-      const st = o.status === 'on_the_way' ? 'On the way' : o.status === 'ready' ? 'Ready' : (API.statusLabel ? API.statusLabel(o.status) : o.status);
+      const st = API.statusLabel ? API.statusLabel(o.status) : o.status;
       const phone = o.customerPhone || '';
       const items = o.items || [];
       const claimed = isMine(o) || !!o.riderId;
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
       const canNav = isMine(o) && o.status !== 'delivered';
+      const navLabel = headingToCustomer(o) ? 'Navigate to customer' : 'Navigate to shop';
       return `<div class="scroll rd-details">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Order Details</h1></div>
         <div class="hero-food">
@@ -312,6 +336,11 @@
           </div>
         </div>
         <div class="rd-block">
+          <h3>Pickup</h3>
+          <b>${esc(shop.name || o.shopName || 'Shop')}</b>
+          <div class="sub">${esc(shop.address || 'Shop pin on the map')}</div>
+        </div>
+        <div class="rd-block">
           <h3>Delivery Address</h3>
           <b>${esc(o.address || 'Customer pin on the map')}</b>
         </div>
@@ -320,8 +349,8 @@
           ${items.map((it) => `<div class="rd-item"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(it.name)}</b><div class="sub">x${it.qty} · ${rs(it.price)}</div></div></div>`).join('') || '<div class="sub">No items</div>'}
         </div>
         ${!claimed && o.status === 'ready' ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">Accept</button>` : ''}
-        ${canNav && o.status !== 'on_the_way' ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate</button>` : ''}
-        ${o.status === 'on_the_way' ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">Open live map</button>` : ''}
+        ${canNav && liveJob(o) ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
+        ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
       </div>`;
     }
 
@@ -462,7 +491,7 @@
         <div id="map" class="map" style="position:absolute;inset:0"></div>
         <div class="rd-map-note">
           <b>${state.online ? 'You are online' : 'You are offline'}</b>
-          <div class="sub">${available().length} ready jobs nearby. Accept one, then Navigate to start live GPS.</div>
+          <div class="sub">${available().length} ready jobs nearby. Accept, go to the shop, confirm pickup, then deliver.</div>
         </div>
       </div>${nav()}`;
     }
@@ -588,15 +617,21 @@
         e.stopPropagation();
         const id = b.dataset.pick;
         const u = me();
-        await API.patch(id, { riderId: u.id, riderName: u.name, riderPhone: u.phone });
+        const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+        await API.patch(id, body);
+        try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
         state.orderId = id;
-        state.screen = 'details';
+        state.screen = 'live';
+        startLiveGps(id);
         render(true);
       });
       root.querySelectorAll('[data-nav]').forEach((b) => b.onclick = async () => {
         const id = b.dataset.nav;
         const u = me();
-        const body = { status: 'on_the_way', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        const o = (API.orders || []).find((x) => x.id === id);
+        const body = { riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (!o || o.status === 'ready') body.status = 'accepted';
         if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
         await API.patch(id, body);
         state.orderId = id;
@@ -604,11 +639,28 @@
         startLiveGps(id);
         render(true);
       });
+      root.querySelectorAll('[data-pickup]').forEach((b) => b.onclick = async () => {
+        const id = b.dataset.pickup;
+        const o = (API.orders || []).find((x) => x.id === id);
+        if (!o) return;
+        if (!closeToShop(o)) return;
+        const u = me();
+        await API.patch(id, { status: 'picked_up', riderId: u.id, riderName: u.name, riderPhone: u.phone, riderLat: state.liveLat, riderLng: state.liveLng });
+        try { await API.sendMessage(id, 'QuickBite', 'system', 'Order picked up. ' + (u.name || 'Rider') + ' is on the way to you.'); } catch (_) {}
+        state.orderId = id;
+        state.screen = 'live';
+        startLiveGps(id);
+        render(true);
+      });
       root.querySelectorAll('[data-drop]').forEach((b) => b.onclick = async () => {
         const id = b.dataset.drop;
+        const o = (API.orders || []).find((x) => x.id === id);
+        if (!o || !headingToCustomer(o)) return;
+        if (!closeToCust(o)) return;
         stopLiveGps();
         startRiderGps();
         await API.patch(id, { status: 'delivered' });
+        try { await API.sendMessage(id, 'QuickBite', 'system', 'Order delivered.'); } catch (_) {}
         state.orderId = id;
         state.screen = 'delivered';
         render(true);
@@ -700,7 +752,7 @@
           }
         }
         if (state.tab === 'map' && !state.screen) {
-          const live = ongoing().find((o) => o.status === 'on_the_way');
+          const live = ongoing().find((o) => liveJob(o));
           if (live) {
             state.orderId = live.id;
             state.screen = 'live';

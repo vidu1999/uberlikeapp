@@ -13,6 +13,7 @@ class TrackingMap extends StatelessWidget {
   final double? liveLat;
   final double? liveLng;
   final bool dark;
+  final bool toShop;
   const TrackingMap({
     super.key,
     required this.destLat,
@@ -24,6 +25,7 @@ class TrackingMap extends StatelessWidget {
     this.liveLat,
     this.liveLng,
     this.dark = true,
+    this.toShop = false,
   });
 
   static const green = Color(0xFF22C55E);
@@ -70,12 +72,15 @@ class TrackingMap extends StatelessWidget {
     final dest = LatLng(destLat, destLng);
     final shop = LatLng(shopLat ?? destLat + 0.012, shopLng ?? destLng - 0.01);
     final rider = (riderLat != null && riderLng != null) ? LatLng(riderLat!, riderLng!) : null;
-    final full = _curve(shop, dest);
+    final target = toShop ? shop : dest;
+    final from = rider ?? (toShop ? dest : shop);
+    final full = _curve(from, target);
     var rest = full;
     if (rider != null) {
       rest = full.sublist(_nearest(full, rider));
+      if (rest.length < 2) rest = [rider, target];
     }
-    final center = rider ?? dest;
+    final center = rider ?? target;
     return FlutterMap(
       options: MapOptions(initialCenter: center, initialZoom: 14),
       children: [

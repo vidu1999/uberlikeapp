@@ -30,12 +30,20 @@
         pending: 'Confirming',
         preparing: 'Preparing',
         ready: 'Ready for pickup',
-        on_the_way: 'On the way',
+        accepted: 'Rider accepted',
+        picked_up: 'Picked up',
+        on_the_way: 'Picked up',
         delivered: 'Delivered',
         cancelled: 'Cancelled',
       }[s] || s
     );
   }
+
+  function goingToShop(order) {
+    return !!(order && (order.status === 'accepted' || (order.status === 'ready' && order.riderId)));
+  }
+
+  const CLOSE_M = 200;
 
   function telHref(phone) {
     if (!phone) return '';
@@ -54,16 +62,47 @@
       .toUpperCase();
   }
 
+  function targetOf(order) {
+    const shop =
+      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
+    if (goingToShop(order)) {
+      return [Number(shop.lat || order.deliveryLat), Number(shop.lng || order.deliveryLng)];
+    }
+    return [Number(order.deliveryLat), Number(order.deliveryLng)];
+  }
+
   function kmLeft(order) {
     const shop =
       typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
-    const dest = [Number(order.deliveryLat), Number(order.deliveryLng)];
-    const from =
-      order.riderLat != null
+    const dest = targetOf(order);
+    const live =
+      typeof document !== 'undefined' &&
+      document.documentElement.getAttribute('data-role') === 'rider' &&
+      window.QB_LIVE &&
+      window.QB_LIVE.lat != null
+        ? window.QB_LIVE
+        : null;
+    const from = live
+      ? [Number(live.lat), Number(live.lng)]
+      : order.riderLat != null
         ? [Number(order.riderLat), Number(order.riderLng)]
         : [Number(shop.lat || dest[0]), Number(shop.lng || dest[1])];
     const km = typeof haversineKm === 'function' ? haversineKm(from, dest) : 2.3;
-    return Math.max(0.2, km);
+    return Math.max(0.05, km);
+  }
+
+  function metersLeft(order) {
+    return kmLeft(order) * 1000;
+  }
+
+  function isClose(order) {
+    const live =
+      typeof document !== 'undefined' &&
+      document.documentElement.getAttribute('data-role') === 'rider' &&
+      window.QB_LIVE &&
+      window.QB_LIVE.lat != null;
+    if (!live && (order.riderLat == null || order.riderLng == null)) return false;
+    return metersLeft(order) <= CLOSE_M;
   }
 
   function etaRange(km) {
@@ -111,9 +150,29 @@
     const p = person(order, viewer);
     const href = telHref(p.phone);
     const km = kmLeft(order);
-    const showComplete = viewer === 'rider' && order.status === 'on_the_way';
+    const toShop = goingToShop(order);
+    const picked = order.status === 'picked_up' || order.status === 'on_the_way';
+    const close = isClose(order);
+    const showPickup = viewer === 'rider' && toShop;
+    const showComplete = viewer === 'rider' && picked;
     const showDone = order.status === 'delivered' && viewer !== 'rider';
-    const title = order.status === 'delivered' ? 'Delivered' : 'Track Order';
+    const title =
+      order.status === 'delivered'
+        ? 'Delivered'
+        : viewer === 'rider' && toShop
+          ? 'To shop'
+          : viewer === 'rider' && picked
+            ? 'On the way'
+            : toShop
+              ? 'Rider accepted'
+              : picked
+                ? 'Picked up'
+                : 'Track Order';
+    const nearTxt = showPickup
+      ? (close ? 'You are at the shop — confirm pickup' : Math.round(metersLeft(order)) + ' m to shop · get closer to confirm')
+      : showComplete
+        ? (close ? 'You are at the customer — confirm delivered' : Math.round(metersLeft(order)) + ' m to customer · get closer to confirm')
+        : '';
     return `<div class="rd-screen" data-track-root="${esc(order.id)}" data-viewer="${esc(viewer)}" data-has-rider="${order.riderName ? '1' : '0'}">
       <div id="map" class="map"></div>
       <div class="rd-top">
@@ -153,7 +212,9 @@
           <a class="btn-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}">${ICO_PHONE} Call</a>
           <button class="btn-chat" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat</button>
         </div>
-        <button class="btn-drop ${showComplete ? '' : 'hidden'}" data-drop="${esc(order.id)}" type="button">Mark delivered</button>
+        <p class="rd-near ${close ? 'ok' : ''} ${nearTxt ? '' : 'hidden'}" data-near>${esc(nearTxt)}</p>
+        <button class="btn-drop ${showPickup ? '' : 'hidden'}" data-pickup="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Confirm pickup</button>
+        <button class="btn-drop ${showComplete ? '' : 'hidden'}" data-drop="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Mark delivered</button>
         <button class="btn-drop ${showDone ? '' : 'hidden'}" data-done type="button">Done</button>
       </div>
     </div>`;
@@ -176,8 +237,47 @@
     if (eta) eta.textContent = etaRange(km);
     const kmel = root.querySelector('[data-km]');
     if (kmel) kmel.textContent = km.toFixed(1) + ' km';
+    const toShop = goingToShop(order);
+    const picked = order.status === 'picked_up' || order.status === 'on_the_way';
+    const close = isClose(order);
+    const pickup = root.querySelector('[data-pickup]');
+    if (pickup) {
+      pickup.classList.toggle('hidden', !(viewer === 'rider' && toShop));
+      pickup.disabled = !close;
+    }
     const complete = root.querySelector('[data-drop]');
-    if (complete) complete.classList.toggle('hidden', !(viewer === 'rider' && order.status === 'on_the_way'));
+    if (complete) {
+      complete.classList.toggle('hidden', !(viewer === 'rider' && picked));
+      complete.disabled = !close;
+    }
+    const near = root.querySelector('[data-near]');
+    if (near) {
+      const showPickup = viewer === 'rider' && toShop;
+      const showComplete = viewer === 'rider' && picked;
+      const txt = showPickup
+        ? (close ? 'You are at the shop — confirm pickup' : Math.round(metersLeft(order)) + ' m to shop · get closer to confirm')
+        : showComplete
+          ? (close ? 'You are at the customer — confirm delivered' : Math.round(metersLeft(order)) + ' m to customer · get closer to confirm')
+          : '';
+      near.textContent = txt;
+      near.classList.toggle('hidden', !txt);
+      near.classList.toggle('ok', close && !!txt);
+    }
+    const h1 = root.querySelector('.rd-top h1');
+    if (h1) {
+      h1.textContent =
+        order.status === 'delivered'
+          ? 'Delivered'
+          : viewer === 'rider' && toShop
+            ? 'To shop'
+            : viewer === 'rider' && picked
+              ? 'On the way'
+              : toShop
+                ? 'Rider accepted'
+                : picked
+                  ? 'Picked up'
+                  : 'Track Order';
+    }
     const done = root.querySelector('[data-done]');
     if (done) done.classList.toggle('hidden', !(order.status === 'delivered' && viewer !== 'rider'));
     root.dataset.hasRider = order.riderName ? '1' : '0';

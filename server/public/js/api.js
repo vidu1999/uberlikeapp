@@ -709,11 +709,12 @@
     const cur = order || API.orders.find((o) => o.id === id);
     if (cur && sbConfigured()) {
       const next = Object.assign({}, cur, body);
-      if (body.status === 'on_the_way' && API.user && API.user.role === 'rider') {
+      if (API.user && API.user.role === 'rider' && (body.status === 'accepted' || body.status === 'picked_up' || body.status === 'on_the_way')) {
         next.riderId = next.riderId || API.user.id;
         next.riderName = next.riderName || API.user.name;
         next.riderPhone = next.riderPhone || API.user.phone;
       }
+      if (body.status === 'picked_up' || body.status === 'on_the_way') next.pickedUpAt = next.pickedUpAt || new Date().toISOString();
       if (body.status === 'delivered') next.deliveredAt = new Date().toISOString();
       next.updatedAt = new Date().toISOString();
       await sbSend('orders?id=eq.' + encodeURIComponent(id), 'PATCH', orderRow(next));
@@ -830,7 +831,9 @@
         pending: 'Pending',
         preparing: 'Preparing',
         ready: 'Ready for pickup',
-        on_the_way: 'On the way',
+        accepted: 'Rider accepted',
+        picked_up: 'Picked up',
+        on_the_way: 'Picked up',
         delivered: 'Delivered',
         cancelled: 'Cancelled',
       }[s] || s

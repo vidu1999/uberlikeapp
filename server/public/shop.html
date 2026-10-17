@@ -102,7 +102,8 @@
     function badgeText(o) {
       if (o.status === 'pending') return 'New';
       if (o.status === 'ready') return 'Ready';
-      if (o.status === 'on_the_way') return 'On the Way';
+      if (o.status === 'accepted') return 'Rider accepted';
+      if (o.status === 'picked_up' || o.status === 'on_the_way') return 'Picked up';
       return API.statusLabel(o.status);
     }
     const SVG = {
@@ -258,7 +259,7 @@
             ${o.status==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
               <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
             ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
-            ${o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
+            ${o.status==='accepted' || o.status==='picked_up' || o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
           </div>
         </div>
         <span class="badge ${o.status}">${esc(badgeText(o))}</span>
@@ -269,11 +270,11 @@
       const pending = orders.filter((o) => o.status === 'pending').length;
       const preparing = orders.filter((o) => o.status === 'preparing').length;
       const ready = orders.filter((o) => o.status === 'ready').length;
-      const onway = orders.filter((o) => o.status === 'on_the_way').length;
+      const onway = orders.filter((o) => o.status === 'accepted' || o.status === 'picked_up' || o.status === 'on_the_way').length;
       const list = orders.filter((o) => {
         if (state.filter === 'prep') return o.status === 'preparing';
         if (state.filter === 'ready') return o.status === 'ready';
-        if (state.filter === 'way') return o.status === 'on_the_way';
+        if (state.filter === 'way') return o.status === 'accepted' || o.status === 'picked_up' || o.status === 'on_the_way';
         return true;
       });
       return `<div class="scroll">
@@ -380,10 +381,12 @@
         ['pending', 'Order Placed'],
         ['preparing', 'Preparing'],
         ['ready', 'Ready'],
-        ['on_the_way', 'On the Way'],
+        ['accepted', 'Rider accepted'],
+        ['picked_up', 'Picked up'],
         ['delivered', 'Delivered'],
       ];
-      const idx = Math.max(0, steps.findIndex((s) => s[0] === st));
+      const norm = st === 'on_the_way' ? 'picked_up' : st;
+      const idx = Math.max(0, steps.findIndex((s) => s[0] === norm));
       return `<div class="scroll ol-page">
         <div class="ol-head"><button class="back" type="button" data-close-order>←</button><h1>Order Details</h1></div>
         <div class="ol-card">
@@ -409,6 +412,11 @@
           <div class="grow"><b>${esc(o.customerName || 'Customer')}</b><div class="sub">${esc(phone || 'WhatsApp customer')}</div></div>
           ${phone ? `<a class="call" href="tel:${esc(phone)}">Call</a>` : ''}
         </div>
+        ${o.riderName ? `<div class="ol-cust">
+          <img src="/img/avatar-rider.jpg" alt="" />
+          <div class="grow"><b>${esc(o.riderName)}</b><div class="sub">Delivery partner${o.riderPhone ? ' · ' + esc(o.riderPhone) : ''}${st==='accepted' ? ' · heading to shop' : (st==='picked_up' || st==='on_the_way' ? ' · order picked up' : '')}</div></div>
+          ${o.riderPhone ? `<a class="call" href="tel:${esc(o.riderPhone)}">Call</a>` : ''}
+        </div>` : '<div class="pad muted">Waiting for a rider to accept.</div>'}
         <div class="pad" style="display:flex;gap:8px;flex-wrap:wrap">
           ${st==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
             <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}

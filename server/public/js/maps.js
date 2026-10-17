@@ -114,6 +114,17 @@
     return { dest, shopPos, rider };
   }
 
+  function goingToShop(order) {
+    return !!(order && (order.status === 'accepted' || (order.status === 'ready' && order.riderId)));
+  }
+
+  function routeEnds(order, pos) {
+    if (goingToShop(order)) {
+      return { from: pos.rider || pos.dest, to: pos.shopPos };
+    }
+    return { from: pos.rider || pos.shopPos, to: pos.dest };
+  }
+
   function drawRoutes(map, layers, shopPos, dest, rider) {
     const full = curvePoints(shopPos, dest);
     let done = [];
@@ -156,15 +167,18 @@
 
   function tipHtml(order) {
     const pos = positions(order);
-    const from = pos.rider || pos.shopPos;
-    const km = haversineKm(from, pos.dest);
-    const left = Math.max(0.2, km).toFixed(1);
+    const ends = routeEnds(order, pos);
+    const from = pos.rider || ends.from;
+    const km = haversineKm(from, ends.to);
+    const left = Math.max(0.05, km).toFixed(1);
     const label =
       order.status === 'delivered'
         ? 'Delivered'
-        : order.status === 'on_the_way'
-          ? 'On the way'
-          : 'Heading out';
+        : goingToShop(order)
+          ? 'To shop'
+          : order.status === 'picked_up' || order.status === 'on_the_way'
+            ? 'Picked up'
+            : 'Heading out';
     return `<b>${label}</b><br>${left} km left`;
   }
 
@@ -194,7 +208,8 @@
     }
     let riderMarker = null;
     const layers = { glow: null, solid: null, dash: null };
-    drawRoutes(map, layers, pos.shopPos, pos.dest, pos.rider);
+    const ends0 = routeEnds(order, pos);
+    drawRoutes(map, layers, ends0.from, ends0.to, pos.rider);
     if (pos.rider) {
       riderMarker = L.marker(pos.rider, { icon: bikeIcon() }).addTo(map);
       riderMarker.bindTooltip(tipHtml(order), {
@@ -224,7 +239,8 @@
           if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
           else liveMarker.setLatLng([live.lat, live.lng]);
         }
-        drawRoutes(map, layers, p.shopPos, destLocked, p.rider);
+        const ends = routeEnds(next, p);
+        drawRoutes(map, layers, ends.from, ends.to, p.rider);
         if (p.rider) {
           if (!riderMarker) {
             riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);

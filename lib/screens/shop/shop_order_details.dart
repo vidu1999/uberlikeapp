@@ -33,7 +33,7 @@ class ShopOrderDetails extends StatelessWidget {
             }
             final items = o.items.map((e) => '${e.name} x${e.qty}').join(', ');
             final hero = _url('/img/shop-pizza.jpg');
-            const steps = ['Order Placed', 'Preparing', 'Ready', 'On the Way', 'Delivered'];
+            const steps = ['Order Placed', 'Preparing', 'Ready', 'Rider accepted', 'Picked up', 'Delivered'];
             final idx = o.status == OrderStatus.cancelled ? 0 : o.status.step;
             return ListView(
               padding: const EdgeInsets.only(bottom: 28),
@@ -116,6 +116,39 @@ class ShopOrderDetails extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (o.riderName != null && o.riderName!.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+                    child: Row(
+                      children: [
+                        CircleAvatar(backgroundImage: _url('/img/avatar-rider.jpg') != null ? NetworkImage(_url('/img/avatar-rider.jpg')!) : null, child: const Icon(Icons.delivery_dining)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(o.riderName!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                              Text(
+                                o.status.headingToShop
+                                    ? 'Delivery partner · heading to shop'
+                                    : o.status.headingToCustomer
+                                        ? 'Delivery partner · order picked up'
+                                        : 'Delivery partner',
+                                style: const TextStyle(color: Brand.soft, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Text('Waiting for a rider to accept.', style: TextStyle(color: Brand.soft)),
+                  ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Wrap(
@@ -160,6 +193,7 @@ class ShopOrderDetails extends StatelessWidget {
                               riderLat: o.riderLat,
                               riderLng: o.riderLng,
                               dark: true,
+                              toShop: o.status.headingToShop,
                             ),
                           ),
                         ),

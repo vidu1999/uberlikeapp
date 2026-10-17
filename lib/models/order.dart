@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
 
-enum OrderStatus { pending, preparing, ready, onTheWay, delivered, cancelled }
+enum OrderStatus { pending, preparing, ready, accepted, pickedUp, onTheWay, delivered, cancelled }
 
 extension OrderStatusX on OrderStatus {
   String get apiName {
     switch (this) {
       case OrderStatus.onTheWay:
         return 'on_the_way';
+      case OrderStatus.pickedUp:
+        return 'picked_up';
       default:
         return name;
     }
   }
+
+  bool get headingToShop => this == OrderStatus.accepted;
+  bool get headingToCustomer => this == OrderStatus.pickedUp || this == OrderStatus.onTheWay;
+  bool get inRiderJob => headingToShop || headingToCustomer;
 
   String get label {
     switch (this) {
@@ -20,8 +26,11 @@ extension OrderStatusX on OrderStatus {
         return 'Preparing';
       case OrderStatus.ready:
         return 'Ready for Pickup';
+      case OrderStatus.accepted:
+        return 'Rider accepted';
+      case OrderStatus.pickedUp:
       case OrderStatus.onTheWay:
-        return 'On The Way';
+        return 'Picked up';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.cancelled:
@@ -37,6 +46,9 @@ extension OrderStatusX on OrderStatus {
         return Colors.blue;
       case OrderStatus.ready:
         return Colors.purple;
+      case OrderStatus.accepted:
+        return Colors.blue;
+      case OrderStatus.pickedUp:
       case OrderStatus.onTheWay:
         return Colors.teal;
       case OrderStatus.delivered:
@@ -54,10 +66,13 @@ extension OrderStatusX on OrderStatus {
         return 1;
       case OrderStatus.ready:
         return 2;
-      case OrderStatus.onTheWay:
+      case OrderStatus.accepted:
         return 3;
-      case OrderStatus.delivered:
+      case OrderStatus.pickedUp:
+      case OrderStatus.onTheWay:
         return 4;
+      case OrderStatus.delivered:
+        return 5;
       case OrderStatus.cancelled:
         return 0;
     }
@@ -69,9 +84,14 @@ extension OrderStatusX on OrderStatus {
         return OrderStatus.preparing;
       case 'ready':
         return OrderStatus.ready;
+      case 'accepted':
+        return OrderStatus.accepted;
+      case 'picked_up':
+      case 'pickedUp':
+        return OrderStatus.pickedUp;
       case 'on_the_way':
       case 'onTheWay':
-        return OrderStatus.onTheWay;
+        return OrderStatus.pickedUp;
       case 'delivered':
         return OrderStatus.delivered;
       case 'cancelled':

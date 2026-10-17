@@ -76,7 +76,7 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   void _pushLoc(double la, double ln) {
-    final live = OrderRepository.instance.orders.where((o) => _mine(o) && o.status == OrderStatus.onTheWay);
+    final live = OrderRepository.instance.orders.where((o) => _mine(o) && o.status.inRiderJob);
     for (final o in live) {
       OrderRepository.instance.updateRiderLocation(o.id, la, ln);
     }
@@ -92,7 +92,40 @@ class _RiderHomeState extends State<RiderHome> {
       orders.where((o) => o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)).toList();
 
   List<Order> _ongoing(List<Order> orders) =>
-      orders.where((o) => _mine(o) && (o.status == OrderStatus.ready || o.status == OrderStatus.onTheWay)).toList();
+      orders.where((o) => _mine(o) && (o.status == OrderStatus.ready || o.status.inRiderJob)).toList();
+
+  Shop? _shopOf(Order o) {
+    for (final s in Catalog.shops) {
+      if (s.id == o.shopId) return s;
+    }
+    return null;
+  }
+
+  static const closeM = 200.0;
+
+  double _metersTo(double? aLat, double? aLng, double bLat, double bLng) {
+    if (aLat == null || aLng == null) return double.infinity;
+    return UserPlace.km(aLat, aLng, bLat, bLng) * 1000;
+  }
+
+  bool _closeToShop(Order o) {
+    final s = _shopOf(o);
+    if (s?.lat == null || s?.lng == null) return lat != null;
+    return _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, s!.lat!, s.lng!) <= closeM;
+  }
+
+  bool _closeToCust(Order o) {
+    return _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, o.deliveryLat, o.deliveryLng) <= closeM;
+  }
+
+  void _needCloser(String where, Order o) {
+    final s = _shopOf(o);
+    final m = where == 'shop'
+        ? _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, s?.lat ?? o.deliveryLat, s?.lng ?? o.deliveryLng)
+        : _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, o.deliveryLat, o.deliveryLng);
+    final msg = m.isFinite ? 'Get closer to the $where (${m.round()} m left)' : 'Wait for live GPS, then get close to the $where';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   List<Order> _done(List<Order> orders) =>
       orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).toList();
@@ -106,6 +139,9 @@ class _RiderHomeState extends State<RiderHome> {
     }
     final fromLat = lat ?? o.riderLat ?? shop?.lat ?? o.deliveryLat;
     final fromLng = lng ?? o.riderLng ?? shop?.lng ?? o.deliveryLng;
+    if (o.status.headingToShop && shop?.lat != null && shop?.lng != null) {
+      return UserPlace.km(fromLat, fromLng, shop!.lat!, shop.lng!);
+    }
     return UserPlace.km(fromLat, fromLng, o.deliveryLat, o.deliveryLng);
   }
 
@@ -168,16 +204,30 @@ class _RiderHomeState extends State<RiderHome> {
 
   Future<void> _accept(Order o) async {
     await OrderRepository.instance.assignRider(o.id);
+    await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);
+    if (lat != null && lng != null) {
+      await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
+    }
+    try {
+      await OrderRepository.instance.sendMessage(
+        o.id,
+        '${OrderRepository.instance.user?.name ?? 'Rider'} accepted your order and is heading to the shop.',
+        'system',
+        'QuickBite',
+      );
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       orderId = o.id;
-      page = 'details';
+      page = 'live';
     });
   }
 
   Future<void> _navigate(Order o) async {
     await OrderRepository.instance.assignRider(o.id);
-    await OrderRepository.instance.updateStatus(o.id, OrderStatus.onTheWay);
+    if (!o.status.inRiderJob) {
+      await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);
+    }
     if (lat != null && lng != null) {
       await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
     }
@@ -188,7 +238,36 @@ class _RiderHomeState extends State<RiderHome> {
     });
   }
 
+  Future<void> _pickup(Order o) async {
+    if (!_closeToShop(o)) {
+      _needCloser('shop', o);
+      return;
+    }
+    await OrderRepository.instance.updateStatus(o.id, OrderStatus.pickedUp);
+    if (lat != null && lng != null) {
+      await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
+    }
+    try {
+      await OrderRepository.instance.sendMessage(
+        o.id,
+        'Order picked up. ${OrderRepository.instance.user?.name ?? 'Rider'} is on the way to you.',
+        'system',
+        'QuickBite',
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      orderId = o.id;
+      page = 'live';
+    });
+  }
+
   Future<void> _deliver(Order o) async {
+    if (!o.status.headingToCustomer) return;
+    if (!_closeToCust(o)) {
+      _needCloser('customer', o);
+      return;
+    }
     await OrderRepository.instance.updateStatus(o.id, OrderStatus.delivered);
     if (!mounted) return;
     setState(() {
@@ -229,7 +308,7 @@ class _RiderHomeState extends State<RiderHome> {
             } else if (tab == 1) {
               body = _orders(orders);
             } else if (tab == 2) {
-              final live = _ongoing(orders).where((o) => o.status == OrderStatus.onTheWay);
+              final live = _ongoing(orders).where((o) => o.status.inRiderJob);
               if (live.isNotEmpty) {
                 body = _live(live.first);
               } else {
@@ -345,7 +424,7 @@ class _RiderHomeState extends State<RiderHome> {
           if (!online)
             const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Go Online to see nearby orders.', style: TextStyle(color: Brand.soft)))
           else if (jobs.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('No ready jobs yet. When a shop taps Food is ready, it shows here.', style: TextStyle(color: Brand.soft)))
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('No ready jobs yet. When a shop taps Food is ready, Accept and go to the shop first.', style: TextStyle(color: Brand.soft)))
           else
             ...jobs.map((o) => _jobCard(o, accept: true)),
         ],
@@ -550,6 +629,11 @@ class _RiderHomeState extends State<RiderHome> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Pickup', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(_shopOf(o)?.name ?? o.shopName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(_shopOf(o)?.address ?? 'Shop pin on the map', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                const SizedBox(height: 12),
                 const Text('Delivery Address', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
                 Text(o.address.isEmpty ? 'Customer pin on the map' : o.address, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -579,17 +663,14 @@ class _RiderHomeState extends State<RiderHome> {
               onPressed: () => _accept(o),
               child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             ),
-          if (_mine(o) && o.status != OrderStatus.onTheWay && o.status != OrderStatus.delivered)
+          if (_mine(o) && o.status != OrderStatus.delivered)
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
               onPressed: () => _navigate(o),
-              child: const Text('Navigate', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-            ),
-          if (o.status == OrderStatus.onTheWay)
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
-              onPressed: () => setState(() => page = 'live'),
-              child: const Text('Open live map', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              child: Text(
+                o.status.headingToCustomer ? 'Navigate to customer' : 'Navigate to shop',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
             ),
         ],
       ),
@@ -617,6 +698,7 @@ class _RiderHomeState extends State<RiderHome> {
             liveLat: lat,
             liveLng: lng,
             dark: true,
+            toShop: o.status.headingToShop,
           ),
         ),
         SafeArea(
@@ -635,7 +717,7 @@ class _RiderHomeState extends State<RiderHome> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('On the way', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
+                      Text(o.status.headingToShop ? 'To shop' : 'On the way', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
                       Text('${_km(o).toStringAsFixed(1)} km left', style: const TextStyle(color: Brand.soft, fontSize: 12)),
                     ],
                   ),
@@ -680,10 +762,25 @@ class _RiderHomeState extends State<RiderHome> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                Text(
+                  o.status.headingToShop
+                      ? (_closeToShop(o) ? 'You are at the shop — confirm pickup' : 'Get close to the shop to confirm pickup')
+                      : (_closeToCust(o) ? 'You are at the customer — confirm delivered' : 'Get close to the customer to confirm delivered'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: (o.status.headingToShop ? _closeToShop(o) : _closeToCust(o)) ? Brand.green : Brand.soft,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(48)),
-                  onPressed: () => _deliver(o),
-                  child: const Text('Mark delivered', style: TextStyle(fontWeight: FontWeight.w800)),
+                  onPressed: () => o.status.headingToShop ? _pickup(o) : _deliver(o),
+                  child: Text(
+                    o.status.headingToShop ? 'Confirm pickup' : 'Mark delivered',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
                 ),
               ],
             ),
@@ -1046,7 +1143,7 @@ class _RiderHomeState extends State<RiderHome> {
             decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
             child: Text(
               online
-                  ? '${_available(orders).length} ready jobs nearby. Accept one, then Navigate to start live GPS.'
+                  ? '${_available(orders).length} ready jobs nearby. Accept, go to the shop, confirm pickup, then deliver.'
                   : 'You are offline.',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
