@@ -4,6 +4,7 @@ import '../app.dart';
 import '../config.dart';
 import '../data/repository.dart';
 import '../theme.dart';
+import '../widgets/pin_map.dart';
 import '../widgets/settings_button.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -50,6 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _name.dispose();
     _email.dispose();
     _shopName.dispose();
+    _addr.dispose();
     for (final c in _digits) {
       c.dispose();
     }
@@ -114,11 +116,27 @@ class _LoginScreenState extends State<LoginScreen> {
           });
           return;
         }
+        if (_shopLat == null || _shopLng == null) {
+          setState(() {
+            busy = false;
+            error = 'Pin your shop on the map.';
+          });
+          return;
+        }
+        if (_addr.text.trim().isEmpty) {
+          setState(() {
+            busy = false;
+            error = 'Enter the shop address.';
+          });
+          return;
+        }
         OrderRepository.instance.pendingShop = {
           'shopName': _shopName.text.trim(),
           'ownerName': _name.text.trim(),
-          'email': _email.text.trim(),
           'phone': _phone.text.trim(),
+          'address': _addr.text.trim(),
+          'lat': '$_shopLat',
+          'lng': '$_shopLng',
         };
       }
       final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
@@ -474,7 +492,15 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 10),
           _lightField(_name, 'Owner Name'),
           const SizedBox(height: 10),
-          _lightField(_email, 'Email Address', keyboard: TextInputType.emailAddress),
+          const Text('Live location', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF374151))),
+          const SizedBox(height: 6),
+          PinMap(onChanged: (lat, lng, label) {
+            _shopLat = lat;
+            _shopLng = lng;
+            if (!_addrDirty && label.isNotEmpty) _addr.text = label;
+          }),
+          const SizedBox(height: 10),
+          _lightField(_addr, 'Address', onChanged: (_) => _addrDirty = true),
           const SizedBox(height: 10),
           _lightField(_phone, 'Phone Number', keyboard: TextInputType.phone),
           if (error != null) ...[
@@ -508,7 +534,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard}) {
+  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard, ValueChanged<String>? onChanged}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -517,6 +543,7 @@ class _LoginScreenState extends State<LoginScreen> {
         TextField(
           controller: c,
           keyboardType: keyboard,
+          onChanged: onChanged,
           decoration: InputDecoration(
             hintText: label,
             filled: true,

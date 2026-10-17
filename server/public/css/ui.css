@@ -454,6 +454,18 @@ html[data-role="shop"] .add { background: var(--g); }
 .sp-auth .foot { text-align: center; margin-top: 18px; color: #6B7280; font-size: 14px; }
 .sp-auth .foot button { border: 0; background: 0; color: #00C853; font-weight: 800; cursor: pointer; }
 .sp-auth .err { color: #b91c1c; min-height: 18px; font-size: 13px; margin-top: 8px; }
+.sp-map-wrap { position: relative; margin: 6px 0 8px; }
+.sp-map {
+  height: 200px; border-radius: 16px; overflow: hidden;
+  border: 1px solid #E5E7EB; background: #F3F4F6;
+}
+.sp-map-wrap .sp-live {
+  position: absolute; right: 10px; bottom: 10px; z-index: 500;
+  width: 40px; height: 40px; border: 0; border-radius: 50%;
+  background: #fff; color: #1A73E8; font-size: 18px; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+}
+.sp-map-meta { font-size: 12px; color: #1A73E8; font-weight: 700; margin: 0 0 10px; }
 
 .sp-prof { background: var(--navy); color: #fff; min-height: 100%; }
 .sp-prof-hero { height: 168px; position: relative; overflow: hidden; }

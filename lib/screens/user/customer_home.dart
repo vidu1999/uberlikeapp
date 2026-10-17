@@ -64,8 +64,17 @@ class _CustomerHomeState extends State<CustomerHome> {
       final q = query.toLowerCase();
       list = list.where((s) => s.name.toLowerCase().contains(q) || s.category.toLowerCase().contains(q)).toList();
     }
-    return list;
+    final p = UserPlace.instance;
+    final next = list.toList()
+      ..sort((a, b) {
+        final da = UserPlace.km(p.lat, p.lng, a.lat ?? p.lat, a.lng ?? p.lng);
+        final db = UserPlace.km(p.lat, p.lng, b.lat ?? p.lat, b.lng ?? p.lng);
+        return da.compareTo(db);
+      });
+    return next;
   }
+
+  String _km(Shop s) => UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, s.lat, s.lng, s.km);
 
   Widget _photo(String? path, {double w = 72, double h = 72, double r = 16}) {
     final url = _url(path);
@@ -87,7 +96,10 @@ class _CustomerHomeState extends State<CustomerHome> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: Catalog.version,
-      builder: (context, _, __) => _buildHome(context),
+      builder: (context, _, __) => ValueListenableBuilder<int>(
+        valueListenable: UserPlace.instance.liveNotifier,
+        builder: (context, _, __) => _buildHome(context),
+      ),
     );
   }
 
@@ -296,7 +308,7 @@ class _CustomerHomeState extends State<CustomerHome> {
             ),
           ..._shops.map((s) {
             final liked = favs.contains(s.id);
-            final km = s.km ?? 2.5;
+            final km = _km(s);
             final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews == 0 ? '120+' : s.reviews}';
             return ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

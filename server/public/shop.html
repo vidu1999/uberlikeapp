@@ -24,7 +24,8 @@
       tab: 'account', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
       itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
-      reg: { shopName: 'Kandy Bakers', ownerName: 'Nimal Perera', email: 'shop@example.com', phone: '0772223333' },
+      reg: { shopName: 'Kandy Bakers', ownerName: 'Nimal Perera', phone: '0772223333', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
+      regMap: null,
       loginId: '0772223333',
     };
     const FOOD_IMGS = [
@@ -136,8 +137,83 @@
         <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
       </div>`;
     }
+    function killRegMap() {
+      if (state.regMap) { try { state.regMap.destroy(); } catch (_) {} state.regMap = null; }
+    }
+    function startShopGps() {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 };
+      const onFix = async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        const acc = Number(pos.coords.accuracy || 999);
+        if (state.reg.acc != null && state.reg.acc <= 12 && acc > 40) return;
+        state.reg.liveLat = lat; state.reg.liveLng = lng; state.reg.acc = acc;
+        if (state.regMap && state.regMap.setLive) state.regMap.setLive(lat, lng, acc);
+        if (!state.reg.custom) {
+          state.reg.lat = lat; state.reg.lng = lng;
+          if (state.regMap && state.regMap.goLive) state.regMap.goLive(lat, lng, 18);
+          if (!state.reg.addrDirty && typeof reversePlace === 'function') {
+            const label = await reversePlace(lat, lng);
+            if (!state.reg.custom && !state.reg.addrDirty) {
+              state.reg.address = label;
+              const inp = document.getElementById('regAddr');
+              if (inp && document.activeElement !== inp) inp.value = label;
+            }
+          }
+        }
+        const accEl = document.querySelector('[data-reg-acc]');
+        if (accEl) accEl.textContent = 'Live GPS ±' + Math.max(1, Math.round(acc)) + ' m · drag the pin';
+      };
+      navigator.geolocation.getCurrentPosition(onFix, () => {
+        const accEl = document.querySelector('[data-reg-acc]');
+        if (accEl) accEl.textContent = 'Allow location, then drag the pin';
+      }, opt);
+      if (!startShopGps._on) {
+        startShopGps._on = true;
+        navigator.geolocation.watchPosition(onFix, () => {}, opt);
+      }
+    }
+    function bindRegMap() {
+      const el = document.getElementById('regMap');
+      if (!el || typeof mountLocationPicker !== 'function') return;
+      killRegMap();
+      state.regMap = mountLocationPicker(el, {
+        lat: state.reg.lat,
+        lng: state.reg.lng,
+        liveLat: state.reg.liveLat,
+        liveLng: state.reg.liveLng,
+      });
+      if (state.regMap && state.regMap.onMoveEnd) {
+        state.regMap.onMoveEnd(async (lat, lng) => {
+          state.reg.custom = true;
+          state.reg.lat = lat;
+          state.reg.lng = lng;
+          if (state.reg.addrDirty) return;
+          const label = typeof reversePlace === 'function' ? await reversePlace(lat, lng) : (lat.toFixed(5) + ', ' + lng.toFixed(5));
+          state.reg.address = label;
+          const inp = document.getElementById('regAddr');
+          if (inp && document.activeElement !== inp) inp.value = label;
+        });
+      }
+      const liveBtn = document.querySelector('[data-reg-live]');
+      if (liveBtn) liveBtn.onclick = () => {
+        if (state.reg.liveLat == null) { startShopGps(); return; }
+        state.reg.custom = false;
+        if (state.regMap && state.regMap.goLive) state.regMap.goLive(state.reg.liveLat, state.reg.liveLng, 18);
+        state.reg.lat = state.reg.liveLat; state.reg.lng = state.reg.liveLng;
+        if (!state.reg.addrDirty && typeof reversePlace === 'function') {
+          reversePlace(state.reg.liveLat, state.reg.liveLng).then((label) => {
+            state.reg.address = label;
+            const inp = document.getElementById('regAddr');
+            if (inp) inp.value = label;
+          });
+        }
+      };
+      startShopGps();
+    }
     function registerView() {
       const r = state.reg;
+      const acc = r.acc != null ? ('Live GPS ±' + Math.max(1, Math.round(r.acc)) + ' m · drag the pin') : 'Allow location, then drag the pin';
       return `<div class="sp-auth" data-shop-auth="register">
         <div class="sp-mark">🏪</div>
         <h1>Create Your Shop Account</h1>
@@ -146,8 +222,11 @@
         <input id="regShop" placeholder="e.g. Kandy Bakers" value="${esc(r.shopName)}" />
         <label>Owner Name</label>
         <input id="regOwner" placeholder="e.g. Nimal Perera" value="${esc(r.ownerName)}" />
-        <label>Email Address</label>
-        <input id="regEmail" placeholder="e.g. shop@example.com" value="${esc(r.email)}" />
+        <label>Live location</label>
+        <div class="sp-map-wrap"><div id="regMap" class="sp-map"></div><button type="button" class="sp-live" data-reg-live title="Live location">◎</button></div>
+        <p class="sp-map-meta" data-reg-acc>${esc(acc)}</p>
+        <label>Address</label>
+        <input id="regAddr" placeholder="Street, city" value="${esc(r.address)}" />
         <label>Phone Number</label>
         <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" />
         <p class="err" data-err></p>
@@ -425,11 +504,14 @@
       if (!API.user) {
         if (keep && root.querySelector('[data-shop-auth], [data-otp-root]')) return;
         if (state.auth === 'register') {
+          killRegMap();
           root.innerHTML = registerView();
           bindAuth();
+          bindRegMap();
           return;
         }
         if (state.auth === 'otp') {
+          killRegMap();
           root.innerHTML = otpView();
           OtpLogin.bind({ role: 'shop', onReady: () => { state.auth = 'login'; state.tab = 'account'; render(); } });
           const pi = document.getElementById('phone');
@@ -447,10 +529,12 @@
           };
           return;
         }
+        killRegMap();
         root.innerHTML = loginView();
         bindAuth();
         return;
       }
+      killRegMap();
       if (state.trackId) {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (!o || o.status === 'cancelled') { state.trackId = null; }
@@ -494,7 +578,15 @@
       const goReg = root.querySelector('[data-go-reg]');
       if (goReg) goReg.onclick = () => { state.auth = 'register'; render(); };
       const goLogin = root.querySelector('[data-go-login]');
-      if (goLogin) goLogin.onclick = () => { state.auth = 'login'; render(); };
+      if (goLogin) goLogin.onclick = () => { killRegMap(); state.auth = 'login'; render(); };
+      const addr = document.getElementById('regAddr');
+      if (addr) addr.oninput = () => { state.reg.addrDirty = true; state.reg.address = addr.value; };
+      const rs = document.getElementById('regShop');
+      if (rs) rs.oninput = () => { state.reg.shopName = rs.value; };
+      const ro = document.getElementById('regOwner');
+      if (ro) ro.oninput = () => { state.reg.ownerName = ro.value; };
+      const rp = document.getElementById('regPhone');
+      if (rp) rp.oninput = () => { state.reg.phone = rp.value; };
       root.querySelectorAll('[data-shop-login]').forEach((b) => {
         b.onclick = async () => {
           const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
@@ -531,15 +623,23 @@
       });
       const regBtn = root.querySelector('[data-shop-register]');
       if (regBtn) regBtn.onclick = async () => {
-        state.reg = {
-          shopName: (document.getElementById('regShop') || {}).value || '',
-          ownerName: (document.getElementById('regOwner') || {}).value || '',
-          email: (document.getElementById('regEmail') || {}).value || '',
-          phone: (document.getElementById('regPhone') || {}).value || '',
-        };
+        const pin = (state.regMap && state.regMap.getCenter) ? state.regMap.getCenter() : null;
+        if (pin) { state.reg.lat = pin.lat; state.reg.lng = pin.lng; }
+        state.reg.shopName = (document.getElementById('regShop') || {}).value || '';
+        state.reg.ownerName = (document.getElementById('regOwner') || {}).value || '';
+        state.reg.phone = (document.getElementById('regPhone') || {}).value || '';
+        state.reg.address = (document.getElementById('regAddr') || {}).value || state.reg.address || '';
         if (err) err.textContent = '';
         if (!state.reg.shopName.trim() || !state.reg.ownerName.trim() || !state.reg.phone.trim()) {
           if (err) err.textContent = 'Enter shop name, owner name, and phone.';
+          return;
+        }
+        if (state.reg.lat == null || state.reg.lng == null) {
+          if (err) err.textContent = 'Pin your shop on the map.';
+          return;
+        }
+        if (!String(state.reg.address || '').trim()) {
+          if (err) err.textContent = 'Enter the shop address.';
           return;
         }
         regBtn.disabled = true;
@@ -547,7 +647,14 @@
         try {
           const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
           state.loginId = phone;
-          API.setPendingShop({ shopName: state.reg.shopName.trim(), ownerName: state.reg.ownerName.trim(), email: state.reg.email.trim(), phone });
+          API.setPendingShop({
+            shopName: state.reg.shopName.trim(),
+            ownerName: state.reg.ownerName.trim(),
+            phone,
+            address: String(state.reg.address).trim(),
+            lat: state.reg.lat,
+            lng: state.reg.lng,
+          });
           state.fromReg = true;
           await API.sendOtp('shop', phone);
           state.auth = 'otp';

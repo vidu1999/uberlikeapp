@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -26,6 +27,26 @@ class UserPlace {
   bool _starting = false;
 
   bool get hasLive => liveLat != null;
+
+  static double km(double lat1, double lng1, double lat2, double lng2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLng = (lng2 - lng1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) * math.sin(dLng / 2) * math.sin(dLng / 2);
+    final c = 2 * math.asin(math.sqrt(a.clamp(0, 1)));
+    return r * c;
+  }
+
+  static String kmLabel(double lat1, double lng1, double? lat2, double? lng2, [double? fallback]) {
+    if (lat2 == null || lng2 == null) {
+      final f = fallback ?? 2.5;
+      return f < 10 ? f.toStringAsFixed(1) : f.toStringAsFixed(0);
+    }
+    final k = km(lat1, lng1, lat2, lng2);
+    if (k < 0.1) return '0.1';
+    return k < 10 ? k.toStringAsFixed(1) : k.toStringAsFixed(0);
+  }
 
   static const _settings = LocationSettings(
     accuracy: LocationAccuracy.bestForNavigation,

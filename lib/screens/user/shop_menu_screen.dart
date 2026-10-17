@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../config.dart';
+import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../models/shop.dart';
 import '../../theme.dart';
@@ -59,9 +60,18 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
                     left: 16,
                     bottom: 16,
                     right: 16,
-                    child: Text(
-                      widget.shop.name,
-                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.shop.name,
+                          style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
+                        ),
+                        Text(
+                          '★ ${widget.shop.rating} · ${UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, widget.shop.lat, widget.shop.lng, widget.shop.km)} km',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
+                        ),
+                      ],
                     ),
                   ),
                 ],

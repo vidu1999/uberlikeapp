@@ -220,6 +220,15 @@
       if (!cartCount() || ['cart','checkout','track','chat','done'].includes(state.screen) || state.tab==='cart') return '';
       return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${rs(cartTotal())}</span></div>`;
     }
+    function distKm(s) {
+      const la = state.loc && state.loc.lat, ln = state.loc && state.loc.lng;
+      if (s.lat == null || s.lng == null || la == null || ln == null || typeof haversineKm !== 'function') {
+        const k = Number(s.km != null ? s.km : 2.5);
+        return Math.max(0.1, Math.round(k * 10) / 10);
+      }
+      const k = haversineKm([Number(la), Number(ln)], [Number(s.lat), Number(s.lng)]);
+      return Math.max(0.1, Math.round(k * 10) / 10);
+    }
     function filteredShops() {
       const q = state.query.toLowerCase();
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
@@ -227,11 +236,11 @@
       if (cat.id !== 'All') {
         shops = shops.filter((s) => s.category === cat.map || s.category === cat.id || (cat.id === 'Beverages' && (s.category === 'Coffee' || s.category === 'Beverages')));
       }
-      return shops;
+      return shops.slice().sort((a, b) => distKm(a) - distKm(b));
     }
     function shopRow(s) {
       const liked = state.favs.includes(s.id);
-      const km = s.km != null ? s.km : 2.5;
+      const km = distKm(s);
       const rev = s.reviews >= 100 ? s.reviews + '+' : (s.reviews || 0);
       return `<div class="shop-row" data-shop="${s.id}">
         <img class="thumb" src="${shopImg(s)}" alt="" />
@@ -418,7 +427,7 @@
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
           <div class="overlay">
             <h1>${esc(shop.name)}</h1>
-            <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${shop.km || 2.5} km</div>
+            <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${distKm(shop)} km</div>
             <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
           </div>
         </div>
