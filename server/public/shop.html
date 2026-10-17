@@ -34,6 +34,7 @@
     ];
     function shopId() {
       if (API.user && API.user.shopId) return API.user.shopId;
+      if (API.user && API.user.phone && API.shopIdFor) return API.shopIdFor(API.user.phone);
       return '';
     }
     function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }

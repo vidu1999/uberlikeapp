@@ -49,17 +49,25 @@ class _ShopItemEditState extends State<ShopItemEdit> {
       saving = true;
       err = null;
     });
-    await OrderRepository.instance.saveItem(
-      id: widget.item?.id,
-      name: _name.text.trim(),
-      price: double.tryParse(_price.text) ?? 0,
-      category: _cat,
-      desc: _desc.text.trim(),
-      image: _image,
-      shopId: widget.item?.shopId ?? OrderRepository.instance.user?.shopId ?? '',
-    );
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    try {
+      await OrderRepository.instance.saveItem(
+        id: widget.item?.id,
+        name: _name.text.trim(),
+        price: double.tryParse(_price.text) ?? 0,
+        category: _cat,
+        desc: _desc.text.trim(),
+        image: _image,
+        shopId: widget.item?.shopId ?? OrderRepository.instance.user?.shopId ?? '',
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        err = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override

@@ -212,6 +212,10 @@
     return text ? JSON.parse(text) : null;
   }
 
+  async function sbUpsert(table, rows) {
+    return sbSend(table + '?on_conflict=id', 'POST', rows);
+  }
+
   function mapAccount(r) {
     const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
     if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
@@ -417,24 +421,67 @@
     clearAccCache();
   }
 
-  async function wipeTestNumber() {
-    if (API._phoneWiped || !sbConfigured()) return;
-    API._phoneWiped = true;
-    let force = '';
-    try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
-    const target = force || '0711789229';
-    const stamp = 'wipe_shop_role_' + phoneKey(target);
-    if (!force) {
+  function attachShopIdentity(user) {
+    if (!user || !sameRole(user.role, 'shop')) return user;
+    let sid = user.shopId || user.shop_id || '';
+    if (!sid && user.phone) sid = shopIdFor(user.phone);
+    if (sid) {
+      user.shopId = sid;
+      user.shop_id = sid;
+    }
+    return user;
+  }
+
+  async function ensureShopRow(user) {
+    user = attachShopIdentity(user);
+    if (!user || !sameRole(user.role, 'shop')) return user;
+    const sid = user.shopId;
+    if (!sid) throw new Error('Shop is not linked to this account.');
+    if (user.id && sbConfigured()) {
+      try { await sbSend('accounts?id=eq.' + encodeURIComponent(user.id), 'PATCH', { shop_id: sid }); } catch (_) {}
+    }
+    let shop = null;
+    if (sbConfigured()) {
       try {
-        const rows = await sbGet('app_state?id=eq.' + encodeURIComponent(stamp) + '&select=id');
-        if (rows && rows.length) return;
+        const rows = await sbGet('shops?id=eq.' + encodeURIComponent(sid) + '&select=*');
+        if (rows && rows[0]) shop = rows[0];
       } catch (_) {}
     }
-    await wipeShopRole(target);
-    try { await sbSend('app_state?id=eq.' + encodeURIComponent(stamp), 'DELETE'); } catch (_) {}
-    try {
-      await sbSend('app_state', 'POST', [{ id: stamp, payload: { phone: normalizePhone(target), role: 'shop', at: new Date().toISOString() } }]);
-    } catch (_) {}
+    if (!shop) {
+      const rec = (user.phone && API.recallShopProfile(user.phone)) || {};
+      shop = {
+        id: sid,
+        name: rec.shopName || user.shopName || user.name || 'My Shop',
+        category: 'Bakery',
+        rating: 5,
+        reviews: 0,
+        is_open: true,
+        lat: Number(rec.lat) || 8.335,
+        lng: Number(rec.lng) || 80.4108,
+        km: 0,
+        eta: '20–35 min',
+        fee: 200,
+        hours: '08:00 AM – 10:00 PM',
+        address: rec.address || '',
+        image: '/img/shop-bakery.jpg',
+        promo: rec.promo || '',
+      };
+      if (sbConfigured()) await sbUpsert('shops', [shop]);
+    }
+    const mapped = mapShop(shop);
+    const i = API.shops.findIndex((s) => s.id === sid);
+    if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
+    else API.shops.push(mapped);
+    if (mapped.name) user.shopName = mapped.name;
+    return user;
+  }
+
+  async function wipeTestNumber() {
+    let force = '';
+    try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
+    if (!force || API._phoneWiped || !sbConfigured()) return;
+    API._phoneWiped = true;
+    await wipeShopRole(force);
   }
 
   async function wipeDemo() {
@@ -528,6 +575,9 @@
   async function pullSupabase() {
     await wipeTestNumber();
     await wipeDemo();
+    if (API.user && sameRole(API.user.role, 'shop')) {
+      try { API.user = await ensureShopRow(API.user); } catch (_) {}
+    }
     const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
       sbGet('shops?select=*&order=id.asc'),
       sbGet('menu_items?select=*&order=id.asc'),
@@ -790,6 +840,9 @@
     }
     API.user = mapAccount(row);
     if (row.shopName) API.user.shopName = row.shopName;
+    if (role === 'shop') {
+      try { API.user = await ensureShopRow(API.user); } catch (_) { API.user = attachShopIdentity(API.user); }
+    }
     if (API.user && API.user.shopId) {
       const s = API.shops.find((x) => x.id === API.user.shopId);
       if (s && s.name) API.user.shopName = s.name;
@@ -808,6 +861,7 @@
   }
 
   API.normalizePhone = normalizePhone;
+  API.shopIdFor = shopIdFor;
 
   API.sendOtp = async function (role, phone) {
     phone = normalizePhone(phone);
@@ -968,6 +1022,7 @@
         } catch (_) {}
         return;
       }
+      if (API.user && sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
       if (API.user) saveSession();
     } catch (_) {}
   };
@@ -1089,44 +1144,59 @@
   };
 
   API.saveShop = async function (shop) {
-    const id = shop.id;
-    if (!id) throw new Error('Missing shop');
-    const row = {
-      name: shop.name,
-      category: shop.category || 'Bakery',
-      hours: shop.hours || '08:00 AM – 10:00 PM',
-      address: shop.address || '',
-      image: shop.image || '/img/shop-bakery.jpg',
-      promo: shop.promo || shop.about || '',
-      is_open: shop.isOpen !== false,
-    };
-    if (sbConfigured()) {
-      await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', row);
+    if (API.user && sameRole(API.user.role, 'shop')) {
+      try { API.user = await ensureShopRow(API.user); } catch (_) {}
     }
-    const mapped = mapShop(Object.assign({}, shop, row, { id, is_open: row.is_open }));
+    const id = shop.id || (API.user && API.user.shopId) || (API.user && API.user.phone ? shopIdFor(API.user.phone) : '');
+    if (!id) throw new Error('Missing shop');
+    const prev = API.shops.find((s) => s.id === id) || {};
+    const row = {
+      id,
+      name: shop.name || prev.name || 'My Shop',
+      category: shop.category || prev.category || 'Bakery',
+      rating: prev.rating || 5,
+      reviews: prev.reviews || 0,
+      is_open: shop.isOpen !== false,
+      lat: prev.lat != null ? prev.lat : 8.335,
+      lng: prev.lng != null ? prev.lng : 80.4108,
+      km: prev.km || 0,
+      eta: prev.eta || '20–35 min',
+      fee: prev.fee || 200,
+      hours: shop.hours || prev.hours || '08:00 AM – 10:00 PM',
+      address: shop.address || prev.address || '',
+      image: shop.image || prev.image || '/img/shop-bakery.jpg',
+      promo: shop.promo || shop.about || prev.promo || '',
+    };
+    if (sbConfigured()) await sbUpsert('shops', [row]);
+    const mapped = mapShop(row);
     const i = API.shops.findIndex((s) => s.id === id);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
     else API.shops.push(mapped);
+    if (API.user && sameRole(API.user.role, 'shop')) API.user.shopName = mapped.name;
     notify(true);
     try { await API.refresh(); } catch (_) {}
     return mapped;
   };
 
   API.saveItem = async function (item) {
-    const id = item.id || ('ITM_' + Date.now().toString(36));
+    if (API.user && sameRole(API.user.role, 'shop')) {
+      API.user = await ensureShopRow(API.user);
+    }
+    const sid = item.shopId || item.shop_id || (API.user && API.user.shopId) || '';
+    if (!sid) throw new Error('Shop is not in the database. Register the shop, then add items.');
+    if (!String(item.name || '').trim()) throw new Error('Enter an item name.');
+    const id = item.id || ('ITM_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     const row = {
       id,
-      shop_id: item.shopId || item.shop_id || (API.user && API.user.shopId) || '',
-      name: item.name,
+      shop_id: sid,
+      name: String(item.name).trim(),
       category: item.category || 'Food',
       price: Number(item.price || 0),
       is_available: item.isAvailable !== false,
       description: item.desc || item.description || '',
-      image: item.image || '',
+      image: item.image || '/img/shop-bakery.jpg',
     };
-    if (sbConfigured()) {
-      await sbSend('menu_items', 'POST', [row]);
-    }
+    if (sbConfigured()) await sbUpsert('menu_items', [row]);
     const mapped = mapItem(row);
     const i = API.items.findIndex((x) => x.id === id);
     if (i >= 0) API.items[i] = mapped;
@@ -1203,7 +1273,6 @@
   } catch (_) {}
 
   API.restore();
-  dropLocalShop('0711789229');
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');
     if (w) dropLocalShop(w);

@@ -56,17 +56,25 @@ class _ShopEditProfileState extends State<ShopEditProfile> {
       saving = true;
       err = null;
     });
-    await OrderRepository.instance.saveShop(
-      id: widget.shop.id,
-      name: _name.text.trim(),
-      category: _cat.text.trim().isEmpty ? 'Bakery' : _cat.text.trim(),
-      hours: _hours.text.trim(),
-      about: _about.text.trim(),
-      image: _image,
-      isOpen: widget.shop.isOpen,
-    );
-    if (!mounted) return;
-    Navigator.pop(context, true);
+    try {
+      await OrderRepository.instance.saveShop(
+        id: widget.shop.id,
+        name: _name.text.trim(),
+        category: _cat.text.trim().isEmpty ? 'Bakery' : _cat.text.trim(),
+        hours: _hours.text.trim(),
+        about: _about.text.trim(),
+        image: _image,
+        isOpen: widget.shop.isOpen,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        err = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   @override

@@ -124,6 +124,61 @@ class OrderRepository {
   }
   String _accountIdFor(String phone, String role) => 'ACC_${_roleTag(role)}_${_phoneKey(phone)}';
   String _shopIdFor(String phone) => 'SHOP_${_phoneKey(phone)}';
+  String shopIdForPhone(String phone) => _shopIdFor(phone);
+
+  SessionUser _withShopId(SessionUser u) {
+    var sid = u.shopId;
+    if (sid == null || sid.isEmpty || sid == 'null') {
+      if (u.role == 'shop' && u.phone.isNotEmpty) sid = _shopIdFor(u.phone);
+    }
+    if (sid == u.shopId) return u;
+    return SessionUser(
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: sid,
+      shopName: u.shopName,
+    );
+  }
+
+  Future<String> _ensureShopRow() async {
+    var u = user;
+    if (u == null || u.role != 'shop') throw Exception('Not a shop account.');
+    u = _withShopId(u);
+    if (u.shopId != user?.shopId) {
+      userNotifier.value = u;
+      await _persist();
+    }
+    final sid = u.shopId ?? '';
+    if (sid.isEmpty) throw Exception('Shop is not linked to this account.');
+    try {
+      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'shop_id': sid});
+    } catch (_) {}
+    final existing = await _sbGet('shops?id=eq.$sid&select=id');
+    if (existing.isEmpty) {
+      final rec = await _recalledShop(u.phone);
+      await _sbUpsert('shops', [
+        {
+          'id': sid,
+          'name': rec?['shopName'] ?? u.shopName ?? 'My Shop',
+          'category': 'Bakery',
+          'rating': 5,
+          'reviews': 0,
+          'is_open': true,
+          'lat': double.tryParse(rec?['lat'] ?? '') ?? 8.335,
+          'lng': double.tryParse(rec?['lng'] ?? '') ?? 80.4108,
+          'hours': '08:00 AM – 10:00 PM',
+          'address': rec?['address'] ?? '',
+          'image': '/img/shop-bakery.jpg',
+          'promo': '',
+        }
+      ]);
+    }
+    return sid;
+  }
   String _roleLabel(String? role) {
     if (role == 'shop') return 'Shop';
     if (role == 'rider') return 'Rider';
@@ -323,9 +378,16 @@ class OrderRepository {
       }
       openShopProfile = createdShop;
     }
-    userNotifier.value = SessionUser.fromJson(user);
+    var session = SessionUser.fromJson(user);
+    if (role == 'shop') session = _withShopId(session);
+    userNotifier.value = session;
     connectedNotifier.value = true;
     await _persist();
+    if (role == 'shop') {
+      try {
+        await _ensureShopRow();
+      } catch (_) {}
+    }
     await refresh();
   }
 
@@ -546,7 +608,7 @@ class OrderRepository {
         return;
       }
       token = m['token']?.toString();
-      userNotifier.value = u;
+      userNotifier.value = u.role == 'shop' ? _withShopId(u) : u;
     } catch (_) {}
   }
 
@@ -621,6 +683,8 @@ class OrderRepository {
     }
   }
 
+  Future<void> _sbUpsert(String table, Object rows) => _sbWrite('$table?on_conflict=id', 'POST', rows);
+
   Future<void> _sbDelete(String path) async {
     final uri = _sb(path);
     if (uri == null) return;
@@ -658,7 +722,7 @@ class OrderRepository {
     var list = shops.where((s) => !_isDemoShop(s.id)).toList();
     final u = user;
     if (u != null && u.role == 'shop') {
-      final sid = u.shopId ?? '';
+      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
       list = list.where((s) => s.id == sid).toList();
     }
     return list;
@@ -668,7 +732,7 @@ class OrderRepository {
     var list = items.where((i) => !_isDemoShop(i.shopId)).toList();
     final u = user;
     if (u != null && u.role == 'shop') {
-      final sid = u.shopId ?? '';
+      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
       list = list.where((i) => i.shopId == sid).toList();
     }
     return list;
@@ -710,6 +774,11 @@ class OrderRepository {
   Future<bool> _refreshFromSupabase() async {
     try {
       await _wipeDemo();
+      if (user?.role == 'shop') {
+        try {
+          await _ensureShopRow();
+        } catch (_) {}
+      }
       final shopRows = await _sbGet('shops?select=*&order=id.asc');
       final itemRows = await _sbGet('menu_items?select=*&order=id.asc');
       final orderRows = await _sbGet('orders?select=*');
@@ -965,16 +1034,28 @@ class OrderRepository {
     String? image,
     bool isOpen = true,
   }) async {
-    try {
-      await _sbWrite('shops?id=eq.$id', 'PATCH', {
+    var sid = id;
+    if (sid.isEmpty || sid == 'null') sid = await _ensureShopRow();
+    Shop? prev;
+    for (final s in Catalog.shops) {
+      if (s.id == sid) prev = s;
+    }
+    await _sbUpsert('shops', [
+      {
+        'id': sid,
         'name': name,
         'category': category,
-        'hours': hours,
-        'promo': about,
-        'image': image ?? '/img/shop-bakery.jpg',
+        'rating': prev?.rating ?? 5,
+        'reviews': prev?.reviews ?? 0,
         'is_open': isOpen,
-      });
-    } catch (_) {}
+        'lat': prev?.lat ?? 8.335,
+        'lng': prev?.lng ?? 80.4108,
+        'hours': hours,
+        'address': prev?.address ?? '',
+        'image': image ?? prev?.image ?? '/img/shop-bakery.jpg',
+        'promo': about,
+      }
+    ]);
     await refresh();
   }
 
@@ -988,22 +1069,32 @@ class OrderRepository {
     bool available = true,
     String? shopId,
   }) async {
+    if (name.trim().isEmpty) throw Exception('Enter an item name.');
+    var sid = shopId ?? '';
+    if (sid.isEmpty || sid == 'SHOP_1' || sid == 'null') {
+      sid = user?.shopId ?? '';
+    }
+    if (sid.isEmpty || sid == 'SHOP_1') {
+      sid = await _ensureShopRow();
+    } else {
+      try {
+        await _ensureShopRow();
+      } catch (_) {}
+    }
+    if (sid.isEmpty) throw Exception('Shop is not in the database. Register the shop, then add items.');
     final itemId = (id != null && id.isNotEmpty) ? id : 'ITM_${DateTime.now().millisecondsSinceEpoch}';
-    final sid = shopId ?? 'SHOP_1';
-    try {
-      await _sbWrite('menu_items', 'POST', [
-        {
-          'id': itemId,
-          'shop_id': sid,
-          'name': name,
-          'category': category,
-          'price': price,
-          'is_available': available,
-          'description': desc,
-          'image': image ?? '',
-        }
-      ]);
-    } catch (_) {}
+    await _sbUpsert('menu_items', [
+      {
+        'id': itemId,
+        'shop_id': sid,
+        'name': name.trim(),
+        'category': category,
+        'price': price,
+        'is_available': available,
+        'description': desc,
+        'image': (image != null && image.isNotEmpty) ? image : '/img/shop-bakery.jpg',
+      }
+    ]);
     await refresh();
   }
 

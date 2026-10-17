@@ -34,8 +34,11 @@ class _ShopHomeState extends State<ShopHome> {
   }
 
   String get shopId {
-    final id = OrderRepository.instance.user?.shopId;
+    final u = OrderRepository.instance.user;
+    final id = u?.shopId;
     if (id != null && id.isNotEmpty && id != 'null') return id;
+    final phone = u?.phone ?? '';
+    if (phone.isNotEmpty) return OrderRepository.instance.shopIdForPhone(phone);
     return '';
   }
 
