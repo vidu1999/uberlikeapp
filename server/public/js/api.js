@@ -715,10 +715,6 @@
     if (!/^07\d{8}$/.test(phone) && !/^\d{10,15}$/.test(phone)) {
       throw new Error('Enter a valid mobile number');
     }
-    const want = role || 'customer';
-    const taken = await lookupPhone(phone, want);
-    if (taken && want === 'shop' && pendingShop()) throw alreadyThisRoleError('shop');
-    if (taken && want === 'rider' && pendingRider()) throw alreadyThisRoleError('rider');
     const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     const smsToken = 'wa_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const body = 'Your QuickBite code is ' + code + '. Don\'t share this WhatsApp message.';
@@ -786,7 +782,43 @@
     }
     if (!match) throw new Error('That code does not match this phone number.');
     API._otp = null;
-    return enterAccount(role || 'customer', phone);
+    const want = role || 'customer';
+    if (want === 'shop' || want === 'rider') {
+      const existing = await lookupPhone(phone, want);
+      if (existing) {
+        API.setPendingShop(null);
+        API.setPendingRider(null);
+        API._verified = null;
+        return enterAccount(want, phone);
+      }
+      API._verified = { role: want, phone: phone };
+      return { needsRegister: true, phone: phone, role: want };
+    }
+    return enterAccount(want, phone);
+  };
+
+  API.verifiedPhone = function (role) {
+    const v = API._verified;
+    if (!v || !sameRole(v.role, role)) return '';
+    return v.phone || '';
+  };
+
+  API.completeShopRegister = async function () {
+    const phone = API.verifiedPhone('shop');
+    if (!phone) throw new Error('Verify WhatsApp first.');
+    const p = pendingShop() || {};
+    if (!p.shopName && !p.ownerName) throw new Error('Register your shop first.');
+    const user = await enterAccount('shop', phone);
+    API._verified = null;
+    return user;
+  };
+
+  API.completeRiderRegister = async function () {
+    const phone = API.verifiedPhone('rider');
+    if (!phone) throw new Error('Verify WhatsApp first.');
+    const user = await enterAccount('rider', phone);
+    API._verified = null;
+    return user;
   };
 
   function sessionKey(role) {

@@ -118,8 +118,8 @@
       btn.disabled = true;
       btn.textContent = 'Checking…';
       try {
-        await API.verifyOtp(role, phone || document.getElementById('phone').value, code);
-        if (opts.onReady) opts.onReady();
+        const out = await API.verifyOtp(role, phone || document.getElementById('phone').value, code);
+        if (opts.onReady) opts.onReady(out);
       } catch (e) {
         err2.textContent = e.message;
         btn.disabled = false;

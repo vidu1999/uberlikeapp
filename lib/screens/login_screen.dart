@@ -100,19 +100,40 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     AppConfig.baseUrl = AppConfig.normalize(AppConfig.baseUrl);
     try {
-      if (widget.role == UserRole.shop && !register) {
-        final acc = await OrderRepository.instance.findAccount('shop', _phone.text);
-        if (!mounted) return;
-        if (acc == null) {
+      if (widget.role == UserRole.shop && register && OrderRepository.instance.needsShopRegister) {
+        if (_shopName.text.trim().isEmpty || _name.text.trim().isEmpty) {
           setState(() {
             busy = false;
-            register = true;
-            fromRegister = true;
+            error = 'Enter shop name, owner name, and phone.';
           });
           return;
         }
-        final p = acc['phone']?.toString();
-        if (p != null && p.isNotEmpty) _phone.text = p;
+        if (_shopLat == null || _shopLng == null) {
+          setState(() {
+            busy = false;
+            error = 'Pin your shop on the map.';
+          });
+          return;
+        }
+        if (_addr.text.trim().isEmpty) {
+          setState(() {
+            busy = false;
+            error = 'Enter the shop address.';
+          });
+          return;
+        }
+        OrderRepository.instance.pendingShop = {
+          'shopName': _shopName.text.trim(),
+          'ownerName': _name.text.trim(),
+          'phone': _phone.text.trim(),
+          'address': _addr.text.trim(),
+          'lat': '$_shopLat',
+          'lng': '$_shopLng',
+        };
+        await OrderRepository.instance.completeShopRegister();
+        if (!mounted) return;
+        setState(() => busy = false);
+        return;
       }
       if (widget.role == UserRole.rider && !register) {
         final acc = await OrderRepository.instance.findAccount('rider', _phone.text);
@@ -203,8 +224,25 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final ok = await OrderRepository.instance.verifyOtp(_apiRole, phoneSent, _code);
       if (!mounted) return;
+      if (!ok) {
+        setState(() {
+          busy = false;
+          error = 'That code does not match this phone number.';
+        });
+        return;
+      }
+      if (OrderRepository.instance.needsShopRegister) {
+        final p = OrderRepository.instance.verifiedPhone;
+        if (p != null && p.isNotEmpty) _phone.text = p;
+        setState(() {
+          busy = false;
+          codeStep = false;
+          register = true;
+          fromRegister = true;
+        });
+        return;
+      }
       setState(() => busy = false);
-      if (!ok) setState(() => error = 'That code does not match this phone number.');
     } catch (e) {
       if (!mounted) return;
       setState(() {

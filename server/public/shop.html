@@ -21,7 +21,7 @@
   <script src="/js/otp-login.js"></script>
   <script>
     const state = {
-      tab: 'account', filter: 'all', trackId: null, mapHandle: null,
+      tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
       itemDraft: null, shopDraft: null, auth: 'login', fromReg: false,
       reg: { shopName: '', ownerName: '', phone: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
@@ -232,7 +232,7 @@
         <label>Address</label>
         <input id="regAddr" placeholder="Street, city" value="${esc(r.address)}" />
         <label>Phone Number</label>
-        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" />
+        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" ${API.verifiedPhone && API.verifiedPhone('shop') ? 'readonly' : ''} />
         <p class="err" data-err></p>
         <button class="btn-green" type="button" data-shop-register>Register</button>
         <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
@@ -524,7 +524,25 @@
         if (state.auth === 'otp') {
           killRegMap();
           root.innerHTML = otpView();
-          OtpLogin.bind({ role: 'shop', onReady: () => { state.auth = 'login'; state.tab = 'account'; render(); } });
+          OtpLogin.bind({ role: 'shop', onReady: async (out) => {
+            if (out && out.needsRegister) {
+              try {
+                await API.completeShopRegister();
+                state.tab = 'account';
+                render();
+                return;
+              } catch (_) {
+                state.auth = 'register';
+                state.fromReg = true;
+                state.reg.phone = out.phone || state.loginId;
+                render();
+                return;
+              }
+            }
+            state.tab = 'dash';
+            state.auth = 'login';
+            render();
+          } });
           const pi = document.getElementById('phone');
           if (pi) pi.value = state.loginId;
           const phoneStep = root.querySelector('[data-step="phone"]');
@@ -609,20 +627,14 @@
           }
           b.disabled = true;
           const label = b.textContent;
-          b.textContent = 'Checking…';
+          b.textContent = 'Sending WhatsApp…';
           try {
-            const acc = await API.findAccount('shop', id);
-            if (!acc) {
-              state.auth = 'register';
-              state.reg.phone = API.normalizePhone ? API.normalizePhone(id) : id;
-              if (String(id).includes('@')) state.reg.email = id;
-              render();
-              return;
-            }
-            state.loginId = acc.phone || id;
+            const phone = API.normalizePhone ? API.normalizePhone(id) : id;
+            state.loginId = phone;
+            state.reg.phone = phone;
             API.setPendingShop(null);
             state.fromReg = false;
-            await API.sendOtp('shop', state.loginId);
+            await API.sendOtp('shop', phone);
             state.auth = 'otp';
             render();
           } catch (e) {
@@ -653,20 +665,27 @@
           if (err) err.textContent = 'Enter the shop address.';
           return;
         }
+        const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+        state.loginId = phone;
+        API.setPendingShop({
+          shopName: state.reg.shopName.trim(),
+          ownerName: state.reg.ownerName.trim(),
+          phone,
+          address: String(state.reg.address).trim(),
+          lat: state.reg.lat,
+          lng: state.reg.lng,
+        });
+        state.fromReg = true;
+        const verified = API.verifiedPhone && API.verifiedPhone('shop') === phone;
         regBtn.disabled = true;
-        regBtn.textContent = 'Sending WhatsApp…';
+        regBtn.textContent = verified ? 'Saving…' : 'Sending WhatsApp…';
         try {
-          const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
-          state.loginId = phone;
-          API.setPendingShop({
-            shopName: state.reg.shopName.trim(),
-            ownerName: state.reg.ownerName.trim(),
-            phone,
-            address: String(state.reg.address).trim(),
-            lat: state.reg.lat,
-            lng: state.reg.lng,
-          });
-          state.fromReg = true;
+          if (verified) {
+            await API.completeShopRegister();
+            state.tab = 'account';
+            render();
+            return;
+          }
           await API.sendOtp('shop', phone);
           state.auth = 'otp';
           render();

@@ -19,7 +19,7 @@ class ShopHome extends StatefulWidget {
 }
 
 class _ShopHomeState extends State<ShopHome> {
-  int tab = 3;
+  int tab = 0;
   String filter = 'all';
   String menuQ = '';
   String menuCat = 'All';

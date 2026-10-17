@@ -218,6 +218,7 @@ class OrderRepository {
         }
       } catch (_) {}
     }
+    var createdShop = false;
     if (user == null && role == 'shop') {
       final p = pendingShop;
       if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
@@ -276,6 +277,7 @@ class OrderRepository {
         'lng': '${shop['lng']}',
       });
       pendingShop = null;
+      createdShop = true;
     }
     if (user == null) {
       final pr = pendingRider;
@@ -319,7 +321,7 @@ class OrderRepository {
           if (s.id == user['shopId']) user['shopName'] = s.name;
         }
       }
-      openShopProfile = true;
+      openShopProfile = createdShop;
     }
     userNotifier.value = SessionUser.fromJson(user);
     connectedNotifier.value = true;
@@ -331,9 +333,6 @@ class OrderRepository {
     await _loadSupabaseConfig();
     phone = _normPhone(phone);
     if (phone.length < 10) throw Exception('Enter a valid mobile number');
-    final taken = await _lookupPhone(phone, role);
-    if (taken != null && role == 'shop' && pendingShop != null) _alreadyThisRole('shop');
-    if (taken != null && role == 'rider' && pendingRider != null) _alreadyThisRole('rider');
     final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
     _otpPhone = phone;
     _otpRole = role;
@@ -425,8 +424,43 @@ class OrderRepository {
       } catch (_) {}
     }
     if (!match) return false;
+    if (role == 'shop' || role == 'rider') {
+      final existing = await _lookupPhone(phone, role);
+      if (existing != null) {
+        needsShopRegister = false;
+        needsRiderRegister = false;
+        verifiedPhone = null;
+        pendingShop = null;
+        await _enterAccount(role, phone);
+        return true;
+      }
+      verifiedPhone = phone;
+      needsShopRegister = role == 'shop';
+      needsRiderRegister = role == 'rider';
+      if (role == 'shop' &&
+          pendingShop != null &&
+          ((pendingShop!['shopName'] ?? '').isNotEmpty || (pendingShop!['ownerName'] ?? '').isNotEmpty)) {
+        await _enterAccount('shop', phone);
+        needsShopRegister = false;
+        verifiedPhone = null;
+        return true;
+      }
+      return true;
+    }
     await _enterAccount(role, phone);
     return true;
+  }
+
+  bool needsShopRegister = false;
+  bool needsRiderRegister = false;
+  String? verifiedPhone;
+
+  Future<void> completeShopRegister() async {
+    final phone = verifiedPhone;
+    if (phone == null || phone.isEmpty) throw Exception('Verify WhatsApp first.');
+    await _enterAccount('shop', phone);
+    needsShopRegister = false;
+    verifiedPhone = null;
   }
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
