@@ -32,10 +32,11 @@ class ShopOrderDetails extends StatelessWidget {
             if (o == null) {
               return const Center(child: Text('Order not found'));
             }
-            final items = o.items.map((e) => '${e.name} x${e.qty}').join(', ');
+            final order = o;
+            final items = order.items.map((e) => '${e.name} x${e.qty}').join(', ');
             final hero = _url('/img/shop-pizza.jpg');
             const steps = ['Order Placed', 'Preparing', 'Ready', 'Rider accepted', 'Picked up', 'Delivered'];
-            final idx = o.status == OrderStatus.cancelled ? 0 : o.status.step;
+            final idx = order.status == OrderStatus.cancelled ? 0 : order.status.step;
             return ListView(
               padding: const EdgeInsets.only(bottom: 28),
               children: [
@@ -70,11 +71,11 @@ class ShopOrderDetails extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('#${o.id.replaceAll('_', '-')}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
+                            Text('#${order.id.replaceAll('_', '-')}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 4),
                             Text(items.isEmpty ? 'Order' : items, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
-                            Text('Rs. ${o.totalAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                            Text('Rs. ${order.totalAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                           ],
                         ),
                       ),
@@ -87,7 +88,7 @@ class ShopOrderDetails extends StatelessWidget {
                   child: Column(
                     children: [
                       for (var i = 0; i < steps.length; i++)
-                        _step(steps[i], i < idx, i == idx, i < steps.length - 1, i == 0 ? TimeOfDay.fromDateTime(o.timestamp).format(context) : null),
+                        _step(steps[i], i < idx, i == idx, i < steps.length - 1, i == 0 ? TimeOfDay.fromDateTime(order.timestamp).format(context) : null),
                     ],
                   ),
                 ),
@@ -103,12 +104,12 @@ class ShopOrderDetails extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                            Text(o.customerPhone ?? 'Customer', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                            Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            Text(order.customerPhone ?? 'Customer', style: const TextStyle(color: Brand.soft, fontSize: 12)),
                           ],
                         ),
                       ),
-                      if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
+                      if (order.customerPhone != null && order.customerPhone!.isNotEmpty)
                         FilledButton(
                           style: FilledButton.styleFrom(backgroundColor: Brand.green),
                           onPressed: () {},
@@ -117,7 +118,7 @@ class ShopOrderDetails extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (o.riderName != null && o.riderName!.isNotEmpty)
+                if (order.riderName != null && order.riderName!.isNotEmpty)
                   Container(
                     margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                     padding: const EdgeInsets.all(12),
@@ -130,11 +131,11 @@ class ShopOrderDetails extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(o.riderName!, style: const TextStyle(fontWeight: FontWeight.w800)),
+                              Text(order.riderName!, style: const TextStyle(fontWeight: FontWeight.w800)),
                               Text(
-                                o.status.headingToShop
+                                order.status.headingToShop
                                     ? 'Delivery partner · heading to shop'
-                                    : o.status.headingToCustomer
+                                    : order.status.headingToCustomer
                                         ? 'Delivery partner · order picked up'
                                         : 'Delivery partner',
                                 style: const TextStyle(color: Brand.soft, fontSize: 12),
@@ -142,15 +143,15 @@ class ShopOrderDetails extends StatelessWidget {
                             ],
                           ),
                         ),
-                        if (OrderRepository.instance.canChat(o, 'shop'))
+                        if (OrderRepository.instance.canChat(order, 'shop'))
                           IconButton.filled(
                             style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)),
                             onPressed: () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'shop')),
+                              MaterialPageRoute(builder: (_) => ChatScreen(orderId: order.id, myRole: 'shop')),
                             ),
                             icon: Badge(
-                              isLabelVisible: OrderRepository.instance.unreadCount(o.id, 'shop') > 0,
+                              isLabelVisible: OrderRepository.instance.unreadCount(order.id, 'shop') > 0,
                               smallSize: 10,
                               backgroundColor: Brand.red,
                               child: const Icon(Icons.chat_bubble, color: Brand.green),
@@ -169,21 +170,21 @@ class ShopOrderDetails extends StatelessWidget {
                   child: Wrap(
                     spacing: 8,
                     children: [
-                      if (o.status == OrderStatus.pending) ...[
+                      if (order.status == OrderStatus.pending) ...[
                         FilledButton(
                           style: FilledButton.styleFrom(backgroundColor: Brand.green),
-                          onPressed: () => OrderRepository.instance.updateStatus(o!.id, OrderStatus.preparing),
+                          onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.preparing),
                           child: const Text('Accept'),
                         ),
                         OutlinedButton(
-                          onPressed: () => OrderRepository.instance.updateStatus(o!.id, OrderStatus.cancelled),
+                          onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.cancelled),
                           child: const Text('Reject'),
                         ),
                       ],
-                      if (o.status == OrderStatus.preparing)
+                      if (order.status == OrderStatus.preparing)
                         FilledButton(
                           style: FilledButton.styleFrom(backgroundColor: Brand.green),
-                          onPressed: () => OrderRepository.instance.updateStatus(o!.id, OrderStatus.ready),
+                          onPressed: () => OrderRepository.instance.updateStatus(order.id, OrderStatus.ready),
                           child: const Text('Food is ready'),
                         ),
                     ],
@@ -204,14 +205,14 @@ class ShopOrderDetails extends StatelessWidget {
                             appBar: AppBar(
                               title: const Text('View Location'),
                               actions: [
-                                if (OrderRepository.instance.canChat(o, 'shop'))
+                                if (OrderRepository.instance.canChat(order, 'shop'))
                                   IconButton(
                                     onPressed: () => Navigator.push(
                                       context,
-                                      MaterialPageRoute(builder: (_) => ChatScreen(orderId: o!.id, myRole: 'shop')),
+                                      MaterialPageRoute(builder: (_) => ChatScreen(orderId: order.id, myRole: 'shop')),
                                     ),
                                     icon: Badge(
-                                      isLabelVisible: OrderRepository.instance.unreadCount(o!.id, 'shop') > 0,
+                                      isLabelVisible: OrderRepository.instance.unreadCount(order.id, 'shop') > 0,
                                       smallSize: 10,
                                       backgroundColor: Brand.red,
                                       child: const Icon(Icons.chat_bubble),
@@ -220,14 +221,14 @@ class ShopOrderDetails extends StatelessWidget {
                               ],
                             ),
                             body: TrackingMap(
-                              destLat: o!.deliveryLat,
-                              destLng: o.deliveryLng,
-                              riderLat: o.riderLat,
-                              riderLng: o.riderLng,
-                              shopLat: o.shopLat,
-                              shopLng: o.shopLng,
+                              destLat: order.deliveryLat,
+                              destLng: order.deliveryLng,
+                              riderLat: order.riderLat,
+                              riderLng: order.riderLng,
+                              shopLat: order.shopLat,
+                              shopLng: order.shopLng,
                               dark: true,
-                              toShop: o.status.headingToShop,
+                              toShop: order.status.headingToShop,
                             ),
                           ),
                         ),
