@@ -12,7 +12,7 @@ class AppConfig {
   );
   static String googleClientId = const String.fromEnvironment(
     'GOOGLE_CLIENT_ID',
-    defaultValue: '',
+    defaultValue: '118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com',
   );
 
   static String supabaseAnon = const String.fromEnvironment(
