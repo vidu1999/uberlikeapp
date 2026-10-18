@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Patch Flutter-generated Android project per User / Shop / Rider APK.
 import pathlib
 import re
 import shutil
