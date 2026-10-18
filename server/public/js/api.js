@@ -599,10 +599,84 @@
     return user;
   }
 
+  function clearAllLocalAuth() {
+    API.user = null;
+    API.token = null;
+    API._verified = null;
+    API._pendingShop = null;
+    API._pendingRider = null;
+    API.shops = [];
+    API.items = [];
+    API.orders = [];
+    API.messages = {};
+    try { if (typeof keptOrders !== 'undefined') keptOrders.length = 0; } catch (_) {}
+    ['customer', 'user', 'shop', 'rider'].forEach(function (role) {
+      try { sessionKeys(role).forEach(storeDel); } catch (_) {}
+      try { cookieClear(role); } catch (_) {}
+      try { storeDel(verifiedKey(role)); } catch (_) {}
+    });
+    try { storeDel('sd_pending_shop'); storeDel('sd_pending_rider'); } catch (_) {}
+    try {
+      const dump = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && /^(sd_|qb_)/.test(k)) dump.push(k);
+      }
+      dump.forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (_) {}
+        try { sessionStorage.removeItem(k); } catch (_) {}
+      });
+    } catch (_) {}
+    clearAccCache();
+  }
+
+  async function wipeAllData() {
+    if (API._wipedAll) return true;
+    let failed = 0;
+    if (sbConfigured()) {
+      const paths = [
+        'messages?order_id=not.is.null',
+        'orders?id=not.is.null',
+        'menu_items?id=not.is.null',
+        'shops?id=not.is.null',
+        'accounts?id=not.is.null',
+        'otp_codes?id=not.is.null',
+        'app_state?id=not.is.null',
+      ];
+      for (let i = 0; i < paths.length; i++) {
+        try { await sbSend(paths[i], 'DELETE'); } catch (_) { failed++; }
+      }
+    } else {
+      failed = 1;
+    }
+    if (failed) return false;
+    API._wipedAll = true;
+    clearAllLocalAuth();
+    notify(true);
+    return true;
+  }
+
   async function wipeTestNumber() {
     let force = '';
     try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
-    if (!force || API._phoneWiped || !sbConfigured()) return;
+    if (!force) return;
+    const f = String(force).trim().toLowerCase();
+    if (f === 'all' || f === '*' || f === 'reset') {
+      const ok = await wipeAllData();
+      try {
+        alert(ok
+          ? 'All User, Shop, and Rider data was deleted. Start again from WhatsApp OTP.'
+          : 'Could not fully wipe the database. Refresh this wipe link.');
+        if (ok) {
+          API._phoneWiped = true;
+          const u = new URL(location.href);
+          u.searchParams.delete('wipe');
+          history.replaceState({}, '', u.pathname + (u.search || '') + u.hash);
+        }
+      } catch (_) {}
+      return;
+    }
+    if (API._phoneWiped || !sbConfigured()) return;
     API._phoneWiped = true;
     await wipeShopRole(force);
   }
@@ -1685,7 +1759,9 @@
   API.restore();
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');
-    if (w) dropLocalShop(w);
+    if (w && /^(all|\*|reset)$/i.test(String(w).trim())) {
+      clearAllLocalAuth();
+    } else if (w) dropLocalShop(w);
   } catch (_) {}
   if (API.user) notify(true);
   API.refresh().catch(() => {});
