@@ -15,23 +15,26 @@ class LocationAllowGate extends StatefulWidget {
 
 class _LocationAllowGateState extends State<LocationAllowGate> {
   bool _busy = false;
-  bool _granted = false;
+  bool _waited = false;
 
   @override
   void initState() {
     super.initState();
     UserPlace.instance.liveNotifier.addListener(_tick);
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
+    Future<void>.delayed(const Duration(seconds: 10), () {
+      if (!mounted || UserPlace.instance.hasLive) return;
+      setState(() => _waited = true);
+    });
   }
 
   Future<void> _boot() async {
+    if (UserPlace.instance.hasLive) return;
     final perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.always || perm == LocationPermission.whileInUse) {
-      if (mounted) setState(() => _granted = true);
       await UserPlace.instance.start();
       return;
     }
-    if (UserPlace.instance.hasLive) return;
     await _ask();
   }
 
@@ -60,7 +63,7 @@ class _LocationAllowGateState extends State<LocationAllowGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (UserPlace.instance.hasLive || _granted) return widget.child;
+    if (UserPlace.instance.hasLive || _waited) return widget.child;
     final err = UserPlace.instance.error;
     return Scaffold(
       backgroundColor: Colors.white,

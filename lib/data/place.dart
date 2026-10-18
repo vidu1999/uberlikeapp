@@ -87,7 +87,7 @@ class UserPlace {
         desiredAccuracy: LocationAccuracy.bestForNavigation,
         timeLimit: const Duration(seconds: 20),
       );
-      await _apply(pos, reverse: true);
+      _apply(pos, reverse: true);
     } catch (_) {
       error = 'Waiting for GPS. Move outdoors for ~1 m accuracy.';
       liveNotifier.value++;
@@ -95,20 +95,30 @@ class UserPlace {
     _starting = false;
   }
 
-  Future<void> _apply(Position pos, {required bool reverse}) async {
+  void _apply(Position pos, {required bool reverse}) {
     final acc = pos.accuracy;
     if (accuracyM != null && accuracyM! <= 12 && acc > 40) return;
     liveLat = pos.latitude;
     liveLng = pos.longitude;
     accuracyM = acc;
-    liveNotifier.value++;
     if (!custom && !frozen) {
       lat = pos.latitude;
       lng = pos.longitude;
-      if (reverse || label == 'Finding your location…') {
-        label = await reverseGeocode(lat, lng);
-        notifier.value++;
+      if (label == 'Finding your location…' || label.isEmpty) {
+        label = 'Current location';
       }
+      notifier.value++;
+    }
+    liveNotifier.value++;
+    if (reverse) {
+      final la = lat;
+      final ln = lng;
+      reverseGeocode(la, ln).then((lb) {
+        if (!custom && !frozen && lat == la && lng == ln) {
+          label = lb;
+          notifier.value++;
+        }
+      });
     }
   }
 
@@ -132,13 +142,32 @@ class UserPlace {
   }
 
   static Future<String> reverseGeocode(double la, double ln) async {
+    final fallback = '${la.toStringAsFixed(5)}, ${ln.toStringAsFixed(5)}';
     try {
-      final r = await http.get(
-        Uri.parse('https://photon.komoot.io/reverse?lon=$ln&lat=$la'),
-      );
+      final bd = await http
+          .get(Uri.parse(
+              'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$la&longitude=$ln&localityLanguage=en'))
+          .timeout(const Duration(seconds: 3));
+      if (bd.statusCode >= 200 && bd.statusCode < 300) {
+        final j = jsonDecode(bd.body) as Map<String, dynamic>;
+        final parts = [j['locality'], j['city'], j['principalSubdivision']]
+            .where((e) => e != null && e.toString().isNotEmpty)
+            .map((e) => e.toString())
+            .toList();
+        final uniq = <String>[];
+        for (final p in parts) {
+          if (!uniq.contains(p)) uniq.add(p);
+        }
+        if (uniq.isNotEmpty) return uniq.take(2).join(', ');
+      }
+    } catch (_) {}
+    try {
+      final r = await http
+          .get(Uri.parse('https://photon.komoot.io/reverse?lon=$ln&lat=$la'))
+          .timeout(const Duration(seconds: 3));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       final feats = j['features'] as List?;
-      if (feats == null || feats.isEmpty) return '${la.toStringAsFixed(5)}, ${ln.toStringAsFixed(5)}';
+      if (feats == null || feats.isEmpty) return fallback;
       final p = (feats.first as Map)['properties'] as Map? ?? {};
       return [
         p['name'],
@@ -147,7 +176,7 @@ class UserPlace {
         p['state'],
       ].where((e) => e != null && e.toString().isNotEmpty).map((e) => e.toString()).take(3).join(', ');
     } catch (_) {
-      return '${la.toStringAsFixed(5)}, ${ln.toStringAsFixed(5)}';
+      return fallback;
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 enum OrderStatus { pending, preparing, ready, accepted, pickedUp, onTheWay, delivered, cancelled }
@@ -210,8 +212,16 @@ class Order {
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
-    if (j['data'] is Map) {
-      j = Map<String, dynamic>.from(j['data'] as Map);
+    dynamic data = j['data'];
+    if (data is String) {
+      try {
+        data = jsonDecode(data);
+      } catch (_) {
+        data = null;
+      }
+    }
+    if (data is Map) {
+      j = {...j, ...Map<String, dynamic>.from(data)};
     }
     final itemsRaw = (j['items'] as List?) ?? const [];
     return Order(

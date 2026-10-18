@@ -20,6 +20,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   int get fee => ship == 'express' ? 360 : 200;
 
+  @override
+  void initState() {
+    super.initState();
+    UserPlace.instance.start();
+    UserPlace.instance.notifier.addListener(_syncAddr);
+    UserPlace.instance.liveNotifier.addListener(_syncAddr);
+  }
+
+  void _syncAddr() {
+    if (!mounted) return;
+    final p = UserPlace.instance;
+    if (p.custom || p.frozen) return;
+    if (_addr.text == p.label) return;
+    setState(() => _addr.text = p.label);
+  }
+
+  @override
+  void dispose() {
+    UserPlace.instance.notifier.removeListener(_syncAddr);
+    UserPlace.instance.liveNotifier.removeListener(_syncAddr);
+    _addr.dispose();
+    super.dispose();
+  }
+
   Future<void> _place() async {
     setState(() => placing = true);
     final place = UserPlace.instance;

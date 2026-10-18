@@ -376,6 +376,7 @@
         const p = normalizePhone(o.customerPhone || o.customer_phone || '');
         return p && (p === phone || phoneKey(p) === key);
       });
+      mergeKept();
     } else if (me.role === 'shop') {
       const sid = me.shopId;
       API.shops = API.shops.filter((s) => s.id === sid);
@@ -389,6 +390,39 @@
       });
     }
   }
+  const keptOrders = [];
+  function keptStorageKey() {
+    return 'qb_kept_orders_' + phoneKey((API.user && API.user.phone) || '');
+  }
+  function persistKept() {
+    try { localStorage.setItem(keptStorageKey(), JSON.stringify(keptOrders.slice(0, 40))); } catch (_) {}
+  }
+  function keepOrder(o) {
+    if (!o || !o.id) return o;
+    const i = keptOrders.findIndex((x) => x.id === o.id);
+    if (i >= 0) keptOrders[i] = Object.assign({}, keptOrders[i], o);
+    else keptOrders.unshift(o);
+    persistKept();
+    return o;
+  }
+  function loadKept() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(keptStorageKey()) || '[]');
+      if (!Array.isArray(arr)) return;
+      arr.forEach((o) => {
+        if (o && o.id && !keptOrders.some((x) => x.id === o.id)) keptOrders.push(o);
+      });
+    } catch (_) {}
+  }
+  function mergeKept() {
+    if (!API.user) return;
+    loadKept();
+    keptOrders.forEach((o) => {
+      if (!o || !o.id) return;
+      if (!API.orders.some((x) => x.id === o.id)) API.orders.unshift(o);
+    });
+  }
+
   function phoneVariants(phone) {
     const key = phoneKey(phone);
     const n = normalizePhone(phone);
@@ -1203,8 +1237,8 @@
         subtotal: subtotal,
         deliveryFee: deliveryFee,
         totalAmount: subtotal + deliveryFee,
-        deliveryLat: Number(payload.deliveryLat ?? 8.335),
-        deliveryLng: Number(payload.deliveryLng ?? 80.4108),
+        deliveryLat: Number(payload.deliveryLat != null ? payload.deliveryLat : (window.QB_LIVE && window.QB_LIVE.lat) || 8.335),
+        deliveryLng: Number(payload.deliveryLng != null ? payload.deliveryLng : (window.QB_LIVE && window.QB_LIVE.lng) || 80.4108),
         riderLat: null,
         riderLng: null,
         timestamp: new Date().toISOString(),
@@ -1212,10 +1246,12 @@
       };
     }
     if (sbConfigured()) {
-      await sbPutRow('orders', orderRow(order));
+      try {
+        await sbPutRow('orders', orderRow(order));
+      } catch (_) {}
       try {
         await sbSend('messages', 'POST', [{
-          id: 'm0',
+          id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           order_id: order.id,
           sender: 'QuickBite',
           role: 'system',
@@ -1224,15 +1260,20 @@
         }]);
       } catch (_) {}
     }
+    keepOrder(order);
     if (!API.orders.some((o) => o.id === order.id)) API.orders.unshift(order);
-    scopeData();
+    mergeKept();
     notify(true);
-    try { await API.refresh(); } catch (_) {}
-    if (!API.orders.some((o) => o.id === order.id)) {
-      API.orders.unshift(order);
-      scopeData();
-      notify(true);
-    }
+    setTimeout(function () {
+      API.refresh().then(function () {
+        keepOrder(order);
+        if (!API.orders.some((o) => o.id === order.id)) {
+          API.orders.unshift(order);
+          mergeKept();
+          notify(true);
+        }
+      }).catch(function () {});
+    }, 400);
     return order;
   };
 

@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css" />
-  <link rel="stylesheet" href="/css/ui.css" />
-  <link rel="stylesheet" href="/css/track.css" />
-  <link rel="stylesheet" href="/css/qb.css" />
+  <link rel="stylesheet" href="/css/app.css?v=18e" />
+  <link rel="stylesheet" href="/css/ui.css?v=18e" />
+  <link rel="stylesheet" href="/css/track.css?v=18e" />
+  <link rel="stylesheet" href="/css/qb.css?v=18e" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18d"></script>
-  <script src="/js/api.js?v=18d"></script>
-  <script src="/js/maps.js?v=18d"></script>
-  <script src="/js/track-ui.js?v=18d"></script>
+  <script src="/js/live.js?v=18e"></script>
+  <script src="/js/api.js?v=18e"></script>
+  <script src="/js/maps.js?v=18e"></script>
+  <script src="/js/track-ui.js?v=18e"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -40,6 +40,9 @@
 
     const seenOnboard = localStorage.getItem('qb_onboard') === '1' || sessionStorage.getItem('qb_onboard') === '1';
     let restoredSession = !!API.user;
+    let savedGps = null;
+    try { savedGps = JSON.parse(localStorage.getItem('qb_live_gps') || 'null'); } catch (_) {}
+    if (!savedGps || typeof savedGps.lat !== 'number' || typeof savedGps.lng !== 'number') savedGps = null;
     const state = {
       gate: API.user ? 'app' : 'splash',
       onboard: 0,
@@ -54,8 +57,15 @@
       cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
       favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
       note: '',
-      address: 'Finding your location…',
-      loc: { lat: 8.3350, lng: 80.4108, label: 'Finding your location…', liveLat: null, liveLng: null, custom: false },
+      address: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
+      loc: {
+        lat: savedGps ? savedGps.lat : 8.3350,
+        lng: savedGps ? savedGps.lng : 80.4108,
+        label: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
+        liveLat: savedGps ? savedGps.lat : null,
+        liveLng: savedGps ? savedGps.lng : null,
+        custom: false,
+      },
       locHandle: null,
       locFrom: 'home',
       payment: 'Cash on delivery',
@@ -121,7 +131,7 @@
         if (errEl) errEl.textContent = state.loc.err;
         return;
       }
-      const opt = { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 };
+      const opt = { enableHighAccuracy: true, maximumAge: 30000, timeout: 25000 };
       const onFix = (pos) => {
         const acc = Number(pos.coords.accuracy || 999);
         if (state.loc.acc != null && state.loc.acc <= 12 && acc > 40) return;
@@ -134,19 +144,25 @@
         paintLiveUi();
         const first = !state.loc._gps;
         state.loc._gps = true;
-        if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, state.loc.label, false);
+        const quick = (!state.loc.label || state.loc.label === 'Finding your location…') ? 'Current location' : state.loc.label;
+        if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, quick, false);
+        try { localStorage.setItem('qb_live_gps', JSON.stringify({ lat, lng, acc, label: state.loc.label })); } catch (_) {}
         if (first) {
           if (state.loc.openMapOnce) {
             state.loc.openMapOnce = false;
             state.screen = 'locate';
-            state.locFrom = 'home';
+            state.locFrom = state.locFrom || 'home';
           }
           render({ keepScroll: true });
           labelAt(lat, lng).then((label) => {
             if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, label, false);
+            try { localStorage.setItem('qb_live_gps', JSON.stringify({ lat, lng, acc, label })); } catch (_) {}
             const el = document.querySelector('[data-loc-label]');
             if (el) el.textContent = label;
-            render({ keepScroll: true });
+            const addr = document.getElementById('addr');
+            if (addr && !state.loc.custom) addr.value = label;
+            const city = document.querySelector('[data-loc-city]');
+            if (city) city.textContent = label;
           }).catch(() => {});
         }
       };
@@ -490,13 +506,12 @@
         <div class="loc-hits hidden" data-loc-hits></div>
         <div class="loc-stage">
           <div class="loc-map" id="locMap"></div>
-          <div class="loc-center-pin" aria-hidden="true"><div class="drop-pin"><span></span></div></div>
           <button class="loc-me" type="button" data-loc-me title="My live location">◎</button>
         </div>
         <div class="loc-sheet">
           <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live GPS <span data-loc-acc>${esc(gpsText())}</span></div>
           <b data-loc-label>${esc(state.loc.label)}</b>
-          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Move the map to change the green delivery pin.'}</p>
+          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Drag the green pin to change pickup. Tap ◎ to drop it on live GPS.'}</p>
           <p class="err" data-loc-err></p>
           <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
         </div>
@@ -541,7 +556,7 @@
       </div>${nav()}`;
     }
     function trackView() {
-      const o = API.orders.find((x) => x.id === state.trackId);
+      const o = API.orders.find((x) => x.id === state.trackId) || state.lastOrder;
       if (!o) return `<div class="pad">Order not found.</div>${nav()}`;
       if (o.status === 'delivered') return doneView(o);
       return TrackUI.screen(o, 'customer');
@@ -659,7 +674,7 @@
         return;
       }
       if (API.user) tryAutoGps();
-      if (!state.loc._gps && !state.loc.liveLat && !restoredSession) {
+      if (!state.loc._gps && !state.loc.liveLat) {
         if (!root.querySelector('[data-locperm]')) {
           root.innerHTML = locPermView();
           bindLocPerm();
@@ -786,6 +801,15 @@
         const errEl = document.querySelector('[data-loc-err]');
         if (errEl) errEl.textContent = '';
         startLiveLocation();
+        setTimeout(() => {
+          if (state.loc._gps || state.loc.liveLat) return;
+          if (!state.loc.openMapOnce) return;
+          state.loc.openMapOnce = false;
+          state.screen = 'locate';
+          state.locFrom = 'home';
+          if (errEl) errEl.textContent = 'GPS is slow — drag the green pin onto you, or tap ◎ when the blue dot appears.';
+          render();
+        }, 8000);
       };
     }
 
@@ -802,16 +826,22 @@
         lat: pinLat, lng: pinLng,
         liveLat: state.loc.liveLat, liveLng: state.loc.liveLng,
         custom: !!(state.loc.custom || state.loc.frozen),
+        frozen: !!state.loc.frozen,
       });
       paintLiveUi();
       let seq = 0;
       if (state.locHandle) {
-        state.locHandle.onMoveEnd(async (lat, lng) => {
+        state.locHandle.onMoveEnd((lat, lng) => {
+          state.loc._draft = { lat, lng, label: (labelEl && labelEl.textContent) || state.loc.label };
+          if (labelEl && (!labelEl.textContent || labelEl.textContent === 'Finding your location…')) {
+            labelEl.textContent = 'Current location';
+          }
           const n = ++seq;
-          const label = await labelAt(lat, lng);
-          if (n !== seq) return;
-          if (labelEl) labelEl.textContent = label;
-          state.loc._draft = { lat, lng, label };
+          labelAt(lat, lng).then((label) => {
+            if (n !== seq) return;
+            if (labelEl) labelEl.textContent = label;
+            state.loc._draft = { lat, lng, label };
+          }).catch(() => {});
         });
       }
       const back = document.querySelector('[data-loc-back]');
@@ -831,8 +861,8 @@
           return;
         }
         const c = state.locHandle ? state.locHandle.getCenter() : { lat: state.loc.lat, lng: state.loc.lng };
-        const d = state.loc._draft || c;
-        setPlace(d.lat, d.lng, d.label || (labelEl && labelEl.textContent) || state.loc.label, true);
+        const label = (labelEl && labelEl.textContent) || (state.loc._draft && state.loc._draft.label) || state.loc.label;
+        setPlace(c.lat, c.lng, label, true);
         state.screen = state.locFrom || 'home';
         render();
       };
@@ -899,9 +929,16 @@
         const pay = document.querySelector('input[name="pay"]:checked');
         if (pay) state.payment = pay.value;
         if (!state.cart.length) return;
+        const pin = deliveryPoint();
+        if (!state.loc.custom && state.loc.liveLat == null && !savedGps) {
+          state.locFrom = 'checkout';
+          state.screen = 'locate';
+          startLiveLocation();
+          render();
+          return;
+        }
         place.disabled = true; place.textContent = 'Placing…';
         try {
-          const pin = deliveryPoint();
           if (!state.loc.custom && !state.loc.frozen && pin.lat != null) {
             setPlace(pin.lat, pin.lng, state.loc.label, false);
           }
@@ -914,11 +951,13 @@
           state.cart = []; saveCart();
           state.loc.custom = true;
           state.loc.frozen = true;
+          state.lastOrder = order;
+          state.tab = 'orders';
           if (order && order.id && !(API.orders || []).some((o) => o.id === order.id)) {
             API.orders.unshift(order);
           }
           openTrack(order.id, true);
-        } catch (e) { alert(e.message); place.disabled = false; }
+        } catch (e) { alert(e.message); place.disabled = false; place.textContent = 'Place Order'; }
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; state.lockTrack = false; render(); });

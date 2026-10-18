@@ -49,6 +49,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     final live = LatLng(p.liveLat!, p.liveLng!);
     if (_follow) {
       _center = live;
+      if (_label == 'Finding your location…' || _label.isEmpty) _label = 'Current location';
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         try {

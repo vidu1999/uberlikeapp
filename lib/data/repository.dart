@@ -26,6 +26,7 @@ class OrderRepository {
   String? token;
 
   List<Order> get orders => ordersNotifier.value;
+  final Map<String, Order> _keptOrders = {};
   SessionUser? get user => userNotifier.value;
 
   void _maybeUnfreeze() {
@@ -776,6 +777,14 @@ class OrderRepository {
     return list;
   }
 
+  List<Order> _mergeKept(List<Order> list) {
+    if (_keptOrders.isEmpty) return list;
+    final ids = list.map((o) => o.id).toSet();
+    final extra = _keptOrders.values.where((o) => !ids.contains(o.id) && !_isDemoOrder(o)).toList();
+    if (extra.isEmpty) return list;
+    return [...extra, ...list];
+  }
+
   List<Order> _scopeOrders(Iterable<Order> list) {
     var next = list.where((o) => !_isDemoOrder(o)).toList();
     final u = user;
@@ -783,11 +792,12 @@ class OrderRepository {
     if (u.role == 'customer' || u.role == 'user') {
       final phone = _normPhone(u.phone);
       final key = _phoneKey(phone);
-      return next.where((o) {
+      next = next.where((o) {
         if (o.userId == u.id) return true;
         final p = _normPhone(o.customerPhone ?? '');
         return p.isNotEmpty && (p == phone || _phoneKey(p) == key);
       }).toList();
+      return _mergeKept(next);
     }
     if (u.role == 'shop') {
       final sid = u.shopId ?? '';
@@ -966,6 +976,7 @@ class OrderRepository {
           final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
           await _pushOrder(created);
           cartNotifier.value = [];
+          _keepOrder(created);
           await refresh();
           _keepOrder(created);
           return created;
@@ -990,12 +1001,14 @@ class OrderRepository {
     );
     await _pushOrder(created);
     cartNotifier.value = [];
+    _keepOrder(created);
     await refresh();
     _keepOrder(created);
     return created;
   }
 
   void _keepOrder(Order created) {
+    _keptOrders[created.id] = created;
     if (orders.any((o) => o.id == created.id)) return;
     ordersNotifier.value = [created, ...orders];
   }

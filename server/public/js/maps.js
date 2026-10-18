@@ -86,7 +86,7 @@
       className: 'drop-pin-wrap',
       html: '<div class="drop-pin"><span></span></div>',
       iconSize: [36, 48],
-      iconAnchor: [18, 46],
+      iconAnchor: [18, 44],
     });
   }
 
@@ -284,17 +284,36 @@
     return uniq.join(', ') || 'Pinned location';
   }
 
-  global.reversePlace = async function (lat, lng) {
+  async function fetchJson(url, ms) {
     const ctrl = new AbortController();
-    const t = setTimeout(function () { ctrl.abort(); }, 4000);
+    const t = setTimeout(function () { ctrl.abort(); }, ms || 2500);
     try {
-      const r = await fetch('https://photon.komoot.io/reverse?lon=' + lng + '&lat=' + lat, { signal: ctrl.signal });
-      const j = await r.json();
-      const f = j.features && j.features[0];
-      if (f) return photonLabel(f);
-    } catch (_) {}
-    finally { clearTimeout(t); }
-    return lat.toFixed(5) + ', ' + lng.toFixed(5);
+      const r = await fetch(url, { signal: ctrl.signal });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (_) {
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  global.reversePlace = async function (lat, lng) {
+    const fallback = lat.toFixed(5) + ', ' + lng.toFixed(5);
+    const bd = await fetchJson(
+      'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=en',
+      2500,
+    );
+    if (bd) {
+      const parts = [bd.locality, bd.city, bd.principalSubdivision].filter(function (x, i, a) {
+        return x && a.indexOf(x) === i;
+      });
+      if (parts.length) return parts.slice(0, 2).join(', ');
+    }
+    const j = await fetchJson('https://photon.komoot.io/reverse?lon=' + lng + '&lat=' + lat, 2500);
+    const f = j && j.features && j.features[0];
+    if (f) return photonLabel(f);
+    return fallback;
   };
 
   global.searchPlaces = async function (q) {
@@ -316,12 +335,19 @@
     if (!el || typeof L === 'undefined') return null;
     const startLat = opts.liveLat != null ? opts.liveLat : (Number(opts.lat) || 8.335);
     const startLng = opts.liveLng != null ? opts.liveLng : (Number(opts.lng) || 80.411);
+    const frozen = !!opts.frozen;
     const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([startLat, startLng], 18);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    let follow = !opts.custom;
-    let userMoved = false;
+    let follow = !opts.custom && !frozen;
+    let userMoved = !!opts.custom;
     let liveMarker = null;
     let accCircle = null;
+    const pickMarker = L.marker([startLat, startLng], {
+      icon: dropPinIcon(),
+      draggable: !frozen,
+      zIndexOffset: 1400,
+      autoPan: true,
+    }).addTo(map);
     if (opts.liveLat != null && opts.liveLng != null) {
       liveMarker = L.marker([opts.liveLat, opts.liveLng], {
         icon: liveDotIcon(),
@@ -329,24 +355,36 @@
         interactive: false,
       }).addTo(map);
     }
-    map.on('dragstart', function () { userMoved = true; follow = false; });
+    pickMarker.on('dragstart', function () {
+      userMoved = true;
+      follow = false;
+    });
+    pickMarker.on('dragend', function () {
+      userMoved = true;
+      follow = false;
+      const ll = pickMarker.getLatLng();
+      map.panTo(ll);
+    });
     setTimeout(function () { map.invalidateSize(); }, 80);
     setTimeout(function () { map.invalidateSize(); }, 300);
     setTimeout(function () { map.invalidateSize(); }, 800);
+    function pinLatLng() {
+      const p = pickMarker.getLatLng();
+      return { lat: p.lat, lng: p.lng };
+    }
     return {
       map,
-      getCenter() {
-        const p = map.getCenter();
-        return { lat: p.lat, lng: p.lng };
-      },
+      getCenter: pinLatLng,
       setView(lat, lng, z) {
         follow = false;
         userMoved = true;
+        pickMarker.setLatLng([lat, lng]);
         map.setView([lat, lng], z || 18);
       },
       goLive(lat, lng, z) {
         follow = true;
         userMoved = false;
+        pickMarker.setLatLng([lat, lng]);
         map.setView([lat, lng], z || 18);
       },
       setLive(lat, lng, acc) {
@@ -376,16 +414,20 @@
             accCircle.setRadius(meters);
           }
         }
-        if (follow && !userMoved) {
+        if (follow && !userMoved && !frozen) {
+          pickMarker.setLatLng([lat, lng]);
           map.setView([lat, lng], Math.max(map.getZoom(), 18));
         }
       },
       onMoveEnd(fn) {
         const fire = function () {
-          const p = map.getCenter();
+          const p = pinLatLng();
           fn(p.lat, p.lng);
         };
-        map.on('moveend', fire);
+        pickMarker.on('dragend', fire);
+        map.on('moveend', function () {
+          if (follow && !userMoved) fire();
+        });
         setTimeout(fire, 200);
       },
       destroy() {
