@@ -224,6 +224,8 @@ class ShopOrderDetails extends StatelessWidget {
                               destLng: o.deliveryLng,
                               riderLat: o.riderLat,
                               riderLng: o.riderLng,
+                              shopLat: o.shopLat,
+                              shopLng: o.shopLng,
                               dark: true,
                               toShop: o.status.headingToShop,
                             ),

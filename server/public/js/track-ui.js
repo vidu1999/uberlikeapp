@@ -71,12 +71,17 @@
       .toUpperCase();
   }
 
-  function targetOf(order) {
+  function shopPosOf(order) {
     const shop =
       typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
-    if (goingToShop(order)) {
-      return [Number(shop.lat || order.deliveryLat), Number(shop.lng || order.deliveryLng)];
-    }
+    const lat = Number(order.shopLat != null ? order.shopLat : shop.lat);
+    const lng = Number(order.shopLng != null ? order.shopLng : shop.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+    return [Number(order.deliveryLat), Number(order.deliveryLng)];
+  }
+
+  function targetOf(order) {
+    if (goingToShop(order)) return shopPosOf(order);
     return [Number(order.deliveryLat), Number(order.deliveryLng)];
   }
 

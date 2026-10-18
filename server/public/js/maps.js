@@ -103,10 +103,11 @@
     const shop =
       typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
     const dest = [Number(order.deliveryLat), Number(order.deliveryLng)];
-    const shopPos = [
-      Number(shop.lat != null ? shop.lat : dest[0] + 0.012),
-      Number(shop.lng != null ? shop.lng : dest[1] - 0.01),
-    ];
+    const lat = Number(order.shopLat != null ? order.shopLat : shop.lat);
+    const lng = Number(order.shopLng != null ? order.shopLng : shop.lng);
+    const shopPos = Number.isFinite(lat) && Number.isFinite(lng)
+      ? [lat, lng]
+      : dest;
     const rider =
       order.riderLat != null && order.riderLng != null
         ? [Number(order.riderLat), Number(order.riderLng)]

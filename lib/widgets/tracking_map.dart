@@ -70,7 +70,7 @@ class TrackingMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dest = LatLng(destLat, destLng);
-    final shop = LatLng(shopLat ?? destLat + 0.012, shopLng ?? destLng - 0.01);
+    final shop = LatLng(shopLat ?? destLat, shopLng ?? destLng);
     final rider = (riderLat != null && riderLng != null) ? LatLng(riderLat!, riderLng!) : null;
     final target = toShop ? shop : dest;
     final from = rider ?? (toShop ? dest : shop);

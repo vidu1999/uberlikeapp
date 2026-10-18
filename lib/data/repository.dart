@@ -247,10 +247,13 @@ class OrderRepository {
     try {
       await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'shop_id': sid});
     } catch (_) {}
-    final existing = await _sbGet('shops?id=eq.$sid&select=id');
+    final rec = await _recalledShop(u.phone);
+    final p = pendingShop;
+    final pinLat = double.tryParse(p?['lat'] ?? rec?['lat'] ?? '');
+    final pinLng = double.tryParse(p?['lng'] ?? rec?['lng'] ?? '');
+    final pinAddr = (p?['address'] ?? rec?['address'] ?? '').trim();
+    final existing = await _sbGet('shops?id=eq.$sid&select=*');
     if (existing.isEmpty) {
-      final rec = await _recalledShop(u.phone);
-      final p = pendingShop;
       final name = (p?['shopName'] ?? rec?['shopName'] ?? '').trim();
       if (name.isEmpty) throw Exception('Register your shop first.');
       await _sbUpsert('shops', [
@@ -261,14 +264,20 @@ class OrderRepository {
           'rating': 5,
           'reviews': 0,
           'is_open': true,
-          'lat': double.tryParse(p?['lat'] ?? rec?['lat'] ?? '') ?? 8.335,
-          'lng': double.tryParse(p?['lng'] ?? rec?['lng'] ?? '') ?? 80.4108,
+          'lat': pinLat,
+          'lng': pinLng,
           'hours': '08:00 AM – 10:00 PM',
-          'address': p?['address'] ?? rec?['address'] ?? '',
+          'address': pinAddr,
           'image': '/img/shop-bakery.jpg',
           'promo': '',
         }
       ]);
+    } else if (pinLat != null && pinLng != null) {
+      final row = Map<String, dynamic>.from(existing.first as Map);
+      row['lat'] = pinLat;
+      row['lng'] = pinLng;
+      if (pinAddr.isNotEmpty) row['address'] = pinAddr;
+      await _sbUpsert('shops', [row]);
     }
     return sid;
   }
@@ -373,6 +382,15 @@ class OrderRepository {
         throw Exception('Register your shop first.');
       }
       final shopId = _shopIdFor(phone);
+      final pinLat = double.tryParse(p['lat'] ?? '');
+      final pinLng = double.tryParse(p['lng'] ?? '');
+      final pinAddr = (p['address'] ?? '').trim();
+      if (pinLat == null || pinLng == null) {
+        throw Exception('Pin your shop on the map.');
+      }
+      if (pinAddr.isEmpty) {
+        throw Exception('Enter the shop address.');
+      }
       Map<String, dynamic> shop = {
         'id': shopId,
         'name': p['shopName'] ?? 'New Shop',
@@ -380,13 +398,13 @@ class OrderRepository {
         'rating': 5,
         'reviews': 0,
         'is_open': true,
-        'lat': double.tryParse(p['lat'] ?? '') ?? 8.335,
-        'lng': double.tryParse(p['lng'] ?? '') ?? 80.4108,
+        'lat': pinLat,
+        'lng': pinLng,
         'km': 0,
         'eta': '20–35 min',
         'fee': 200,
         'hours': '08:00 AM – 10:00 PM',
-        'address': p['address'] ?? 'Sri Lanka',
+        'address': pinAddr,
         'image': '/img/shop-bakery.jpg',
         'promo':
             'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
@@ -394,10 +412,9 @@ class OrderRepository {
       try {
         final existing = await _sbGet('shops?id=eq.$shopId&select=*');
         if (existing.isNotEmpty) {
-          shop = Map<String, dynamic>.from(existing.first as Map);
-        } else {
-          await _sbWrite('shops', 'POST', [shop]);
+          shop = {...Map<String, dynamic>.from(existing.first as Map), ...shop};
         }
+        await _sbUpsert('shops', [shop]);
       } catch (_) {}
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
       user = {
@@ -1168,6 +1185,9 @@ class OrderRepository {
       customerName: u?.name ?? 'Guest',
       customerPhone: u?.phone,
       address: address,
+      shopLat: shop.isNotEmpty ? shop.first.lat : null,
+      shopLng: shop.isNotEmpty ? shop.first.lng : null,
+      shopAddress: shop.isNotEmpty ? shop.first.address : null,
     );
     await _pushOrder(created);
     cartNotifier.value = [];
@@ -1319,8 +1339,8 @@ class OrderRepository {
         'rating': prev?.rating ?? 5,
         'reviews': prev?.reviews ?? 0,
         'is_open': isOpen,
-        'lat': prev?.lat ?? 8.335,
-        'lng': prev?.lng ?? 80.4108,
+        'lat': prev?.lat,
+        'lng': prev?.lng,
         'hours': hours,
         'address': prev?.address ?? '',
         'image': image ?? prev?.image ?? '/img/shop-bakery.jpg',

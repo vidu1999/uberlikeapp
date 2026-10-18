@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18j" />
-  <link rel="stylesheet" href="/css/ui.css?v=18j" />
-  <link rel="stylesheet" href="/css/track.css?v=18j" />
-  <link rel="stylesheet" href="/css/qb.css?v=18j" />
+  <link rel="stylesheet" href="/css/app.css?v=18k" />
+  <link rel="stylesheet" href="/css/ui.css?v=18k" />
+  <link rel="stylesheet" href="/css/track.css?v=18k" />
+  <link rel="stylesheet" href="/css/qb.css?v=18k" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18j"></script>
-  <script src="/js/api.js?v=18j"></script>
-  <script src="/js/maps.js?v=18j"></script>
-  <script src="/js/track-ui.js?v=18j"></script>
+  <script src="/js/live.js?v=18k"></script>
+  <script src="/js/api.js?v=18k"></script>
+  <script src="/js/maps.js?v=18k"></script>
+  <script src="/js/track-ui.js?v=18k"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -271,6 +271,7 @@
           <div class="name">${esc(s.name)}</div>
           <div class="rate"><span class="star">★</span> ${s.rating} <em>(${rev})</em></div>
           <div class="meta">${esc(s.category)} · ${km} km</div>
+          ${s.address ? `<div class="meta">${esc(s.address)}</div>` : ''}
         </div>
         <button class="heart ${liked?'on':''}" data-fav="${s.id}">${liked ? SVG.heartOn : SVG.heart}</button>
       </div>`;
@@ -452,6 +453,7 @@
             <h1>${esc(shop.name)}</h1>
             <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${distKm(shop)} km</div>
             <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
+            ${shop.address ? `<div>${esc(shop.address)}</div>` : ''}
           </div>
         </div>
         <div class="menu-tabs">

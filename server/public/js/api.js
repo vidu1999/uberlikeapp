@@ -11,8 +11,14 @@
     roleHint: document.documentElement.getAttribute('data-role') || '',
   };
 
+  function finiteNum(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
   function shopOf(id) {
-    return API.shops.find((s) => s.id === id) || { name: 'Shop', emoji: '🏪', lat: 6.93, lng: 79.85, eta: '20 min' };
+    const hit = API.shops.find((s) => s.id === id);
+    if (hit) return hit;
+    return { id: id || '', name: 'Shop', emoji: '🏪', eta: '20 min' };
   }
 
   let _fp = null;
@@ -50,8 +56,8 @@
       rating: Number(r.rating || 0),
       reviews: Number(r.reviews || 0),
       isOpen: r.is_open !== false && r.isOpen !== false,
-      lat: r.lat != null ? Number(r.lat) : undefined,
-      lng: r.lng != null ? Number(r.lng) : undefined,
+      lat: finiteNum(r.lat) != null ? finiteNum(r.lat) : undefined,
+      lng: finiteNum(r.lng) != null ? finiteNum(r.lng) : undefined,
       km: r.km != null ? Number(r.km) : undefined,
       emoji: r.emoji,
       eta: r.eta,
@@ -293,6 +299,9 @@
     o.riderPhone = d.riderPhone || o.riderPhone || null;
     o.riderLat = d.riderLat != null ? d.riderLat : o.riderLat;
     o.riderLng = d.riderLng != null ? d.riderLng : o.riderLng;
+    o.shopLat = finiteNum(d.shopLat != null ? d.shopLat : o.shopLat);
+    o.shopLng = finiteNum(d.shopLng != null ? d.shopLng : o.shopLng);
+    o.shopAddress = d.shopAddress || o.shopAddress || o.shop_address || '';
     o.pickedUpAt = d.pickedUpAt || o.pickedUpAt || r.picked_up_at || null;
     return o;
   }
@@ -577,12 +586,19 @@
         if (rows && rows[0]) shop = rows[0];
       } catch (_) {}
     }
+    const rec = (user.phone && API.recallShopProfile(user.phone)) || {};
+    const p = pendingShop() || {};
+    const pinLat = finiteNum(p.lat != null ? p.lat : rec.lat);
+    const pinLng = finiteNum(p.lng != null ? p.lng : rec.lng);
+    const pinAddr = String(p.address || rec.address || '').trim();
     if (!shop) {
-      const rec = (user.phone && API.recallShopProfile(user.phone)) || {};
-      const p = pendingShop() || {};
       const name = String(p.shopName || rec.shopName || '').trim();
       if (!name) {
         if (opts && opts.required) throw new Error('Register your shop first.');
+        return user;
+      }
+      if (pinLat == null || pinLng == null) {
+        if (opts && opts.required) throw new Error('Pin your shop on the map.');
         return user;
       }
       shop = {
@@ -592,17 +608,23 @@
         rating: 5,
         reviews: 0,
         is_open: true,
-        lat: Number(p.lat || rec.lat) || 8.335,
-        lng: Number(p.lng || rec.lng) || 80.4108,
+        lat: pinLat,
+        lng: pinLng,
         km: 0,
         eta: '20–35 min',
         fee: 200,
         hours: '08:00 AM – 10:00 PM',
-        address: p.address || rec.address || '',
+        address: pinAddr,
         image: '/img/shop-bakery.jpg',
         promo: rec.promo || '',
       };
       if (sbConfigured()) await sbUpsert('shops', [shop]);
+    } else if (pinLat != null && pinLng != null && (finiteNum(shop.lat) == null || pinAddr)) {
+      shop.lat = pinLat;
+      shop.lng = pinLng;
+      if (pinAddr) shop.address = pinAddr;
+      if (p.shopName) shop.name = p.shopName;
+      try { await sbUpsert('shops', [shop]); } catch (_) {}
     }
     const mapped = mapShop(shop);
     const i = API.shops.findIndex((s) => s.id === sid);
@@ -994,38 +1016,44 @@
     }
     if (!row && role === 'shop') {
       const p = pendingShop() || {};
-      if (!p.shopName && !p.ownerName) {
+      const rec = API.recallShopProfile(phone) || {};
+      if (!p.shopName && !p.ownerName && !rec.shopName) {
         throw new Error('Register your shop first.');
       }
       const shopId = shopIdFor(phone);
+      const lat = finiteNum(p.lat != null ? p.lat : rec.lat);
+      const lng = finiteNum(p.lng != null ? p.lng : rec.lng);
+      const address = String(p.address || rec.address || '').trim();
+      if (lat == null || lng == null) throw new Error('Pin your shop on the map.');
+      if (!address) throw new Error('Enter the shop address.');
       let shop = null;
       try {
         const existing = await sbGet('shops?id=eq.' + encodeURIComponent(shopId) + '&select=*');
-        if (existing && existing[0]) shop = mapShop(existing[0]);
+        if (existing && existing[0]) shop = existing[0];
       } catch (_) {}
-      if (!shop) {
-        shop = {
-          id: shopId,
-          name: p.shopName || 'New Shop',
-          category: 'Bakery',
-          rating: 5,
-          reviews: 0,
-          is_open: true,
-          lat: Number(p.lat) || 8.335,
-          lng: Number(p.lng) || 80.4108,
-          km: 0,
-          eta: '20–35 min',
-          fee: 200,
-          hours: '08:00 AM – 10:00 PM',
-          address: p.address || 'Sri Lanka',
-          image: '/img/shop-bakery.jpg',
-          promo: 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
-        };
-        try { await sbSend('shops', 'POST', [shop]); } catch (_) {}
+      shop = Object.assign({}, shop || {}, {
+        id: shopId,
+        name: p.shopName || rec.shopName || (shop && shop.name) || 'New Shop',
+        category: (shop && shop.category) || 'Bakery',
+        rating: (shop && shop.rating) || 5,
+        reviews: (shop && shop.reviews) || 0,
+        is_open: true,
+        lat: lat,
+        lng: lng,
+        km: 0,
+        eta: '20–35 min',
+        fee: 200,
+        hours: (shop && shop.hours) || '08:00 AM – 10:00 PM',
+        address: address,
+        image: (shop && shop.image) || '/img/shop-bakery.jpg',
+        promo: (shop && (shop.promo || shop.about)) || 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
+      });
+      try { await sbUpsert('shops', [shop]); } catch (_) {
+        try { await sbPutRow('shops', shop); } catch (_) {}
       }
       row = {
         id: accountIdFor(phone, 'shop'),
-        name: p.ownerName || 'Shop Owner',
+        name: p.ownerName || rec.ownerName || 'Shop Owner',
         phone,
         email: p.email || '',
         pin: 'otp',
@@ -1038,7 +1066,12 @@
       });
       row.shopName = shop.name;
       API.setPendingShop(null);
-      try { API.shops.push(mapShop(shop)); } catch (_) {}
+      try {
+        const mapped = mapShop(shop);
+        const i = API.shops.findIndex((s) => s.id === shopId);
+        if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
+        else API.shops.push(mapped);
+      } catch (_) {}
     }
     if (row && role === 'rider') {
       const pr = pendingRider() || {};
@@ -1401,6 +1434,15 @@
         updatedAt: new Date().toISOString(),
       };
     }
+    const shopPin = shopOf(order.shopId);
+    const sLat = finiteNum(order.shopLat != null ? order.shopLat : shopPin.lat);
+    const sLng = finiteNum(order.shopLng != null ? order.shopLng : shopPin.lng);
+    if (sLat != null && sLng != null) {
+      order.shopLat = sLat;
+      order.shopLng = sLng;
+    }
+    order.shopAddress = order.shopAddress || shopPin.address || '';
+    if (shopPin.name && (!order.shopName || order.shopName === 'Shop')) order.shopName = shopPin.name;
     if (sbConfigured()) {
       try {
         await sbPutRow('orders', orderRow(order));
@@ -1503,8 +1545,8 @@
       rating: prev.rating || 5,
       reviews: prev.reviews || 0,
       is_open: shop.isOpen !== false,
-      lat: prev.lat != null ? prev.lat : 8.335,
-      lng: prev.lng != null ? prev.lng : 80.4108,
+      lat: finiteNum(shop.lat != null ? shop.lat : prev.lat),
+      lng: finiteNum(shop.lng != null ? shop.lng : prev.lng),
       km: prev.km || 0,
       eta: prev.eta || '20–35 min',
       fee: prev.fee || 200,
