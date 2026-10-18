@@ -3,21 +3,19 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: wipe all live rows, or seed
+        description: seed demo rows, or wipe all live rows
         required: true
-        default: wipe
+        default: seed
         type: choice
         options:
-          - wipe
           - seed
+          - wipe
   push:
     branches: [arena/72bd113d-uberlikeapp, main]
     paths:
-      - server/wipe-all.js
       - server/schema.sql
       - server/seed.js
       - server/push-seed.js
-      - .github/workflows/supabase.yml
 
 jobs:
   run:
@@ -27,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Wipe or seed Supabase
+      - name: Seed or wipe Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -39,7 +37,7 @@ jobs:
           if [ -z "${SUPABASE_ANON_KEY:-}" ]; then unset SUPABASE_ANON_KEY || true; fi
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
-            MODE=wipe
+            MODE=seed
           fi
           echo "mode=$MODE"
           if [ "$MODE" = "wipe" ]; then
