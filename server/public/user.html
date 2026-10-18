@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18g" />
-  <link rel="stylesheet" href="/css/ui.css?v=18g" />
-  <link rel="stylesheet" href="/css/track.css?v=18g" />
-  <link rel="stylesheet" href="/css/qb.css?v=18g" />
+  <link rel="stylesheet" href="/css/app.css?v=18h" />
+  <link rel="stylesheet" href="/css/ui.css?v=18h" />
+  <link rel="stylesheet" href="/css/track.css?v=18h" />
+  <link rel="stylesheet" href="/css/qb.css?v=18h" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18g"></script>
-  <script src="/js/api.js?v=18g"></script>
-  <script src="/js/maps.js?v=18g"></script>
-  <script src="/js/track-ui.js?v=18g"></script>
+  <script src="/js/live.js?v=18h"></script>
+  <script src="/js/api.js?v=18h"></script>
+  <script src="/js/maps.js?v=18h"></script>
+  <script src="/js/track-ui.js?v=18h"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -572,14 +572,14 @@
       </div>`;
     }
     function chatBubblesHtml() {
-      const msgs = API.messages[state.trackId] || [];
+      const msgs = (API.chatMessages && API.chatMessages(state.trackId, 'customer')) || API.messages[state.trackId] || [];
       return msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
     }
     function paintUserChat(root) {
       const b = (root || document).querySelector('#bubbles');
       if (!b) return;
       const html = chatBubblesHtml();
-      const fp = String((API.messages[state.trackId] || []).length) + ':' + html.length;
+      const fp = String((((API.chatMessages && API.chatMessages(state.trackId, 'customer')) || []).length)) + ':' + html.length;
       if (b.getAttribute('data-fp') === fp) return;
       const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
       b.innerHTML = html;
@@ -607,9 +607,9 @@
     }
     function chatView() {
       const o = API.orders.find((x) => x.id === state.trackId);
-      const quick = (API.quickReplies && API.quickReplies('customer')) || [];
+      const quick = (API.quickReplies && API.quickReplies('customer', o)) || [];
       return `<div class="chat-page" data-chat-root="${esc(state.trackId || '')}">
-        <div class="chat-head"><button class="back-fab" data-back-track type="button">←</button><b>${esc(o?.riderName || 'Courier')}</b></div>
+        <div class="chat-head"><button class="back-fab" data-back-track type="button">←</button><b>${esc((API.chatPeerName && API.chatPeerName(o, 'customer')) || o?.riderName || 'Courier')}</b></div>
         <div class="bubbles" id="bubbles">${chatBubblesHtml()}</div>
         <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
         <form class="composer" id="chatForm">
@@ -729,6 +729,11 @@
       const active = (API.orders || []).some((o) => o.status !== 'delivered' && o.status !== 'cancelled' && (o.userId === uid || o.customerPhone === phone));
       if (!active) state.loc.frozen = false;
       if (state.screen === 'chat') {
+        const oChat = API.orders.find((x) => x.id === state.trackId);
+        if (API.canChat && !API.canChat(oChat, 'customer')) {
+          state.screen = 'track';
+          state.lockTrack = true;
+        } else {
         const keep = root.querySelector('[data-chat-root="' + state.trackId + '"]');
         if (keep) { paintUserChat(keep); return; }
         if (API.markChatRead) API.markChatRead(state.trackId, 'customer');
@@ -738,6 +743,7 @@
         bindApp();
         bindChatKeyboard();
         return;
+        }
       }
       if (state.screen === 'locate') {
         const keep = root.querySelector('[data-locate-root]') && state.locHandle;
@@ -1009,6 +1015,8 @@
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        const o = API.orders.find((x) => x.id === b.dataset.chat);
+        if (API.canChat && !API.canChat(o, 'customer')) return;
         state.trackId = b.dataset.chat;
         state.screen = 'chat';
         state.lockTrack = false;
@@ -1032,7 +1040,9 @@
         if (!body || !state.trackId) return;
         const form = document.getElementById('chatForm');
         if (form && form.text) form.text.value = '';
-        await API.sendMessage(state.trackId, API.user.name, 'customer', body);
+        try {
+          await API.sendMessage(state.trackId, API.user.name, 'customer', body);
+        } catch (err) { alert(err.message); return; }
         if (API.markChatRead) API.markChatRead(state.trackId, 'customer');
         const keep = document.querySelector('[data-chat-root]');
         if (keep) paintUserChat(keep);

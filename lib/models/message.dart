@@ -4,12 +4,14 @@ class ChatMessage {
   final String role;
   final String text;
   final int ts;
+  final String? thread;
   const ChatMessage({
     required this.id,
     required this.from,
     required this.role,
     required this.text,
     required this.ts,
+    this.thread,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -18,6 +20,7 @@ class ChatMessage {
         role: '${j['role'] ?? ''}',
         text: '${j['text'] ?? j['body'] ?? ''}',
         ts: (j['ts'] as num?)?.toInt() ?? 0,
+        thread: j['thread']?.toString(),
       );
 }
 

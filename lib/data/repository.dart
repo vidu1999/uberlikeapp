@@ -30,10 +30,84 @@ class OrderRepository {
   final Map<String, int> _chatRead = {};
   SessionUser? get user => userNotifier.value;
 
-  int unreadCount(String orderId, String myRole) {
-    final readAt = _chatRead[orderId] ?? 0;
+  Order? orderById(String id) {
+    for (final o in orders) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  static String _normChatRole(String role) => role == 'user' ? 'customer' : role;
+
+  static String? chatLane(Order? o) {
+    if (o == null || o.status == OrderStatus.cancelled) return null;
+    if (o.status == OrderStatus.pickedUp || o.status == OrderStatus.onTheWay || o.status == OrderStatus.delivered) {
+      return 'customer';
+    }
+    final hasRider = (o.riderId != null && o.riderId!.isNotEmpty) || (o.riderName != null && o.riderName!.isNotEmpty);
+    if (hasRider || o.status == OrderStatus.accepted) return 'shop';
+    return null;
+  }
+
+  bool canChat(Order? o, String role) {
+    final lane = chatLane(o);
+    if (lane == null) return false;
+    final r = _normChatRole(role);
+    if (r == 'rider') return true;
+    if (r == 'shop') return lane == 'shop';
+    if (r == 'customer') return lane == 'customer';
+    return false;
+  }
+
+  String messageThread(ChatMessage m, Order? o) {
+    if (m.thread == 'shop' || m.thread == 'customer') return m.thread!;
+    if (m.id.startsWith('qbS.')) return 'shop';
+    if (m.id.startsWith('qbC.')) return 'customer';
+    if (m.role == 'shop') return 'shop';
+    if (m.role == 'customer' || m.role == 'user') return 'customer';
+    if (m.role == 'system') return 'system';
+    return chatLane(o) ?? 'shop';
+  }
+
+  List<ChatMessage> chatMessages(String orderId, String role) {
+    final o = orderById(orderId);
+    final r = _normChatRole(role);
+    final want = r == 'shop' ? 'shop' : r == 'customer' ? 'customer' : (chatLane(o) ?? 'shop');
     final msgs = messages[orderId] ?? const <ChatMessage>[];
-    return msgs.where((m) => m.role != myRole && m.role != 'system' && m.ts > readAt).length;
+    return msgs.where((m) {
+      if (m.role == 'system') return true;
+      return messageThread(m, o) == want;
+    }).toList();
+  }
+
+  String chatPeerName(Order? o, String role) {
+    if (o == null) return 'Chat';
+    final r = _normChatRole(role);
+    if (r == 'shop') return o.riderName ?? 'Rider';
+    if (r == 'customer') return o.riderName ?? 'Courier';
+    if (chatLane(o) == 'shop') return o.shopName.isNotEmpty ? o.shopName : 'Shop';
+    return o.customerName;
+  }
+
+  List<String> quickReplies(String role, Order? o) {
+    final r = _normChatRole(role);
+    final lane = chatLane(o);
+    if (r == 'shop') return const ['Food is ready', 'Come to the counter', 'Park in front'];
+    if (r == 'rider' && lane == 'shop') {
+      return const ["On my way to the shop", "I've arrived at the shop", 'Which entrance?'];
+    }
+    if (r == 'rider') {
+      return const ["I'm on my way", "I've arrived", "I'm downstairs", 'Please come to the gate'];
+    }
+    return const ['Where are you?', "I'm at the gate", 'Please call me', 'Leave at the door', 'Thank you'];
+  }
+
+  int unreadCount(String orderId, String myRole) {
+    final r = _normChatRole(myRole);
+    final o = orderById(orderId);
+    if ((r == 'customer' || r == 'shop') && !canChat(o, r)) return 0;
+    final readAt = _chatRead[orderId] ?? 0;
+    return chatMessages(orderId, r).where((m) => m.role != r && m.role != 'system' && m.ts > readAt).length;
   }
 
   void markChatRead(String orderId) {
@@ -952,6 +1026,7 @@ class OrderRepository {
             role: '${m['role'] ?? ''}',
             text: '${m['body'] ?? m['text'] ?? ''}',
             ts: (m['ts'] as num?)?.toInt() ?? 0,
+            thread: m['thread']?.toString(),
           ),
         );
       }
@@ -1166,12 +1241,26 @@ class OrderRepository {
   Future<void> sendMessage(String orderId, String text, String role, String from) async {
     final body = text.trim();
     if (body.isEmpty) return;
+    final r = _normChatRole(role);
+    final o = orderById(orderId);
+    if (r != 'system' && !canChat(o, r)) {
+      throw Exception(
+        r == 'customer'
+            ? 'Chat opens after the rider picks up your order.'
+            : r == 'shop'
+                ? 'Chat with the rider is open until pickup.'
+                : 'Chat is not available for this order.',
+      );
+    }
+    final lane = r == 'system' ? null : chatLane(o);
+    final prefix = lane == 'shop' ? 'qbS.' : lane == 'customer' ? 'qbC.' : 'm';
     final msg = ChatMessage(
-      id: 'm${DateTime.now().millisecondsSinceEpoch}',
+      id: '$prefix${DateTime.now().millisecondsSinceEpoch}',
       from: from,
-      role: role,
+      role: r,
       text: body,
       ts: DateTime.now().millisecondsSinceEpoch,
+      thread: lane,
     );
     (messages[orderId] ??= <ChatMessage>[]).add(msg);
     ordersNotifier.value = List<Order>.of(orders);
@@ -1182,7 +1271,7 @@ class OrderRepository {
             .post(
               uri,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'from': from, 'role': role, 'text': body}),
+              body: jsonEncode({'from': from, 'role': r, 'text': body, 'thread': lane}),
             )
             .timeout(const Duration(seconds: 8));
       } catch (_) {}
@@ -1193,7 +1282,7 @@ class OrderRepository {
           'id': msg.id,
           'order_id': orderId,
           'sender': from,
-          'role': role,
+          'role': r,
           'body': body,
           'ts': msg.ts,
         }

@@ -165,6 +165,7 @@
     const showPickup = viewer === 'rider' && toShop;
     const showComplete = viewer === 'rider' && picked;
     const showDone = order.status === 'delivered' && viewer !== 'rider';
+    const chatOn = typeof API !== 'undefined' && API.canChat ? API.canChat(order, viewerRole(viewer)) : false;
     const title =
       order.status === 'delivered'
         ? 'Delivered'
@@ -190,7 +191,7 @@
           <h1>${title}</h1>
           <small>Order ${esc(oid(order.id))}</small>
         </div>
-        <button class="rd-chat-fab" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
+        <button class="rd-chat-fab ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
       </div>
       <div class="rd-zoom">
         <button type="button" data-locate aria-label="Locate">◎</button>
@@ -219,7 +220,7 @@
         </div>
           <div class="rd-btns">
           <a class="btn-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}">${ICO_PHONE} Call</a>
-          <button class="btn-chat" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat${unreadDot(order.id, viewer)}</button>
+          <button class="btn-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat${unreadDot(order.id, viewer)}</button>
         </div>
         <p class="rd-near ${close ? 'ok' : ''} ${nearTxt ? '' : 'hidden'}" data-near>${esc(nearTxt)}</p>
         <button class="btn-drop ${showPickup ? '' : 'hidden'}" data-pickup="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Confirm pickup</button>
@@ -293,6 +294,10 @@
     const n = (typeof API !== 'undefined' && API.unreadCount) ? API.unreadCount(order.id, viewerRole(viewer)) : 0;
     root.querySelectorAll('[data-unread-dot]').forEach((el) => {
       el.classList.toggle('hidden', !n);
+    });
+    const chatOn = typeof API !== 'undefined' && API.canChat ? API.canChat(order, viewerRole(viewer)) : false;
+    root.querySelectorAll('[data-chat]').forEach((el) => {
+      el.classList.toggle('hidden', !chatOn);
     });
   }
 

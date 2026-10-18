@@ -279,6 +279,7 @@
     o.riderPhone = d.riderPhone || o.riderPhone || null;
     o.riderLat = d.riderLat != null ? d.riderLat : o.riderLat;
     o.riderLng = d.riderLng != null ? d.riderLng : o.riderLng;
+    o.pickedUpAt = d.pickedUpAt || o.pickedUpAt || r.picked_up_at || null;
     return o;
   }
 
@@ -708,7 +709,7 @@
     API.messages = {};
     for (const m of msgRows || []) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
-      list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts });
+      list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts, thread: m.thread });
     }
     scopeData();
     notify();
@@ -1488,37 +1489,122 @@
   function chatReadKey(orderId, role) {
     return 'qb_chat_read_' + String(role || '') + '_' + String(orderId || '');
   }
-  API.unreadCount = function (orderId, myRole) {
+  function normChatRole(role) {
+    return role === 'user' ? 'customer' : role;
+  }
+  function orderHasRider(o) {
+    return !!(o && ((o.riderId && String(o.riderId) !== 'null') || o.riderName));
+  }
+  function orderPicked(o) {
+    return !!(o && (o.status === 'picked_up' || o.status === 'on_the_way' || o.status === 'delivered'));
+  }
+  API.chatLane = function (order) {
+    if (!order || order.status === 'cancelled') return null;
+    if (orderPicked(order)) return 'customer';
+    if (orderHasRider(order) || order.status === 'accepted') return 'shop';
+    return null;
+  };
+  API.canChat = function (order, role) {
+    const lane = API.chatLane(order);
+    if (!lane) return false;
+    const r = normChatRole(role);
+    if (r === 'rider') return true;
+    if (r === 'shop') return lane === 'shop';
+    if (r === 'customer') return lane === 'customer';
+    return false;
+  };
+  API.messageThread = function (m, order) {
+    if (!m) return 'system';
+    if (m.thread === 'shop' || m.thread === 'customer') return m.thread;
+    const id = String(m.id || '');
+    if (id.indexOf('qbS.') === 0) return 'shop';
+    if (id.indexOf('qbC.') === 0) return 'customer';
+    if (m.role === 'shop') return 'shop';
+    if (m.role === 'customer' || m.role === 'user') return 'customer';
+    if (m.role === 'system') return 'system';
+    const pickedAt = order && (order.pickedUpAt || order.picked_up_at);
+    if (pickedAt && m.ts) {
+      const t = new Date(pickedAt).getTime();
+      if (!isNaN(t)) return Number(m.ts) >= t ? 'customer' : 'shop';
+    }
+    return API.chatLane(order) || 'shop';
+  };
+  API.chatMessages = function (orderId, role) {
+    const order = (API.orders || []).find((o) => o.id === orderId);
     const msgs = (API.messages || {})[orderId] || [];
+    const r = normChatRole(role);
+    const want = r === 'shop' ? 'shop' : r === 'customer' ? 'customer' : (API.chatLane(order) || 'shop');
+    return msgs.filter((m) => {
+      if (!m) return false;
+      if (m.role === 'system') {
+        const th = API.messageThread(m, order);
+        if (th === 'system') return true;
+        return th === want;
+      }
+      return API.messageThread(m, order) === want;
+    });
+  };
+  API.chatPeerName = function (order, role) {
+    if (!order) return 'Chat';
+    const r = normChatRole(role);
+    if (r === 'shop') return order.riderName || 'Rider';
+    if (r === 'customer') return order.riderName || 'Courier';
+    const lane = API.chatLane(order);
+    if (lane === 'shop') {
+      const shop = API.shopOf ? API.shopOf(order.shopId) : {};
+      return order.shopName || shop.name || 'Shop';
+    }
+    return order.customerName || 'Customer';
+  };
+  API.unreadCount = function (orderId, myRole) {
+    const order = (API.orders || []).find((o) => o.id === orderId);
+    const r = normChatRole(myRole);
+    if ((r === 'customer' || r === 'shop') && !API.canChat(order, r)) return 0;
+    const msgs = API.chatMessages(orderId, r);
     let readAt = 0;
-    try { readAt = Number(localStorage.getItem(chatReadKey(orderId, myRole)) || 0); } catch (_) {}
+    try { readAt = Number(localStorage.getItem(chatReadKey(orderId, r)) || 0); } catch (_) {}
     let n = 0;
     for (let i = 0; i < msgs.length; i++) {
       const m = msgs[i];
-      if (!m || m.role === myRole || m.role === 'system') continue;
+      if (!m || m.role === r || m.role === 'system') continue;
       if (Number(m.ts || 0) > readAt) n++;
     }
     return n;
   };
   API.markChatRead = function (orderId, myRole) {
-    try { localStorage.setItem(chatReadKey(orderId, myRole), String(Date.now())); } catch (_) {}
+    try { localStorage.setItem(chatReadKey(orderId, normChatRole(myRole)), String(Date.now())); } catch (_) {}
   };
-  API.quickReplies = function (role) {
-    if (role === 'rider') {
-      return ["I'm on my way", "I've arrived", "Order picked up", "I'm downstairs", "Please come to the gate"];
-    }
+  API.quickReplies = function (role, order) {
+    const r = normChatRole(role);
+    const lane = order ? API.chatLane(order) : null;
+    if (r === 'shop') return ['Food is ready', 'Come to the counter', 'Park in front'];
+    if (r === 'rider' && lane === 'shop') return ["On my way to the shop", "I've arrived at the shop", 'Which entrance?'];
+    if (r === 'rider') return ["I'm on my way", "I've arrived", "I'm downstairs", 'Please come to the gate'];
     return ['Where are you?', "I'm at the gate", 'Please call me', 'Leave at the door', 'Thank you'];
   };
 
   API.sendMessage = async function (orderId, from, role, text) {
     const body = String(text || '').trim();
     if (!body) return null;
+    const r = normChatRole(role);
+    const order = (API.orders || []).find((o) => o.id === orderId);
+    if (r !== 'system' && !API.canChat(order, r)) {
+      const err = r === 'customer'
+        ? 'Chat opens after the rider picks up your order.'
+        : r === 'shop'
+          ? 'Chat with the rider is open until pickup.'
+          : 'Chat is not available for this order.';
+      throw new Error(err);
+    }
+    const lane = r === 'system' ? null : API.chatLane(order);
+    const prefix = lane === 'shop' ? 'qbS.' : lane === 'customer' ? 'qbC.' : 'm';
     const msg = {
-      id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      id: prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       from: from,
-      role: role,
+      role: r === 'system' ? 'system' : r,
       text: body,
       ts: Date.now(),
+      thread: lane || undefined,
     };
     const list = API.messages[orderId] || (API.messages[orderId] = []);
     list.push(msg);
@@ -1527,7 +1613,7 @@
       await getJSON('/api/orders/' + encodeURIComponent(orderId) + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, role, text: body }),
+        body: JSON.stringify({ from, role: msg.role, text: body, thread: msg.thread }),
       });
     } catch (_) {}
     if (sbConfigured()) {
@@ -1536,7 +1622,7 @@
           id: msg.id,
           order_id: orderId,
           sender: from,
-          role: role,
+          role: msg.role,
           body: body,
           ts: msg.ts,
         }]);

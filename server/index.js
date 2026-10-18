@@ -565,13 +565,33 @@ async function handleApi(req, res, url) {
       return;
     }
     const body = await readBody(req);
+    const role = body.role || 'customer';
+    const picked = order.status === 'picked_up' || order.status === 'on_the_way' || order.status === 'delivered';
+    const lane = order.status === 'cancelled'
+      ? null
+      : picked
+        ? 'customer'
+        : (order.riderId || order.riderName || order.status === 'accepted')
+          ? 'shop'
+          : null;
+    if (role !== 'system') {
+      const r = role === 'user' ? 'customer' : role;
+      const ok = lane && (r === 'rider' || (r === 'shop' && lane === 'shop') || (r === 'customer' && lane === 'customer'));
+      if (!ok) {
+        json(res, 403, { error: 'Chat is not open for this pair yet.' });
+        return;
+      }
+    }
     const list = messages[order.id] || (messages[order.id] = []);
+    const thread = body.thread || (role === 'system' ? undefined : lane);
+    const prefix = thread === 'shop' ? 'qbS.' : thread === 'customer' ? 'qbC.' : 'm';
     const msg = {
-      id: 'm' + Date.now(),
+      id: prefix + Date.now(),
       from: body.from || 'User',
-      role: body.role || 'customer',
+      role,
       text: String(body.text || '').slice(0, 500),
       ts: Date.now(),
+      thread,
     };
     if (!msg.text) {
       json(res, 400, { error: 'Empty message' });

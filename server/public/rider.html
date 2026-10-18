@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18g" />
-  <link rel="stylesheet" href="/css/ui.css?v=18g" />
-  <link rel="stylesheet" href="/css/track.css?v=18g" />
+  <link rel="stylesheet" href="/css/app.css?v=18h" />
+  <link rel="stylesheet" href="/css/ui.css?v=18h" />
+  <link rel="stylesheet" href="/css/track.css?v=18h" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18g"></script>
-  <script src="/js/api.js?v=18g"></script>
-  <script src="/js/maps.js?v=18g"></script>
-  <script src="/js/track-ui.js?v=18g"></script>
-  <script src="/js/otp-login.js?v=18g"></script>
+  <script src="/js/live.js?v=18h"></script>
+  <script src="/js/api.js?v=18h"></script>
+  <script src="/js/maps.js?v=18h"></script>
+  <script src="/js/track-ui.js?v=18h"></script>
+  <script src="/js/otp-login.js?v=18h"></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
@@ -321,6 +321,13 @@
       const shop = API.shopOf ? API.shopOf(o.shopId) : {};
       const canNav = isMine(o) && o.status !== 'delivered';
       const navLabel = headingToCustomer(o) ? 'Navigate to customer' : 'Navigate to shop';
+      const lane = API.chatLane && API.chatLane(o);
+      const peerShop = lane === 'shop';
+      const peerName = peerShop ? (shop.name || o.shopName || 'Shop') : (o.customerName || 'Customer');
+      const peerPhone = peerShop ? (shop.phone || '') : phone;
+      const peerPhoto = peerShop ? (shop.image || '/img/shop-bakery.jpg') : '/img/avatar-user.jpg';
+      const peerSub = peerShop ? 'Shop · chat until pickup' : (phone || 'WhatsApp customer');
+      const showChat = API.canChat && API.canChat(o, 'rider');
       return `<div class="scroll rd-details">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Order Details</h1></div>
         <div class="hero-food">
@@ -333,11 +340,11 @@
           </div>
         </div>
         <div class="rd-cust">
-          <img src="/img/avatar-user.jpg" alt="" />
-          <div class="grow"><b>${esc(o.customerName || 'Customer')}</b><div class="sub">${esc(phone || 'WhatsApp customer')}</div></div>
+          <img src="${esc(peerPhoto)}" alt="" />
+          <div class="grow"><b>${esc(peerName)}</b><div class="sub">${esc(peerSub)}</div></div>
           <div class="acts">
-            ${phone ? `<a class="ico" href="${telHref(phone)}">${SVG.phone}</a>` : ''}
-            <button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>
+            ${peerPhone ? `<a class="ico" href="${telHref(peerPhone)}">${SVG.phone}</a>` : ''}
+            ${showChat ? `<button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
           </div>
         </div>
         <div class="rd-block">
@@ -477,19 +484,24 @@
     }
 
     function chatBubblesHtml() {
-      const msgs = (API.messages || {})[state.orderId] || [];
+      const msgs = (API.chatMessages && API.chatMessages(state.orderId, 'rider')) || (API.messages || {})[state.orderId] || [];
       return msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
     }
     function paintRiderChat(root) {
       const b = (root || document).querySelector('#bubbles');
       if (!b) return;
       const html = chatBubblesHtml();
-      const fp = String(((API.messages || {})[state.orderId] || []).length) + ':' + html.length;
+      const fp = String((((API.chatMessages && API.chatMessages(state.orderId, 'rider')) || []).length)) + ':' + html.length;
       if (b.getAttribute('data-fp') === fp) return;
       const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
       b.innerHTML = html;
       b.setAttribute('data-fp', fp);
       if (atBottom) b.scrollTop = b.scrollHeight;
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      const t = (root || document).querySelector('.chat-head b');
+      if (t && o && API.chatPeerName) t.textContent = API.chatPeerName(o, 'rider');
+      const input = (root || document).querySelector('#chatForm input[name="text"]');
+      if (input && o && API.chatLane) input.placeholder = API.chatLane(o) === 'shop' ? 'Message the shop…' : 'Message the customer…';
     }
     function bindChatKeyboard() {
       const apply = () => {
@@ -515,13 +527,16 @@
     }
     function chatView() {
       const o = (API.orders || []).find((x) => x.id === state.orderId);
-      const quick = (API.quickReplies && API.quickReplies('rider')) || [];
-      return `<div class="chat-page" data-chat-root="${esc(state.orderId || '')}">
-        <div class="chat-head"><button class="back-fab" data-close type="button">←</button><b>${esc(o?.customerName || 'Customer')}</b></div>
+      const quick = (API.quickReplies && API.quickReplies('rider', o)) || [];
+      const peer = (API.chatPeerName && API.chatPeerName(o, 'rider')) || (o && o.customerName) || 'Customer';
+      const lane = (API.chatLane && API.chatLane(o)) || '';
+      const ph = lane === 'shop' ? 'Message the shop…' : 'Message the customer…';
+      return `<div class="chat-page" data-chat-root="${esc(state.orderId || '')}" data-lane="${esc(lane)}">
+        <div class="chat-head"><button class="back-fab" data-close type="button">←</button><b>${esc(peer)}</b></div>
         <div class="bubbles" id="bubbles">${chatBubblesHtml()}</div>
         <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
         <form class="composer" id="chatForm">
-          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="Message the customer…" />
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="${esc(ph)}" />
           <button class="btn sm green" type="submit">Send</button>
         </form>
       </div>`;
@@ -725,6 +740,8 @@
         render(true);
       });
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        const o = (API.orders || []).find((x) => x.id === b.dataset.chat);
+        if (API.canChat && !API.canChat(o, 'rider')) return;
         state.orderId = b.dataset.chat;
         state.screen = 'chat';
         if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
@@ -741,7 +758,9 @@
         if (!body || !state.orderId) return;
         const form = document.getElementById('chatForm');
         if (form && form.text) form.text.value = '';
-        await API.sendMessage(state.orderId, me().name, 'rider', body);
+        try {
+          await API.sendMessage(state.orderId, me().name, 'rider', body);
+        } catch (err) { alert(err.message); return; }
         if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
         const keep = document.querySelector('[data-chat-root]');
         if (keep) paintRiderChat(keep);
@@ -825,9 +844,14 @@
         }
         startRiderGps();
         if (state.screen === 'chat' && state.orderId) {
+          const oChat = (API.orders || []).find((x) => x.id === state.orderId);
+          if (!oChat || oChat.status === 'cancelled' || (API.canChat && !API.canChat(oChat, 'rider'))) {
+            state.screen = 'details';
+          } else {
           const keep = root.querySelector('[data-chat-root="' + state.orderId + '"]');
           const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
-          if (keep && (!force || typing)) {
+          const lane = (API.chatLane && API.chatLane(oChat)) || '';
+          if (keep && keep.getAttribute('data-lane') === lane && (!force || typing)) {
             paintRiderChat(keep);
             return;
           }
@@ -841,6 +865,7 @@
           const input = document.querySelector('#chatForm input[name="text"]');
           if (input) setTimeout(() => input.focus(), 50);
           return;
+          }
         }
         if (state.screen === 'live' && state.orderId) {
           const o = (API.orders || []).find((x) => x.id === state.orderId);

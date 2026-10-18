@@ -107,22 +107,23 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           ],
                         ),
                       ),
-                      IconButton.filled(
-                        style: IconButton.styleFrom(backgroundColor: Brand.navy2),
-                        onPressed: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer')),
-                          );
-                          if (mounted) setState(() {});
-                        },
-                        icon: Badge(
-                          isLabelVisible: OrderRepository.instance.unreadCount(current.id, 'customer') > 0,
-                          smallSize: 10,
-                          backgroundColor: Brand.red,
-                          child: const Icon(Icons.chat_bubble, color: Colors.white),
+                      if (OrderRepository.instance.canChat(current, 'customer'))
+                        IconButton.filled(
+                          style: IconButton.styleFrom(backgroundColor: Brand.navy2),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer')),
+                            );
+                            if (mounted) setState(() {});
+                          },
+                          icon: Badge(
+                            isLabelVisible: OrderRepository.instance.unreadCount(current.id, 'customer') > 0,
+                            smallSize: 10,
+                            backgroundColor: Brand.red,
+                            child: const Icon(Icons.chat_bubble, color: Colors.white),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -179,20 +180,22 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               label: const Text('Call'),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton.icon(
-                              style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
+                          if (OrderRepository.instance.canChat(current, 'customer')) ...[
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
+                                onPressed: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
+                                  ),
                                 ),
+                                icon: const Icon(Icons.chat_bubble),
+                                label: const Text('Chat'),
                               ),
-                              icon: const Icon(Icons.chat_bubble),
-                              label: const Text('Chat'),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                       if (current.status == OrderStatus.delivered)

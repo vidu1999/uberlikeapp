@@ -615,19 +615,28 @@ class _RiderHomeState extends State<RiderHome> {
             decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(18)),
             child: Row(
               children: [
-                CircleAvatar(backgroundImage: _img('/img/avatar-user.jpg'), backgroundColor: Brand.navy3),
+                CircleAvatar(
+                  backgroundImage: _img(OrderRepository.chatLane(o) == 'shop' ? '/img/shop-bakery.jpg' : '/img/avatar-user.jpg'),
+                  backgroundColor: Brand.navy3,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      Text(o.customerPhone ?? 'WhatsApp customer', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                      Text(
+                        OrderRepository.instance.chatPeerName(o, 'rider'),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        OrderRepository.chatLane(o) == 'shop' ? 'Shop · chat until pickup' : (o.customerPhone ?? 'WhatsApp customer'),
+                        style: const TextStyle(color: Brand.soft, fontSize: 12),
+                      ),
                     ],
                   ),
                 ),
                 IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
-                _chatBtn(o.id),
+                if (OrderRepository.instance.canChat(o, 'rider')) _chatBtn(o),
               ],
             ),
           ),
@@ -731,7 +740,7 @@ class _RiderHomeState extends State<RiderHome> {
                     ],
                   ),
                 ),
-                _chatBtn(o.id, iconColor: Colors.white, bg: Brand.navy2),
+                if (OrderRepository.instance.canChat(o, 'rider')) _chatBtn(o, iconColor: Colors.white, bg: Brand.navy2),
               ],
             ),
           ),
@@ -761,8 +770,10 @@ class _RiderHomeState extends State<RiderHome> {
                       ),
                     ),
                     IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
-                    const SizedBox(width: 6),
-                    _chatBtn(o.id),
+                    if (OrderRepository.instance.canChat(o, 'rider')) ...[
+                      const SizedBox(width: 6),
+                      _chatBtn(o),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -802,12 +813,12 @@ class _RiderHomeState extends State<RiderHome> {
     );
   }
 
-  Widget _chatBtn(String orderId, {Color iconColor = Brand.green, Color bg = const Color(0xFF123D28)}) {
-    final n = OrderRepository.instance.unreadCount(orderId, 'rider');
+  Widget _chatBtn(Order o, {Color iconColor = Brand.green, Color bg = const Color(0xFF123D28)}) {
+    final n = OrderRepository.instance.unreadCount(o.id, 'rider');
     return IconButton.filled(
       style: IconButton.styleFrom(backgroundColor: bg),
       onPressed: () async {
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(orderId: orderId, myRole: 'rider')));
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'rider')));
         if (mounted) setState(() {});
       },
       icon: Badge(

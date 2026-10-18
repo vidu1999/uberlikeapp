@@ -4,6 +4,7 @@ import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../theme.dart';
 import '../../widgets/tracking_map.dart';
+import '../chat_screen.dart';
 
 class ShopOrderDetails extends StatelessWidget {
   final String orderId;
@@ -141,6 +142,20 @@ class ShopOrderDetails extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (OrderRepository.instance.canChat(o, 'shop'))
+                          IconButton.filled(
+                            style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'shop')),
+                            ),
+                            icon: Badge(
+                              isLabelVisible: OrderRepository.instance.unreadCount(o.id, 'shop') > 0,
+                              smallSize: 10,
+                              backgroundColor: Brand.red,
+                              child: const Icon(Icons.chat_bubble, color: Brand.green),
+                            ),
+                          ),
                       ],
                     ),
                   )
@@ -186,7 +201,24 @@ class ShopOrderDetails extends StatelessWidget {
                         MaterialPageRoute(
                           builder: (_) => Scaffold(
                             backgroundColor: Brand.navy,
-                            appBar: AppBar(title: const Text('View Location')),
+                            appBar: AppBar(
+                              title: const Text('View Location'),
+                              actions: [
+                                if (OrderRepository.instance.canChat(o, 'shop'))
+                                  IconButton(
+                                    onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (_) => ChatScreen(orderId: o!.id, myRole: 'shop')),
+                                    ),
+                                    icon: Badge(
+                                      isLabelVisible: OrderRepository.instance.unreadCount(o!.id, 'shop') > 0,
+                                      smallSize: 10,
+                                      backgroundColor: Brand.red,
+                                      child: const Icon(Icons.chat_bubble),
+                                    ),
+                                  ),
+                              ],
+                            ),
                             body: TrackingMap(
                               destLat: o!.deliveryLat,
                               destLng: o.deliveryLng,
