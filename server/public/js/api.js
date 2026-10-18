@@ -1385,7 +1385,7 @@
 
   API.googleSignIn = function () {
     return new Promise(function (resolve, reject) {
-      const clientId = String(window.QB_GOOGLE_CLIENT_ID || '').trim();
+      const clientId = String(window.QB_GOOGLE_CLIENT_ID || '118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com').trim();
       if (!clientId) {
         reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
         return;
