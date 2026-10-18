@@ -2,6 +2,12 @@ name: Build APKs
 on:
   push:
     branches: [arena/72bd113d-uberlikeapp]
+    paths:
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'android/**'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 permissions:

@@ -1,31 +1,49 @@
 name: Seed Supabase
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: wipe all live rows, or seed
+        required: true
+        default: wipe
+        type: choice
+        options:
+          - wipe
+          - seed
   push:
     branches: [arena/72bd113d-uberlikeapp, main]
     paths:
+      - server/wipe-all.js
       - server/schema.sql
       - server/seed.js
-      - server/db.js
       - server/push-seed.js
       - .github/workflows/supabase.yml
 
 jobs:
-  seed:
+  run:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Upsert demo rows
+      - name: Wipe or seed Supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY$SUPABASE_ANON_KEY" ]; then
-            echo "Add repo secrets SUPABASE_URL and SUPABASE_KEY (anon or service_role), then run schema.sql once."
-            exit 0
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_KEY:-}${SUPABASE_ANON_KEY:-}" ]; then
+            echo "Secrets empty — using repo .env if present"
           fi
-          node server/push-seed.js
+          MODE="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE" ]; then
+            MODE=wipe
+          fi
+          echo "mode=$MODE"
+          if [ "$MODE" = "wipe" ]; then
+            node server/wipe-all.js
+          else
+            node server/push-seed.js
+          fi

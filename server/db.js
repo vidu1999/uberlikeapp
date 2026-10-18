@@ -359,12 +359,47 @@ function info() {
   };
 }
 
+async function countRows(table) {
+  const rows = await rest(table + '?select=id&limit=20', { method: 'GET' });
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+async function wipeAll() {
+  if (name() !== 'supabase') throw new Error('Supabase is not configured');
+  const steps = [
+    ['messages', 'order_id=not.is.null'],
+    ['orders', 'id=not.is.null'],
+    ['menu_items', 'id=not.is.null'],
+    ['shops', 'id=not.is.null'],
+    ['accounts', 'id=not.is.null'],
+    ['otp_codes', 'id=not.is.null'],
+    ['app_state', 'id=not.is.null'],
+  ];
+  const report = [];
+  for (const [table, filter] of steps) {
+    await rest(table + '?' + filter, {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
+    });
+    let left = 0;
+    try {
+      left = await countRows(table);
+    } catch (_) {
+      left = -1;
+    }
+    report.push({ table, remaining: left });
+    if (left > 0) throw new Error('Wipe incomplete: ' + table + ' still has rows');
+  }
+  return report;
+}
+
 module.exports = {
   name,
   load,
   save,
   info,
   ensureSeed,
+  wipeAll,
   supabaseUrl,
   anonKey,
   shopFrom,
