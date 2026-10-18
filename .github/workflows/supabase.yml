@@ -13,9 +13,11 @@ on:
   push:
     branches: [arena/72bd113d-uberlikeapp, main]
     paths:
+      - server/wipe-all.js
       - server/schema.sql
       - server/seed.js
       - server/push-seed.js
+      - .github/workflows/supabase.yml
 
 jobs:
   run:
@@ -37,7 +39,7 @@ jobs:
           if [ -z "${SUPABASE_ANON_KEY:-}" ]; then unset SUPABASE_ANON_KEY || true; fi
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
-            MODE=seed
+            MODE=wipe
           fi
           echo "mode=$MODE"
           if [ "$MODE" = "wipe" ]; then
