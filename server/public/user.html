@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18l" />
-  <link rel="stylesheet" href="/css/ui.css?v=18l" />
-  <link rel="stylesheet" href="/css/track.css?v=18l" />
-  <link rel="stylesheet" href="/css/qb.css?v=18l" />
+  <link rel="stylesheet" href="/css/app.css?v=18m" />
+  <link rel="stylesheet" href="/css/ui.css?v=18m" />
+  <link rel="stylesheet" href="/css/track.css?v=18m" />
+  <link rel="stylesheet" href="/css/qb.css?v=18m" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18l"></script>
-  <script src="/js/api.js?v=18l"></script>
-  <script src="/js/maps.js?v=18l"></script>
-  <script src="/js/track-ui.js?v=18l"></script>
+  <script src="/js/live.js?v=18m"></script>
+  <script src="/js/api.js?v=18m"></script>
+  <script src="/js/maps.js?v=18m"></script>
+  <script src="/js/track-ui.js?v=18m"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -50,12 +50,13 @@
       screen: 'home',
       query: '',
       category: 'All',
+      showFavs: false,
       shopId: null,
       menuTab: 'menu',
       menuCat: 'Cakes',
       trackId: null,
       cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
-      favs: JSON.parse(sessionStorage.getItem('sd_favs') || '[]'),
+      favs: [],
       note: '',
       address: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
       loc: {
@@ -89,7 +90,23 @@
     }
 
     function saveCart() { sessionStorage.setItem('sd_cart', JSON.stringify(state.cart)); }
-    function saveFavs() { sessionStorage.setItem('sd_favs', JSON.stringify(state.favs)); }
+    function favKey() {
+      const p = String((API.user && API.user.phone) || '').replace(/\D/g, '');
+      const k = p.length >= 9 ? p.slice(-9) : (p || 'guest');
+      return 'qb_favs_' + k;
+    }
+    function loadFavs() {
+      try {
+        const raw = localStorage.getItem(favKey()) || sessionStorage.getItem('sd_favs') || '[]';
+        const arr = JSON.parse(raw);
+        state.favs = Array.isArray(arr) ? arr.map(String) : [];
+      } catch (_) { state.favs = state.favs || []; }
+    }
+    function saveFavs() {
+      try { localStorage.setItem(favKey(), JSON.stringify(state.favs)); } catch (_) {}
+      try { sessionStorage.setItem('sd_favs', JSON.stringify(state.favs)); } catch (_) {}
+    }
+    loadFavs();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function fee() { return state.deliveryType === 'express' ? 360 : 200; }
@@ -252,28 +269,74 @@
       const k = haversineKm([Number(la), Number(ln)], [Number(s.lat), Number(s.lng)]);
       return Math.max(0.1, Math.round(k * 10) / 10);
     }
-    function filteredShops() {
-      const q = state.query.toLowerCase();
+    function shopMatchesCat(s) {
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
-      let shops = API.shops.filter((s) => !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
-      if (cat.id !== 'All') {
-        shops = shops.filter((s) => s.category === cat.map || s.category === cat.id || (cat.id === 'Beverages' && (s.category === 'Coffee' || s.category === 'Beverages')));
-      }
+      if (cat.id === 'All') return true;
+      const c = String(s.category || '');
+      if (c === cat.map || c === cat.id) return true;
+      if (cat.id === 'Burgers' && /fast food|burger/i.test(c)) return true;
+      if (cat.id === 'Beverages' && /coffee|beverage|drink|tea/i.test(c)) return true;
+      return false;
+    }
+    function shopMatchesQuery(s, q) {
+      if (!q) return true;
+      const blob = [s.name, s.category, s.address].join(' ').toLowerCase();
+      if (blob.includes(q)) return true;
+      return (API.items || []).some((it) => it.shopId === s.id && [it.name, it.category, it.desc, it.description].join(' ').toLowerCase().includes(q));
+    }
+    function filteredShops() {
+      const q = state.query.trim().toLowerCase();
+      let shops = (API.shops || []).filter((s) => shopMatchesCat(s) && shopMatchesQuery(s, q));
+      if (state.showFavs) shops = shops.filter((s) => state.favs.includes(s.id));
       return shops.slice().sort((a, b) => distKm(a) - distKm(b));
     }
-    function shopRow(s) {
+    function itemMatchesCat(it) {
+      const cat = CATS.find((c) => c.id === state.category) || CATS[0];
+      if (cat.id === 'All') return true;
+      const ic = String(it.category || '');
+      if (ic === cat.id || ic === cat.map) return true;
+      if (cat.id === 'Burgers' && /burger|fast food/i.test(ic)) return true;
+      if (cat.id === 'Pizza' && /pizza/i.test(ic)) return true;
+      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread/i.test(ic)) return true;
+      if (cat.id === 'Beverages' && /beverage|drink|coffee|tea|juice/i.test(ic)) return true;
+      return shopMatchesCat(API.shopOf(it.shopId));
+    }
+    function filteredItems() {
+      const q = state.query.trim().toLowerCase();
+      return (API.items || []).filter((it) => {
+        if (it.isAvailable === false) return false;
+        if (state.showFavs && !state.favs.includes(it.shopId)) return false;
+        if (!itemMatchesCat(it)) return false;
+        if (!q) return state.category !== 'All';
+        const shop = API.shopOf(it.shopId);
+        return [it.name, it.category, it.desc, it.description, shop && shop.name].join(' ').toLowerCase().includes(q);
+      });
+    }
+    function shopRow(s, asCard) {
       const liked = state.favs.includes(s.id);
       const km = distKm(s);
       const rev = s.reviews >= 100 ? s.reviews + '+' : (s.reviews || 0);
-      return `<div class="shop-row" data-shop="${s.id}">
+      const cls = asCard ? 'shop-card' : 'shop-row';
+      return `<div class="${cls}" data-shop="${s.id}">
         <img class="thumb" src="${shopImg(s)}" alt="" />
         <div class="grow">
           <div class="name">${esc(s.name)}</div>
-          <div class="rate"><span class="star">★</span> ${s.rating} <em>(${rev})</em></div>
-          <div class="meta">${esc(s.category)} · ${km} km</div>
-          ${s.address ? `<div class="meta">${esc(s.address)}</div>` : ''}
+          <div class="meta">${esc(s.category || 'Shop')}</div>
+          <div class="rate"><span class="star">★</span> ${Number(s.rating || 0).toFixed(1)} <em>(${rev})</em> · ${km} km</div>
         </div>
-        <button class="heart ${liked?'on':''}" data-fav="${s.id}">${liked ? SVG.heartOn : SVG.heart}</button>
+        <button class="heart ${liked?'on':''}" data-fav="${s.id}" aria-label="${liked ? 'Remove favourite' : 'Add favourite'}">${liked ? SVG.heartOn : SVG.heart}</button>
+      </div>`;
+    }
+    function itemRow(it) {
+      const shop = API.shopOf(it.shopId);
+      return `<div class="item-card" data-shop="${esc(it.shopId)}">
+        <img class="thumb" src="${itemImg(it)}" alt="" />
+        <div class="grow">
+          <div class="name">${esc(it.name)}</div>
+          <div class="meta">${esc(shop.name || 'Shop')}</div>
+          <div class="price">${rs(it.price)}</div>
+        </div>
+        ${it.isAvailable === false ? `<span class="muted">Sold out</span>` : `<button class="add" data-add="${esc(it.id)}">Add</button>`}
       </div>`;
     }
 
@@ -422,21 +485,38 @@
           </button>`).join('')}
         </div>
         <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-go-search>See All ›</button></div>
-        ${filteredShops().slice(0,6).map(shopRow).join('') || '<div class="pad muted">No shops nearby yet. When a shop registers, they appear here.</div>'}
+        ${filteredShops().slice(0,6).map((s) => shopRow(s, false)).join('') || '<div class="pad muted">No shops nearby yet. When a shop registers, they appear here.</div>'}
       </div>${cartbar()}${nav()}`;
     }
     function searchView() {
+      const q = state.query.trim();
+      const shops = filteredShops();
+      const items = filteredItems();
+      const favShops = (API.shops || []).filter((s) => state.favs.includes(s.id));
+      const title = state.showFavs ? 'Favourites' : 'Search Shops & Items';
+      const shopHead = state.showFavs ? 'Your Favourites' : (q ? 'Shops' : (state.category === 'All' ? 'Popular Near You' : state.category));
+      const chips = CATS.map((c) => `<button class="s-chip ${state.category===c.id?'on':''}" data-cat="${c.id}">${esc(c.label)}</button>`).join('');
+      let body = '';
+      if (!q && !state.showFavs && favShops.length) {
+        body += `<div class="sec-row"><h2>Your Favourites</h2><button class="see" data-go-favs>See All ›</button></div>`
+          + favShops.slice(0, 4).map((s) => shopRow(s, true)).join('');
+      }
+      if (items.length) {
+        body += `<div class="sec-row"><h2>Items</h2></div>` + items.slice(0, 40).map(itemRow).join('');
+      }
+      const listed = (!q && !state.showFavs && favShops.length)
+        ? shops.filter((s) => !state.favs.includes(s.id))
+        : shops;
+      if (listed.length) {
+        body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + listed.map((s) => shopRow(s, true)).join('');
+      } else if (!items.length && (state.showFavs || q || !favShops.length)) {
+        body += `<div class="pad muted">${state.showFavs ? 'Tap the heart on a shop to save it here.' : (q ? 'No shops or items match that search.' : 'No shops nearby yet.')}</div>`;
+      }
       return `<div class="scroll qb-search-page">
-        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>
+        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>${title}</b></div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
-        <div class="u-cats">
-          ${CATS.map((c) => `<button class="u-cat ${state.category===c.id?'on':''}" data-cat="${c.id}">
-            <div class="ico">${c.img ? `<img src="${c.img}" alt="" />` : SVG.grid}</div>
-            <span>${c.label}</span>
-          </button>`).join('')}
-        </div>
-        <div class="sec-row"><h2>Popular Near You</h2></div>
-        ${filteredShops().map(shopRow).join('') || '<div class="pad muted">No shops nearby yet.</div>'}
+        <div class="s-chips">${chips}</div>
+        ${body}
       </div>${nav()}`;
     }
     function shopView() {
@@ -633,6 +713,7 @@
         </div>
         <div class="prof-list">
           <button data-tab="orders">${SVG.orders} My Orders</button>
+          <button data-go-favs>${SVG.heartOn} Favourites</button>
           <button>${SVG.pin} Addresses</button>
           <button>${SVG.lock} Payment Methods</button>
           <button>${SVG.bell} Notifications</button>
@@ -713,7 +794,7 @@
         bindGate();
         return;
       }
-      if (API.user) tryAutoGps();
+      if (API.user) { loadFavs(); tryAutoGps(); }
       if (!state.loc._gps && !state.loc.liveLat) {
         if (!root.querySelector('[data-locperm]')) {
           root.innerHTML = locPermView();
@@ -966,11 +1047,28 @@
 
     function bindApp() {
       const root = document.getElementById('root');
-      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; state.showFavs = false; render(); });
       const q = document.getElementById('q');
-      if (q) q.oninput = (e) => { state.query = e.target.value; if (state.screen !== 'search') state.screen = 'search'; render({ keepScroll: true }); const n=document.getElementById('q'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      if (q) {
+        q.oninput = (e) => {
+          state.query = e.target.value;
+          if (state.screen !== 'search') { state.screen = 'search'; state.showFavs = false; }
+          render({ keepScroll: true });
+          const n = document.getElementById('q');
+          if (n) { n.focus(); n.selectionStart = n.selectionEnd = n.value.length; }
+        };
+        q.onfocus = () => {
+          if (state.screen === 'search') return;
+          state.screen = 'search';
+          state.showFavs = false;
+          render({ keepScroll: true });
+          const n = document.getElementById('q');
+          if (n) n.focus();
+        };
+      }
       root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render({ keepScroll: true }); });
-      root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
+      root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; state.showFavs = false; render(); });
+      root.querySelectorAll('[data-go-favs]').forEach((b) => b.onclick = () => { state.screen = 'search'; state.showFavs = true; state.query = ''; state.category = 'All'; render(); });
       root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();

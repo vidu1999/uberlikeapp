@@ -24,8 +24,6 @@ class CustomerHome extends StatefulWidget {
 class _CustomerHomeState extends State<CustomerHome> {
   int tab = 0;
   String category = 'All';
-  String query = '';
-  final favs = <String>{};
 
   @override
   void initState() {
@@ -60,10 +58,6 @@ class _CustomerHomeState extends State<CustomerHome> {
     } else if (category != 'All') {
       list = list.where((s) => s.category == category || (category == 'Beverages' && s.category == 'Coffee')).toList();
     }
-    if (query.isNotEmpty) {
-      final q = query.toLowerCase();
-      list = list.where((s) => s.name.toLowerCase().contains(q) || s.category.toLowerCase().contains(q)).toList();
-    }
     final p = UserPlace.instance;
     final next = list.toList()
       ..sort((a, b) {
@@ -94,11 +88,14 @@ class _CustomerHomeState extends State<CustomerHome> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: Catalog.version,
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: OrderRepository.instance.favsNotifier,
       builder: (context, _, __) => ValueListenableBuilder<int>(
-        valueListenable: UserPlace.instance.liveNotifier,
-        builder: (context, _, __) => _buildHome(context),
+        valueListenable: Catalog.version,
+        builder: (context, _, __) => ValueListenableBuilder<int>(
+          valueListenable: UserPlace.instance.liveNotifier,
+          builder: (context, _, __) => _buildHome(context),
+        ),
       ),
     );
   }
@@ -203,15 +200,19 @@ class _CustomerHomeState extends State<CustomerHome> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: 'Search for food, shops or items...',
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Brand.search,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            child: GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+              child: AbsorbPointer(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search for food, shops or items...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Brand.search,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
               ),
-              onChanged: (v) => setState(() => query = v),
             ),
           ),
           Padding(
@@ -307,7 +308,7 @@ class _CustomerHomeState extends State<CustomerHome> {
               child: Text('Loading shops from the database…', style: TextStyle(color: Brand.muted)),
             ),
           ..._shops.map((s) {
-            final liked = favs.contains(s.id);
+            final liked = OrderRepository.instance.favs.contains(s.id);
             final km = _km(s);
             final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews == 0 ? '120+' : s.reviews}';
             return ListTile(
@@ -317,22 +318,18 @@ class _CustomerHomeState extends State<CustomerHome> {
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
                   Row(children: [
                     const Icon(Icons.star_rounded, color: Brand.star, size: 16),
-                    Text(' ${s.rating} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                    Text('($rev)', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                    Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                    Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
                   ]),
-                  Text('${s.category} · $km km', style: const TextStyle(color: Brand.muted, fontSize: 12)),
                 ],
               ),
               trailing: IconButton(
-                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? Colors.red : Colors.grey),
-                onPressed: () => setState(() {
-                  if (liked) {
-                    favs.remove(s.id);
-                  } else {
-                    favs.add(s.id);
-                  }
+                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
+                  if (mounted) setState(() {});
                 }),
               ),
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s))),
@@ -372,6 +369,11 @@ class _CustomerHomeState extends State<CustomerHome> {
           ),
           const SizedBox(height: 16),
           ListTile(leading: const Icon(Icons.receipt_long_outlined), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
+          ListTile(
+            leading: const Icon(Icons.favorite_outline),
+            title: const Text('Favourites'),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen(favouritesOnly: true))),
+          ),
           const ListTile(leading: Icon(Icons.location_on_outlined), title: Text('Addresses')),
           const ListTile(leading: Icon(Icons.credit_card_outlined), title: Text('Payment Methods')),
           const ListTile(leading: Icon(Icons.notifications_outlined), title: Text('Notifications')),

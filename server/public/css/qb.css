@@ -111,7 +111,11 @@
 .qb-dl h1 { font-size: 24px; font-weight: 800; margin: 16px 0 8px; }
 .qb-dl p { color: #6B7280; line-height: 1.45; }
 
-.qb-search-page .u-search { margin-top: 8px; }
+.qb-search-page { background: #F7F8FA; min-height: 100%; }
+.qb-search-page .u-search { margin-top: 4px; background: #fff; }
+.qb-search-page .back-row { background: #F7F8FA; }
+.qb-search-page .back-row b { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+.qb-search-page .sec-row h2 { font-size: 16px; }
 .menu-hero { position: relative; height: 210px; }
 .menu-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .menu-hero .overlay {

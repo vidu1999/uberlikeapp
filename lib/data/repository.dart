@@ -19,6 +19,7 @@ class OrderRepository {
   final ValueNotifier<bool> connectedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<SessionUser?> userNotifier = ValueNotifier<SessionUser?>(null);
   final ValueNotifier<List<CartLine>> cartNotifier = ValueNotifier<List<CartLine>>(<CartLine>[]);
+  final ValueNotifier<Set<String>> favsNotifier = ValueNotifier<Set<String>>(<String>{});
   final Map<String, List<ChatMessage>> messages = {};
 
   Timer? _poll;
@@ -29,6 +30,31 @@ class OrderRepository {
   final Map<String, Order> _keptOrders = {};
   final Map<String, int> _chatRead = {};
   SessionUser? get user => userNotifier.value;
+  Set<String> get favs => favsNotifier.value;
+
+  String _favKey() {
+    final d = (user?.phone ?? '').replaceAll(RegExp(r'\D'), '');
+    final k = d.length >= 9 ? d.substring(d.length - 9) : (d.isEmpty ? 'guest' : d);
+    return 'qb_favs_$k';
+  }
+
+  Future<void> loadFavs() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      favsNotifier.value = (p.getStringList(_favKey()) ?? const <String>[]).toSet();
+    } catch (_) {}
+  }
+
+  Future<void> toggleFav(String id) async {
+    if (id.isEmpty) return;
+    final next = Set<String>.of(favs);
+    if (!next.add(id)) next.remove(id);
+    favsNotifier.value = next;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_favKey(), next.toList());
+    } catch (_) {}
+  }
 
   Order? orderById(String id) {
     for (final o in orders) {
@@ -132,6 +158,7 @@ class OrderRepository {
       return;
     }
     _started = true;
+    loadFavs();
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => refresh());
     refresh();
   }
@@ -522,6 +549,7 @@ class OrderRepository {
     var session = SessionUser.fromJson(user);
     if (role == 'shop') session = _withShopId(session);
     userNotifier.value = session;
+    await loadFavs();
     connectedNotifier.value = true;
     await _persist();
     if (role == 'shop') {
@@ -1541,4 +1569,5 @@ class Catalog {
     items = nextItems;
     version.value++;
   }
+}
 }
