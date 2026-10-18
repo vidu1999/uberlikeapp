@@ -36,7 +36,7 @@
   function statusLabel(s) {
     return (
       {
-        pending: 'Confirming',
+        pending: 'Waiting for confirm',
         preparing: 'Preparing',
         ready: 'Ready for pickup',
         accepted: 'Rider accepted',
@@ -51,6 +51,16 @@
   function goingToShop(order) {
     return !!(order && (order.status === 'accepted' || (order.status === 'ready' && order.riderId)));
   }
+
+  function riderOnJob(order) {
+    if (!order) return false;
+    const st = order.status;
+    if (st !== 'accepted' && st !== 'picked_up' && st !== 'on_the_way' && st !== 'delivered') return false;
+    return !!(order.riderName || (order.riderId && String(order.riderId) !== 'null' && String(order.riderId) !== ''));
+  }
+
+  const ICO_SHOP_SIDE =
+    '<div class="rd-shop-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div>';
 
   const CLOSE_M = 200;
 
@@ -124,6 +134,10 @@
     return min + ' – ' + (min + 3) + ' min';
   }
 
+  function shopOf(order) {
+    return typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
+  }
+
   function person(order, viewer) {
     if (viewer === 'rider') {
       return {
@@ -134,28 +148,60 @@
         rating: '4.9',
         reviews: '120+',
         initials: initials(order.riderName || 'KP'),
+        side: 'bike',
       };
     }
-    if (order.riderName) {
+    if (viewer !== 'rider' && !riderOnJob(order)) {
+      const shop = shopOf(order) || {};
+      const name = shop.name || order.shopName || 'Shop';
+      const bits = [shop.category, shop.address].filter(Boolean);
       return {
-        name: order.riderName,
-        role: 'Delivery Partner',
+        name,
+        role: bits.length ? bits.join(' · ') : 'Waiting for confirm',
+        phone: null,
+        photo: shop.image || '/img/shop-bakery.jpg',
+        rating: Number(shop.rating || 0).toFixed(1),
+        reviews: shop.reviews >= 100 ? shop.reviews + '+' : String(shop.reviews || 0),
+        initials: initials(name),
+        side: 'shop',
+      };
+    }
+    if (order.riderName || riderOnJob(order)) {
+      return {
+        name: order.riderName || 'Rider',
+        role: goingToShop(order) ? 'Heading to the shop' : (order.status === 'picked_up' || order.status === 'on_the_way' ? 'On the way to you' : 'Delivery Partner'),
         phone: order.riderPhone,
         photo: '/img/avatar-rider.jpg',
         rating: '4.9',
         reviews: '120+',
-        initials: initials(order.riderName),
+        initials: initials(order.riderName || 'Rider'),
+        side: 'bike',
       };
     }
     return {
       name: statusLabel(order.status),
-      role: order.shopName || 'Assigning courier…',
+      role: order.shopName || 'Waiting for confirm',
       phone: null,
-      photo: '/img/avatar-rider.jpg',
+      photo: '/img/shop-bakery.jpg',
       rating: '5.0',
       reviews: 'New',
-      initials: 'GF',
+      initials: 'SH',
+      side: 'shop',
     };
+  }
+
+  function sideHtml(p) {
+    return p && p.side === 'shop' ? ICO_SHOP_SIDE : '🛵';
+  }
+
+  function trackTitle(order, viewer) {
+    if (order.status === 'delivered') return 'Delivered';
+    if (viewer === 'rider' && goingToShop(order)) return 'To shop';
+    if (viewer === 'rider' && (order.status === 'picked_up' || order.status === 'on_the_way')) return 'On the way';
+    if (viewer !== 'rider' && !riderOnJob(order)) return statusLabel(order.status);
+    if (goingToShop(order)) return 'Rider accepted';
+    if (order.status === 'picked_up' || order.status === 'on_the_way') return 'Picked up';
+    return 'Track Order';
   }
 
   function screen(order, viewer, opts) {
@@ -171,18 +217,7 @@
     const showComplete = viewer === 'rider' && picked;
     const showDone = order.status === 'delivered' && viewer !== 'rider';
     const chatOn = typeof API !== 'undefined' && API.canChat ? API.canChat(order, viewerRole(viewer)) : false;
-    const title =
-      order.status === 'delivered'
-        ? 'Delivered'
-        : viewer === 'rider' && toShop
-          ? 'To shop'
-          : viewer === 'rider' && picked
-            ? 'On the way'
-            : toShop
-              ? 'Rider accepted'
-              : picked
-                ? 'Picked up'
-                : 'Track Order';
+    const title = trackTitle(order, viewer);
     const nearTxt = showPickup
       ? (close ? 'You are at the shop — confirm pickup' : Math.round(metersLeft(order)) + ' m to shop · get closer to confirm')
       : showComplete
@@ -211,7 +246,7 @@
             <div class="role" data-sub>${esc(p.role)}</div>
             <div class="rate"><span class="star">★</span> ${esc(p.rating)} <span style="color:#9CA3AF;font-weight:600">(${esc(p.reviews)})</span></div>
           </div>
-          <div class="rd-scooter">🛵</div>
+          <div class="rd-scooter" data-side-ico>${sideHtml(p)}</div>
         </div>
         <div class="rd-metrics">
           <div class="rd-metric">
@@ -243,6 +278,10 @@
     if (name) name.textContent = p.name;
     const sub = root.querySelector('[data-sub]');
     if (sub) sub.textContent = p.role || '';
+    const avatar = root.querySelector('[data-avatar]');
+    if (avatar && p.photo) avatar.src = p.photo;
+    const side = root.querySelector('[data-side-ico]');
+    if (side) side.innerHTML = sideHtml(p);
     const call = root.querySelector('[data-call]');
     if (call) {
       call.classList.toggle('hidden', !p.phone);
@@ -279,20 +318,7 @@
       near.classList.toggle('ok', close && !!txt);
     }
     const h1 = root.querySelector('.rd-top h1');
-    if (h1) {
-      h1.textContent =
-        order.status === 'delivered'
-          ? 'Delivered'
-          : viewer === 'rider' && toShop
-            ? 'To shop'
-            : viewer === 'rider' && picked
-              ? 'On the way'
-              : toShop
-                ? 'Rider accepted'
-                : picked
-                  ? 'Picked up'
-                  : 'Track Order';
-    }
+    if (h1) h1.textContent = trackTitle(order, viewer);
     const done = root.querySelector('[data-done]');
     if (done) done.classList.toggle('hidden', !(order.status === 'delivered' && viewer !== 'rider'));
     root.dataset.hasRider = order.riderName ? '1' : '0';

@@ -30,7 +30,7 @@ extension OrderStatusX on OrderStatus {
   String get label {
     switch (this) {
       case OrderStatus.pending:
-        return 'Pending';
+        return 'Waiting for confirm';
       case OrderStatus.preparing:
         return 'Preparing';
       case OrderStatus.ready:

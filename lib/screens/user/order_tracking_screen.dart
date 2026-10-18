@@ -55,7 +55,39 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           _destLng ??= current.deliveryLng;
           final shop = _shop(current.shopId);
           final base = AppConfig.normalize(AppConfig.baseUrl);
-          final avatar = base.isEmpty ? null : '$base/img/avatar-rider.jpg';
+          final hasRider = current.status.inRiderJob &&
+              ((current.riderName != null && current.riderName!.isNotEmpty) ||
+                  (current.riderId != null && current.riderId!.isNotEmpty));
+          String? photoPath;
+          if (hasRider) {
+            photoPath = '/img/avatar-rider.jpg';
+          } else {
+            photoPath = shop?.image ?? '/img/shop-bakery.jpg';
+          }
+          final avatar = base.isEmpty
+              ? null
+              : (photoPath.startsWith('http') ? photoPath : '$base$photoPath');
+          final title = current.status == OrderStatus.delivered
+              ? 'Delivered'
+              : hasRider
+                  ? (current.status.headingToShop
+                      ? 'Rider accepted'
+                      : current.status.headingToCustomer
+                          ? 'Picked up'
+                          : current.status.label)
+                  : current.status.label;
+          final shopBits = <String>[
+            if ((shop?.category ?? '').isNotEmpty) shop!.category,
+            if ((shop?.address ?? '').isNotEmpty) shop!.address!,
+          ];
+          final subtitle = hasRider
+              ? (current.status.headingToShop
+                  ? 'Heading to the shop'
+                  : current.status.headingToCustomer
+                      ? 'Order picked up · on the way to you'
+                      : 'Delivery Partner')
+              : (shopBits.isEmpty ? 'Waiting for confirm' : shopBits.join(' · '));
+          final whoName = hasRider ? (current.riderName ?? 'Rider') : (shop?.name ?? current.shopName);
 
           return Stack(
             children: [
@@ -73,6 +105,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     liveLng: UserPlace.instance.liveLng,
                     dark: true,
                     toShop: current.status.headingToShop,
+                    showCourier: hasRider,
                   ),
                 ),
               ),
@@ -93,13 +126,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              current.status == OrderStatus.delivered
-                                  ? 'Delivered'
-                                  : current.status.headingToShop
-                                      ? 'Rider accepted'
-                                      : current.status.headingToCustomer
-                                          ? 'Picked up'
-                                          : 'On Delivery',
+                              title,
                               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white),
                             ),
                             Text('Order ${current.id.replaceAll('_', '-')}',
@@ -150,54 +177,62 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(current.riderName ?? 'Assigning courier…',
+                                Text(whoName,
                                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
                                 Text(
-                                  current.riderName == null
-                                      ? 'Waiting for a rider'
-                                      : current.status.headingToShop
-                                          ? 'Heading to the shop'
-                                          : current.status.headingToCustomer
-                                              ? 'Order picked up · on the way to you'
-                                              : 'Delivery Partner',
+                                  subtitle,
                                   style: const TextStyle(color: Brand.soft, fontSize: 12),
                                 ),
-                                const Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white)),
+                                Text(
+                                  hasRider
+                                      ? '★ 4.9  (120+)'
+                                      : '★ ${(shop?.rating ?? 0).toStringAsFixed(1)}  (${shop?.reviews ?? 0})',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+                                ),
                               ],
                             ),
                           ),
-                          const Text('🛵', style: TextStyle(fontSize: 28)),
+                          hasRider
+                              ? const Text('🛵', style: TextStyle(fontSize: 28))
+                              : Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(color: const Color(0xFFE11D48), borderRadius: BorderRadius.circular(12)),
+                                  child: const Icon(Icons.store, color: Colors.white, size: 20),
+                                ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(vertical: 14)),
-                              onPressed: () {},
-                              icon: const Icon(Icons.call),
-                              label: const Text('Call'),
-                            ),
-                          ),
-                          if (OrderRepository.instance.canChat(current, 'customer')) ...[
-                            const SizedBox(width: 10),
+                      if (hasRider) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
                             Expanded(
                               child: FilledButton.icon(
-                                style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.chat_bubble),
-                                label: const Text('Chat'),
+                                style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(vertical: 14)),
+                                onPressed: () {},
+                                icon: const Icon(Icons.call),
+                                label: const Text('Call'),
                               ),
                             ),
+                            if (OrderRepository.instance.canChat(current, 'customer')) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  style: FilledButton.styleFrom(backgroundColor: Brand.blue, padding: const EdgeInsets.symmetric(vertical: 14)),
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer'),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.chat_bubble),
+                                  label: const Text('Chat'),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
-                      ),
+                        ),
+                      ],
                       if (current.status == OrderStatus.delivered)
                         TextButton(
                           onPressed: () => Navigator.pop(context),

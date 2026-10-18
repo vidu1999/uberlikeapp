@@ -14,6 +14,7 @@ class TrackingMap extends StatelessWidget {
   final double? liveLng;
   final bool dark;
   final bool toShop;
+  final bool showCourier;
   const TrackingMap({
     super.key,
     required this.destLat,
@@ -26,6 +27,7 @@ class TrackingMap extends StatelessWidget {
     this.liveLng,
     this.dark = true,
     this.toShop = false,
+    this.showCourier = true,
   });
 
   static const green = Color(0xFF22C55E);
@@ -160,7 +162,7 @@ class TrackingMap extends StatelessWidget {
                 height: 56,
                 child: const LiveDot(size: 20),
               ),
-            if (rider != null)
+            if (showCourier && rider != null)
               Marker(
                 point: rider,
                 width: 40,

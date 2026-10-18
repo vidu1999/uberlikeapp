@@ -696,7 +696,12 @@ html[data-role="shop"] .otp-login .btn.ghost { background: #fff; color: #111; }
 .rd-who .role { color: #9CA3AF; font-size: 12px; font-weight: 600; margin-top: 2px; }
 .rd-who .rate { color: #fff; font-size: 12px; font-weight: 700; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
 .rd-who .rate .star { color: var(--star); }
-.rd-scooter { font-size: 28px; margin-left: auto; }
+.rd-scooter { font-size: 28px; margin-left: auto; flex: none; line-height: 1; }
+.rd-shop-side {
+  width: 40px; height: 40px; border-radius: 12px; background: #E11D48;
+  display: grid; place-items: center;
+  box-shadow: 0 4px 12px rgba(225, 29, 72, .35);
+}
 
 .rd-metrics {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0;

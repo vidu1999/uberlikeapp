@@ -119,6 +119,13 @@
     return !!(order && (order.status === 'accepted' || (order.status === 'ready' && order.riderId)));
   }
 
+  function riderOnJob(order) {
+    if (!order) return false;
+    const st = order.status;
+    if (st !== 'accepted' && st !== 'picked_up' && st !== 'on_the_way' && st !== 'delivered') return false;
+    return !!(order.riderName || (order.riderId && String(order.riderId) !== 'null' && String(order.riderId) !== ''));
+  }
+
   function routeEnds(order, pos) {
     if (goingToShop(order)) {
       return { from: pos.rider || pos.dest, to: pos.shopPos };
@@ -211,7 +218,7 @@
     const layers = { glow: null, solid: null, dash: null };
     const ends0 = routeEnds(order, pos);
     drawRoutes(map, layers, ends0.from, ends0.to, pos.rider);
-    if (pos.rider) {
+    if (pos.rider && riderOnJob(order)) {
       riderMarker = L.marker(pos.rider, { icon: bikeIcon() }).addTo(map);
       riderMarker.bindTooltip(tipHtml(order), {
         permanent: true,
@@ -242,7 +249,7 @@
         }
         const ends = routeEnds(next, p);
         drawRoutes(map, layers, ends.from, ends.to, p.rider);
-        if (p.rider) {
+        if (p.rider && riderOnJob(next)) {
           if (!riderMarker) {
             riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);
             riderMarker.bindTooltip(tipHtml(next), {

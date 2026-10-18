@@ -1904,7 +1904,7 @@
   API.statusLabel = function (s) {
     return (
       {
-        pending: 'Pending',
+        pending: 'Waiting for confirm',
         preparing: 'Preparing',
         ready: 'Ready for pickup',
         accepted: 'Rider accepted',
