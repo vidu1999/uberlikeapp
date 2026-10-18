@@ -216,6 +216,19 @@
     return sbSend(table + '?on_conflict=id', 'POST', rows);
   }
 
+  async function sbPutRow(table, row) {
+    if (!row || !row.id) throw new Error('Missing id');
+    try {
+      await sbSend(table + '?on_conflict=id', 'POST', [row]);
+    } catch (_) {
+      try {
+        await sbSend(table + '?id=eq.' + encodeURIComponent(row.id), 'PATCH', row);
+      } catch (e2) {
+        await sbSend(table, 'POST', [row]);
+      }
+    }
+  }
+
   function mapAccount(r) {
     const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
     if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
@@ -424,7 +437,7 @@
   function attachShopIdentity(user) {
     if (!user || !sameRole(user.role, 'shop')) return user;
     let sid = user.shopId || user.shop_id || '';
-    if (!sid && user.phone) sid = shopIdFor(user.phone);
+    if (!sid || isDemoShop(sid)) sid = user.phone ? shopIdFor(user.phone) : '';
     if (sid) {
       user.shopId = sid;
       user.shop_id = sid;
@@ -578,6 +591,7 @@
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await ensureShopRow(API.user); } catch (_) {}
     }
+    if (API.user) saveSession();
     const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
       sbGet('shops?select=*&order=id.asc'),
       sbGet('menu_items?select=*&order=id.asc'),
@@ -989,12 +1003,12 @@
   };
 
   function sessionKey(role) {
-    return 'sd_session_' + roleTag(role || API.roleHint || 'customer');
+    return 'qb_auth_' + roleTag(role || API.roleHint || 'customer');
   }
   function sessionKeys(role) {
     const tag = roleTag(role || API.roleHint || 'customer');
-    const keys = ['sd_session_' + tag, 'sd_user_' + tag, 'sd_user_' + (role || '')];
-    if (tag === 'customer') keys.push('sd_user_user', 'sd_user_customer', 'sd_session_user', 'sd_session_customer');
+    const keys = ['qb_auth_' + tag, 'sd_session_' + tag, 'sd_user_' + tag, 'sd_user_' + (role || '')];
+    if (tag === 'customer') keys.push('sd_user_user', 'sd_user_customer', 'sd_session_user', 'sd_session_customer', 'qb_auth_user', 'qb_auth_customer');
     const out = [];
     keys.forEach(function (k) { if (k && out.indexOf(k) < 0) out.push(k); });
     return out;
@@ -1020,13 +1034,43 @@
     API._verified = null;
     storeDel(verifiedKey(role));
   }
+  function cookieName(role) {
+    return 'qb_auth_' + roleTag(role || API.roleHint || 'customer');
+  }
+  function cookieWrite(role, user) {
+    try {
+      const body = encodeURIComponent(JSON.stringify({
+        id: user.id, phone: user.phone, role: user.role, shopId: user.shopId || '', name: user.name || '', token: API.token || '',
+      }));
+      document.cookie = cookieName(role) + '=' + body + ';path=/;max-age=31536000;SameSite=Lax';
+    } catch (_) {}
+  }
+  function cookieRead(role) {
+    try {
+      const n = cookieName(role) + '=';
+      const parts = String(document.cookie || '').split(';');
+      for (let i = 0; i < parts.length; i++) {
+        const s = parts[i].trim();
+        if (s.indexOf(n) !== 0) continue;
+        const u = JSON.parse(decodeURIComponent(s.slice(n.length)));
+        if (u && u.id && u.phone) return u;
+      }
+    } catch (_) {}
+    return null;
+  }
+  function cookieClear(role) {
+    try { document.cookie = cookieName(role) + '=;path=/;max-age=0;SameSite=Lax'; } catch (_) {}
+  }
 
   function saveSession() {
     if (!API.user) return;
     try {
+      if (sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
       const payload = JSON.stringify({ user: API.user, token: API.token || null, ts: Date.now() });
       sessionKeys(API.roleHint || API.user.role).forEach(function (k) { storeSet(k, payload); });
       sessionKeys(API.user.role).forEach(function (k) { storeSet(k, payload); });
+      cookieWrite(API.roleHint || API.user.role, API.user);
+      cookieWrite(API.user.role, API.user);
       clearVerified(API.user.role);
     } catch (_) {}
   }
@@ -1041,6 +1085,8 @@
     try {
       sessionKeys(role).forEach(storeDel);
       sessionKeys(API.roleHint).forEach(storeDel);
+      cookieClear(role);
+      cookieClear(API.roleHint);
     } catch (_) {}
     notify();
   };
@@ -1055,23 +1101,32 @@
         raw = storeGet(keys[i]);
         if (raw) break;
       }
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (data && data.user) {
-        API.user = data.user;
-        API.token = data.token || null;
-      } else if (data && data.id) {
-        API.user = data;
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data && data.user) {
+          API.user = data.user;
+          API.token = data.token || null;
+        } else if (data && data.id) {
+          API.user = data;
+        }
+      }
+      if (!API.user) {
+        const c = cookieRead(hint);
+        if (c && sameRole(c.role, hint)) {
+          API.user = c;
+          API.token = c.token || null;
+        }
       }
       if (API.user && !sameRole(API.user.role, hint)) {
         API.user = null;
         API.token = null;
         return;
       }
-      if (API.user && (isDemoAccount(API.user) || isDemoShop(API.user.shopId))) {
+      if (API.user && isDemoAccount(API.user)) {
         API.user = null;
         API.token = null;
         keys.forEach(storeDel);
+        cookieClear(hint);
         return;
       }
       if (API.user && sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
@@ -1236,8 +1291,12 @@
   API.saveItem = async function (item) {
     if (API.user && sameRole(API.user.role, 'shop')) {
       API.user = await ensureShopRow(API.user);
+      saveSession();
     }
-    const sid = item.shopId || item.shop_id || (API.user && API.user.shopId) || '';
+    let sid = item.shopId || item.shop_id || (API.user && API.user.shopId) || '';
+    if (!sid || isDemoShop(sid)) {
+      sid = (API.user && API.user.phone && shopIdFor(API.user.phone)) || '';
+    }
     if (!sid) throw new Error('Shop is not in the database. Register the shop, then add items.');
     if (!String(item.name || '').trim()) throw new Error('Enter an item name.');
     const id = item.id || ('ITM_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
@@ -1251,13 +1310,24 @@
       description: item.desc || item.description || '',
       image: item.image || '/img/shop-bakery.jpg',
     };
-    if (sbConfigured()) await sbUpsert('menu_items', [row]);
-    const mapped = mapItem(row);
+    let mapped = mapItem(row);
+    if (sbConfigured()) {
+      await sbPutRow('menu_items', row);
+      try {
+        const check = await sbGet('menu_items?id=eq.' + encodeURIComponent(id) + '&select=*');
+        if (check && check[0]) mapped = mapItem(check[0]);
+        else throw new Error('missing');
+      } catch (e) {
+        throw new Error('Item did not save to the database. Try again.');
+      }
+    }
     const i = API.items.findIndex((x) => x.id === id);
     if (i >= 0) API.items[i] = mapped;
     else API.items.push(mapped);
     notify(true);
     try { await API.refresh(); } catch (_) {}
+    if (!API.items.some((x) => x.id === id)) API.items.push(mapped);
+    notify(true);
     return mapped;
   };
 
@@ -1332,6 +1402,7 @@
     const w = new URLSearchParams(location.search || '').get('wipe');
     if (w) dropLocalShop(w);
   } catch (_) {}
+  if (API.user) notify(true);
   API.refresh().catch(() => {});
   setInterval(() => {
     if (sbConfigured()) API.refresh().catch(() => {});

@@ -14,11 +14,11 @@
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/maps.js"></script>
-  <script src="/js/track-ui.js"></script>
-  <script src="/js/otp-login.js"></script>
+  <script src="/js/live.js?v=18c"></script>
+  <script src="/js/api.js?v=18c"></script>
+  <script src="/js/maps.js?v=18c"></script>
+  <script src="/js/track-ui.js?v=18c"></script>
+  <script src="/js/otp-login.js?v=18c"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -47,8 +47,8 @@
       return 'Food';
     }
     function shopItems() {
-      const sid = shopId();
-      return API.items.filter((it) => it.shopId === sid);
+      const sid = String(shopId() || '');
+      return API.items.filter((it) => String(it.shopId || '') === sid);
     }
     function shopOrders() {
       const sid = shopId();

@@ -106,7 +106,7 @@ class OrderRepository {
   }
   bool _isDemoUser(SessionUser? u) {
     if (u == null) return false;
-    return _demoAccounts.contains(u.id) || _isDemoPhone(u.phone) || _isDemoShop(u.shopId);
+    return _demoAccounts.contains(u.id) || _isDemoPhone(u.phone);
   }
   bool _sameRole(String? a, String? b) {
     final x = a == 'user' ? 'customer' : a;
@@ -128,7 +128,7 @@ class OrderRepository {
 
   SessionUser _withShopId(SessionUser u) {
     var sid = u.shopId;
-    if (sid == null || sid.isEmpty || sid == 'null') {
+    if (sid == null || sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
       if (u.role == 'shop' && u.phone.isNotEmpty) sid = _shopIdFor(u.phone);
     }
     if (sid == u.shopId) return u;
