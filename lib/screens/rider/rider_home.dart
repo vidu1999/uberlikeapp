@@ -85,7 +85,9 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   void _pushLoc(double la, double ln) {
-    final live = OrderRepository.instance.orders.where((o) => _mine(o) && o.status.inRiderJob);
+    final live = OrderRepository.instance.orders.where(
+      (o) => _mine(o) && o.status.inRiderJob && o.status != OrderStatus.delivered,
+    );
     for (final o in live) {
       OrderRepository.instance.updateRiderLocation(o.id, la, ln);
     }
@@ -119,8 +121,10 @@ class _RiderHomeState extends State<RiderHome> {
 
   bool _closeToShop(Order o) {
     final s = _shopOf(o);
-    if (s?.lat == null || s?.lng == null) return lat != null;
-    return _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, s!.lat!, s.lng!) <= closeM;
+    final slat = o.shopLat ?? s?.lat;
+    final slng = o.shopLng ?? s?.lng;
+    if (slat == null || slng == null) return lat != null;
+    return _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, slat, slng) <= closeM;
   }
 
   bool _closeToCust(Order o) {
@@ -130,7 +134,7 @@ class _RiderHomeState extends State<RiderHome> {
   void _needCloser(String where, Order o) {
     final s = _shopOf(o);
     final m = where == 'shop'
-        ? _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, s?.lat ?? o.deliveryLat, s?.lng ?? o.deliveryLng)
+        ? _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, o.shopLat ?? s?.lat ?? o.deliveryLat, o.shopLng ?? s?.lng ?? o.deliveryLng)
         : _metersTo(lat ?? o.riderLat, lng ?? o.riderLng, o.deliveryLat, o.deliveryLng);
     final msg = m.isFinite ? 'Get closer to the $where (${m.round()} m left)' : 'Wait for live GPS, then get close to the $where';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -146,10 +150,12 @@ class _RiderHomeState extends State<RiderHome> {
     for (final s in Catalog.shops) {
       if (s.id == o.shopId) shop = s;
     }
-    final fromLat = lat ?? o.riderLat ?? shop?.lat ?? o.deliveryLat;
-    final fromLng = lng ?? o.riderLng ?? shop?.lng ?? o.deliveryLng;
-    if (o.status.headingToShop && shop?.lat != null && shop?.lng != null) {
-      return UserPlace.km(fromLat, fromLng, shop!.lat!, shop.lng!);
+    final fromLat = lat ?? o.riderLat ?? o.shopLat ?? shop?.lat ?? o.deliveryLat;
+    final fromLng = lng ?? o.riderLng ?? o.shopLng ?? shop?.lng ?? o.deliveryLng;
+    final shopLat = o.shopLat ?? shop?.lat;
+    final shopLng = o.shopLng ?? shop?.lng;
+    if (o.status.headingToShop && shopLat != null && shopLng != null) {
+      return UserPlace.km(fromLat, fromLng, shopLat, shopLng);
     }
     return UserPlace.km(fromLat, fromLng, o.deliveryLat, o.deliveryLng);
   }
@@ -256,7 +262,10 @@ class _RiderHomeState extends State<RiderHome> {
       _needCloser('shop', o);
       return;
     }
-    await OrderRepository.instance.updateStatus(o.id, OrderStatus.pickedUp);
+    await OrderRepository.instance.updateStatus(
+      o.id,
+      OrderStatus.pickedUp,
+    );
     if (lat != null && lng != null) {
       await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
     }

@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18k" />
-  <link rel="stylesheet" href="/css/ui.css?v=18k" />
-  <link rel="stylesheet" href="/css/track.css?v=18k" />
+  <link rel="stylesheet" href="/css/app.css?v=18l" />
+  <link rel="stylesheet" href="/css/ui.css?v=18l" />
+  <link rel="stylesheet" href="/css/track.css?v=18l" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18k"></script>
-  <script src="/js/api.js?v=18k"></script>
-  <script src="/js/maps.js?v=18k"></script>
-  <script src="/js/track-ui.js?v=18k"></script>
-  <script src="/js/otp-login.js?v=18k"></script>
+  <script src="/js/live.js?v=18l"></script>
+  <script src="/js/api.js?v=18l"></script>
+  <script src="/js/maps.js?v=18l"></script>
+  <script src="/js/track-ui.js?v=18l"></script>
+  <script src="/js/otp-login.js?v=18l"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -644,6 +644,12 @@
       if (state.trackId) {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (!o || o.status === 'cancelled') { state.trackId = null; }
+        else if (o.status === 'delivered') {
+          state.trackId = null;
+          state.screen = 'order';
+          state.orderId = o.id;
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+        }
         else {
           const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
           const hasRider = o.riderName ? '1' : '0';

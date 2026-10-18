@@ -15,6 +15,33 @@
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
+  const STATUS_RANK = {
+    cancelled: 0,
+    pending: 1,
+    preparing: 2,
+    ready: 3,
+    accepted: 4,
+    picked_up: 5,
+    on_the_way: 5,
+    delivered: 6,
+  };
+  function statusRank(s) {
+    return STATUS_RANK[s] || 0;
+  }
+  function mergeStatus(a, b) {
+    if (a === 'delivered' || b === 'delivered') return 'delivered';
+    if (a === 'cancelled' && statusRank(b) < 1) return 'cancelled';
+    if (b === 'cancelled' && statusRank(a) < 1) return 'cancelled';
+    if (a === 'cancelled') return b || a;
+    if (b === 'cancelled') return a || b;
+    if (statusRank(b) > statusRank(a)) return b || a || 'pending';
+    return a || b || 'pending';
+  }
+  function locOnlyBody(body) {
+    if (!body || typeof body !== 'object') return false;
+    const keys = Object.keys(body).filter((k) => body[k] != null);
+    return keys.length > 0 && keys.every((k) => k === 'riderLat' || k === 'riderLng');
+  }
   function shopOf(id) {
     const hit = API.shops.find((s) => s.id === id);
     if (hit) return hit;
@@ -289,7 +316,7 @@
     o.customerName = d.customerName || r.customer_name || r.customerName || '';
     o.customerPhone = d.customerPhone || r.customer_phone || r.customerPhone || '';
     o.address = d.address || r.address || '';
-    o.status = d.status || r.status || 'pending';
+    o.status = mergeStatus(r.status, d.status);
     o.items = d.items || o.items || [];
     o.totalAmount = Number(d.totalAmount != null ? d.totalAmount : r.total_amount) || 0;
     o.deliveryLat = Number(d.deliveryLat != null ? d.deliveryLat : o.deliveryLat);
@@ -423,27 +450,70 @@
   function keepOrder(o) {
     if (!o || !o.id) return o;
     const i = keptOrders.findIndex((x) => x.id === o.id);
-    if (i >= 0) keptOrders[i] = Object.assign({}, keptOrders[i], o);
-    else keptOrders.unshift(o);
+    if (i >= 0) {
+      const prev = keptOrders[i];
+      const next = Object.assign({}, prev, o);
+      next.status = mergeStatus(prev.status, o.status);
+      keptOrders[i] = next;
+    } else keptOrders.unshift(o);
     persistKept();
     return o;
+  }
+  function applyLocalOrder(id, body) {
+    if (!id || !body) return null;
+    const i = API.orders.findIndex((o) => o.id === id);
+    if (i < 0) {
+      if (!body.status && !body.riderId) return null;
+      const next = Object.assign({ id: id }, body);
+      next.status = mergeStatus(null, body.status);
+      next.updatedAt = new Date().toISOString();
+      API.orders.unshift(next);
+      keepOrder(next);
+      return next;
+    }
+    const prev = API.orders[i];
+    const next = Object.assign({}, prev, body);
+    next.id = id;
+    next.status = body.status ? mergeStatus(prev.status, body.status) : prev.status;
+    if (prev.status === 'delivered' && body.status !== 'cancelled') next.status = 'delivered';
+    if (body.status === 'picked_up' || body.status === 'on_the_way') next.pickedUpAt = next.pickedUpAt || new Date().toISOString();
+    if (body.status === 'delivered') next.deliveredAt = next.deliveredAt || new Date().toISOString();
+    next.updatedAt = new Date().toISOString();
+    API.orders[i] = next;
+    keepOrder(next);
+    return next;
   }
   function loadKept() {
     try {
       const arr = JSON.parse(localStorage.getItem(keptStorageKey()) || '[]');
       if (!Array.isArray(arr)) return;
       arr.forEach((o) => {
-        if (o && o.id && !keptOrders.some((x) => x.id === o.id)) keptOrders.push(o);
+        if (!o || !o.id) return;
+        const i = keptOrders.findIndex((x) => x.id === o.id);
+        if (i < 0) keptOrders.push(o);
+        else {
+          const status = mergeStatus(keptOrders[i].status, o.status);
+          keptOrders[i] = Object.assign({}, keptOrders[i], o, { status: status });
+        }
       });
     } catch (_) {}
   }
   function mergeKept() {
     if (!API.user) return;
     loadKept();
-    keptOrders.forEach((o) => {
+    keptOrders.forEach((o, idx) => {
       if (!o || !o.id) return;
-      if (!API.orders.some((x) => x.id === o.id)) API.orders.unshift(o);
+      const i = API.orders.findIndex((x) => x.id === o.id);
+      if (i < 0) {
+        API.orders.unshift(o);
+        return;
+      }
+      const cur = API.orders[i];
+      const status = mergeStatus(cur.status, o.status);
+      if (status !== cur.status) API.orders[i] = Object.assign({}, cur, { status: status });
+      if (statusRank(API.orders[i].status) >= statusRank(o.status)) keptOrders[idx] = Object.assign({}, o, API.orders[i]);
     });
+    persistKept();
   }
 
   function phoneVariants(phone) {
@@ -812,9 +882,15 @@
       sbGet('orders?select=*'),
       sbGet('messages?select=*'),
     ]);
+    const prevById = {};
+    (API.orders || []).forEach((o) => { if (o && o.id) prevById[o.id] = o; });
     API.shops = asRows(shopRows).map(mapShop);
     API.items = asRows(itemRows).map(mapItem);
-    API.orders = asRows(orderRows).map(mapOrder);
+    API.orders = asRows(orderRows).map(mapOrder).map((o) => {
+      const p = prevById[o.id];
+      if (p) o.status = mergeStatus(p.status, o.status);
+      return o;
+    });
     API.messages = {};
     for (const m of asRows(msgRows)) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
@@ -1475,10 +1551,19 @@
     return order;
   };
 
-  API.patch = async function (id, body) {
-    if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
-      if (!API.isRiderRegistered()) throw new Error('Register as a rider first, then accept orders.');
-    }
+  const _patchTail = {};
+  const _locPend = {};
+  const _locTimer = {};
+  function enqueuePatch(id, task) {
+    const prev = _patchTail[id] || Promise.resolve();
+    const next = prev.then(task, task);
+    _patchTail[id] = next.catch(function () {});
+    return next;
+  }
+  async function writePatch(id, body) {
+    const local = applyLocalOrder(id, body);
+    notify(true);
+    if (locOnlyBody(body) && local && (local.status === 'delivered' || local.status === 'cancelled')) return local;
     let order = null;
     try {
       order = await getJSON('/api/orders/' + encodeURIComponent(id), {
@@ -1487,22 +1572,66 @@
         body: JSON.stringify(body),
       });
     } catch (_) {}
-    const cur = order || API.orders.find((o) => o.id === id);
-    if (cur && sbConfigured()) {
-      const next = Object.assign({}, cur, body);
-      if (API.user && API.user.role === 'rider' && (body.status === 'accepted' || body.status === 'picked_up' || body.status === 'on_the_way')) {
-        next.riderId = next.riderId || API.user.id;
-        next.riderName = next.riderName || API.user.name;
-        next.riderPhone = next.riderPhone || API.user.phone;
+    if (sbConfigured()) {
+      const cur = API.orders.find((o) => o.id === id) || order || local;
+      if (cur) {
+        const next = Object.assign({}, cur, body);
+        next.status = mergeStatus(cur.status, body.status);
+        if (cur.status === 'delivered' && body.status !== 'cancelled') next.status = 'delivered';
+        if (API.user && API.user.role === 'rider' && (body.status === 'accepted' || body.status === 'picked_up' || body.status === 'on_the_way')) {
+          next.riderId = next.riderId || API.user.id;
+          next.riderName = next.riderName || API.user.name;
+          next.riderPhone = next.riderPhone || API.user.phone;
+        }
+        if (body.status === 'picked_up' || body.status === 'on_the_way') next.pickedUpAt = next.pickedUpAt || new Date().toISOString();
+        if (body.status === 'delivered') next.deliveredAt = next.deliveredAt || new Date().toISOString();
+        next.updatedAt = new Date().toISOString();
+        await sbSend('orders?id=eq.' + encodeURIComponent(id), 'PATCH', orderRow(next));
+        applyLocalOrder(id, next);
+        order = next;
       }
-      if (body.status === 'picked_up' || body.status === 'on_the_way') next.pickedUpAt = next.pickedUpAt || new Date().toISOString();
-      if (body.status === 'delivered') next.deliveredAt = new Date().toISOString();
-      next.updatedAt = new Date().toISOString();
-      await sbSend('orders?id=eq.' + encodeURIComponent(id), 'PATCH', orderRow(next));
-      order = next;
     }
-    await API.refresh();
-    return order;
+    if (!locOnlyBody(body)) {
+      try { await API.refresh(); } catch (_) {}
+      const after = API.orders.find((o) => o.id === id);
+      const want = local || order;
+      if (after && want && mergeStatus(after.status, want.status) !== after.status) {
+        after.status = mergeStatus(after.status, want.status);
+        keepOrder(after);
+        notify(true);
+      }
+    }
+    return API.orders.find((o) => o.id === id) || order || local;
+  }
+  API.patch = async function (id, body) {
+    body = Object.assign({}, body || {});
+    if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
+      if (!API.isRiderRegistered()) throw new Error('Register as a rider first, then accept orders.');
+    }
+    if (locOnlyBody(body)) {
+      const local = applyLocalOrder(id, body);
+      if (local && (local.status === 'delivered' || local.status === 'cancelled')) return local;
+      notify();
+      _locPend[id] = Object.assign({}, _locPend[id] || {}, body);
+      if (!_locTimer[id]) {
+        _locTimer[id] = setTimeout(function () {
+          _locTimer[id] = null;
+          const extra = _locPend[id];
+          delete _locPend[id];
+          if (extra) enqueuePatch(id, function () { return writePatch(id, extra); });
+        }, 1200);
+      }
+      return local || API.orders.find((o) => o.id === id);
+    }
+    if (_locTimer[id]) {
+      clearTimeout(_locTimer[id]);
+      _locTimer[id] = null;
+    }
+    if (_locPend[id]) {
+      body = Object.assign({}, _locPend[id], body);
+      delete _locPend[id];
+    }
+    return enqueuePatch(id, function () { return writePatch(id, body); });
   };
 
   API.claimOrder = async function (id) {

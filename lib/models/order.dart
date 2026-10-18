@@ -20,6 +20,13 @@ extension OrderStatusX on OrderStatus {
   bool get headingToCustomer => this == OrderStatus.pickedUp || this == OrderStatus.onTheWay;
   bool get inRiderJob => headingToShop || headingToCustomer;
 
+  static OrderStatus later(OrderStatus a, OrderStatus b) {
+    if (a == OrderStatus.delivered || b == OrderStatus.delivered) return OrderStatus.delivered;
+    if (a == OrderStatus.cancelled) return b.step > 0 ? b : a;
+    if (b == OrderStatus.cancelled) return a.step > 0 ? a : b;
+    return a.step >= b.step ? a : b;
+  }
+
   String get label {
     switch (this) {
       case OrderStatus.pending:
@@ -174,6 +181,7 @@ class Order {
     double? riderLat,
     double? riderLng,
     String? riderName,
+    String? riderPhone,
   }) {
     return Order(
       id: id,
@@ -192,7 +200,7 @@ class Order {
       customerName: customerName,
       customerPhone: customerPhone,
       riderName: riderName ?? this.riderName,
-      riderPhone: this.riderPhone,
+      riderPhone: riderPhone ?? this.riderPhone,
       address: address,
       shopLat: shopLat,
       shopLng: shopLng,
@@ -217,6 +225,7 @@ class Order {
         'customerName': customerName,
         'customerPhone': customerPhone,
         'riderName': riderName,
+        'riderPhone': riderPhone,
         'address': address,
         'shopLat': shopLat,
         'shopLng': shopLng,
@@ -224,6 +233,7 @@ class Order {
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
+    final colStatus = OrderStatusX.fromApi(j['status']?.toString());
     dynamic data = j['data'];
     if (data is String) {
       try {
@@ -241,7 +251,7 @@ class Order {
       userId: '${j['userId'] ?? j['user_id'] ?? ''}',
       shopId: '${j['shopId'] ?? j['shop_id']}',
       riderId: (j['riderId'] ?? j['rider_id'])?.toString(),
-      status: OrderStatusX.fromApi(j['status']?.toString()),
+      status: OrderStatusX.later(colStatus, OrderStatusX.fromApi(j['status']?.toString())),
       items: itemsRaw
           .map((e) => DeliveryItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),

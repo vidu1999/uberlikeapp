@@ -965,10 +965,31 @@ class OrderRepository {
 
   List<Order> _mergeKept(List<Order> list) {
     if (_keptOrders.isEmpty) return list;
-    final ids = list.map((o) => o.id).toSet();
+    final merged = list.map((o) {
+      final k = _keptOrders[o.id];
+      if (k == null) {
+        _keptOrders[o.id] = o;
+        return o;
+      }
+      final status = OrderStatusX.later(o.status, k.status);
+      final next = status == o.status ? o : o.copyWith(status: status);
+      _keptOrders[o.id] = next;
+      return next;
+    }).toList();
+    final ids = merged.map((o) => o.id).toSet();
     final extra = _keptOrders.values.where((o) => !ids.contains(o.id) && !_isDemoOrder(o)).toList();
-    if (extra.isEmpty) return list;
-    return [...extra, ...list];
+    if (extra.isEmpty) return merged;
+    return [...extra, ...merged];
+  }
+
+  List<Order> _retainStatus(List<Order> incoming) {
+    final prev = {for (final o in orders) o.id: o};
+    return incoming.map((o) {
+      final p = prev[o.id];
+      if (p == null) return o;
+      final status = OrderStatusX.later(o.status, p.status);
+      return status == o.status ? o : o.copyWith(status: status);
+    }).toList();
   }
 
   List<Order> _scopeOrders(Iterable<Order> list) {
@@ -1028,8 +1049,10 @@ class OrderRepository {
       final shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
       final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
       Catalog.set(shops, items);
-      ordersNotifier.value = _scopeOrders(
-        orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+      ordersNotifier.value = _retainStatus(
+        _scopeOrders(
+          orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+        ),
       );
       messages.clear();
       for (final raw in msgRows) {
@@ -1071,8 +1094,10 @@ class OrderRepository {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final rawOrders = (data['orders'] as List?) ?? const [];
-        ordersNotifier.value = _scopeOrders(
-          rawOrders.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+        ordersNotifier.value = _retainStatus(
+          _scopeOrders(
+            rawOrders.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+          ),
         );
         final rawShops = (data['shops'] as List?) ?? const [];
         final rawItems = (data['items'] as List?) ?? const [];
@@ -1198,9 +1223,11 @@ class OrderRepository {
   }
 
   void _keepOrder(Order created) {
-    _keptOrders[created.id] = created;
+    final prev = _keptOrders[created.id];
+    final keep = prev == null ? created : created.copyWith(status: OrderStatusX.later(prev.status, created.status));
+    _keptOrders[created.id] = keep;
     if (orders.any((o) => o.id == created.id)) return;
-    ordersNotifier.value = [created, ...orders];
+    ordersNotifier.value = [keep, ...orders];
   }
 
   Future<Order> addOrder(Order order) async {
@@ -1417,7 +1444,48 @@ class OrderRepository {
     }
   }
 
-  Future<void> _patch(String id, Map<String, dynamic> body) async {
+  final Map<String, Future<void>> _patchTail = {};
+  final Map<String, Map<String, dynamic>> _locPend = {};
+  final Map<String, Timer> _locTimer = {};
+
+  bool _locOnly(Map<String, dynamic> body) {
+    if (body.isEmpty) return false;
+    return body.keys.every((k) => k == 'riderLat' || k == 'riderLng');
+  }
+
+  void _applyPatchLocal(String id, Map<String, dynamic> body) {
+    final list = List<Order>.of(orders);
+    final i = list.indexWhere((o) => o.id == id);
+    if (i < 0) return;
+    final cur = list[i];
+    var next = cur.copyWith(
+      status: body['status'] != null ? OrderStatusX.fromApi(body['status']?.toString()) : cur.status,
+      riderId: body['riderId']?.toString() ?? cur.riderId,
+      riderName: body['riderName']?.toString() ?? cur.riderName,
+      riderPhone: body['riderPhone']?.toString() ?? cur.riderPhone,
+      riderLat: (body['riderLat'] as num?)?.toDouble() ?? cur.riderLat,
+      riderLng: (body['riderLng'] as num?)?.toDouble() ?? cur.riderLng,
+    );
+    next = next.copyWith(status: OrderStatusX.later(cur.status, next.status));
+    if (cur.status == OrderStatus.delivered) {
+      next = next.copyWith(status: OrderStatus.delivered);
+    }
+    list[i] = next;
+    _keptOrders[id] = next;
+    ordersNotifier.value = list;
+  }
+
+  Future<void> _enqueuePatch(String id, Future<void> Function() task) async {
+    final prev = _patchTail[id] ?? Future.value();
+    final next = prev.then((_) => task(), onError: (_) => task());
+    _patchTail[id] = next;
+    await next;
+  }
+
+  Future<void> _writePatch(String id, Map<String, dynamic> body) async {
+    _applyPatchLocal(id, body);
+    final current = byId(id);
+    if (current != null && _locOnly(body) && current.status == OrderStatus.delivered) return;
     final uri = _uri('/api/orders/$id');
     if (uri != null) {
       try {
@@ -1426,20 +1494,40 @@ class OrderRepository {
             .timeout(const Duration(seconds: 8));
       } catch (_) {}
     }
-    final current = byId(id);
     if (current != null) {
-      final next = current.copyWith(
-        status: body['status'] != null ? OrderStatusX.fromApi(body['status']?.toString()) : null,
-        riderId: body['riderId']?.toString(),
-        riderName: body['riderName']?.toString(),
-        riderLat: (body['riderLat'] as num?)?.toDouble(),
-        riderLng: (body['riderLng'] as num?)?.toDouble(),
-      );
       try {
-        await _sbWrite('orders?id=eq.$id', 'PATCH', _orderRow(next));
+        await _sbWrite('orders?id=eq.$id', 'PATCH', _orderRow(current));
       } catch (_) {}
     }
-    await refresh();
+    if (!_locOnly(body)) {
+      final want = current?.status;
+      await refresh();
+      final after = byId(id);
+      if (want != null && after != null && OrderStatusX.later(after.status, want) != after.status) {
+        _applyPatchLocal(id, {'status': want.apiName});
+      }
+    }
+  }
+
+  Future<void> _patch(String id, Map<String, dynamic> body) async {
+    if (_locOnly(body)) {
+      _applyPatchLocal(id, body);
+      final cur = byId(id);
+      if (cur != null && cur.status == OrderStatus.delivered) return;
+      _locPend[id] = {...?_locPend[id], ...body};
+      _locTimer[id] ??= Timer(const Duration(milliseconds: 1200), () {
+        _locTimer.remove(id);
+        final extra = _locPend.remove(id);
+        if (extra != null) {
+          _enqueuePatch(id, () => _writePatch(id, extra));
+        }
+      });
+      return;
+    }
+    _locTimer.remove(id)?.cancel();
+    final pending = _locPend.remove(id);
+    final merged = pending == null ? body : {...pending, ...body};
+    await _enqueuePatch(id, () => _writePatch(id, merged));
   }
 }
 

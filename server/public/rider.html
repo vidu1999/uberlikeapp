@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18k" />
-  <link rel="stylesheet" href="/css/ui.css?v=18k" />
-  <link rel="stylesheet" href="/css/track.css?v=18k" />
+  <link rel="stylesheet" href="/css/app.css?v=18l" />
+  <link rel="stylesheet" href="/css/ui.css?v=18l" />
+  <link rel="stylesheet" href="/css/track.css?v=18l" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18k"></script>
-  <script src="/js/api.js?v=18k"></script>
-  <script src="/js/maps.js?v=18k"></script>
-  <script src="/js/track-ui.js?v=18k"></script>
-  <script src="/js/otp-login.js?v=18k"></script>
+  <script src="/js/live.js?v=18l"></script>
+  <script src="/js/api.js?v=18l"></script>
+  <script src="/js/maps.js?v=18l"></script>
+  <script src="/js/track-ui.js?v=18l"></script>
+  <script src="/js/otp-login.js?v=18l"></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
@@ -70,8 +70,14 @@
       return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || liveJob(o)));
     }
     function shopPos(o) {
+      const slat = Number(o && o.shopLat);
+      const slng = Number(o && o.shopLng);
+      if (Number.isFinite(slat) && Number.isFinite(slng)) return [slat, slng];
       const shop = API.shopOf ? API.shopOf(o.shopId) : {};
-      return [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)];
+      const lat = Number(shop.lat);
+      const lng = Number(shop.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+      return [Number(o.deliveryLat), Number(o.deliveryLng)];
     }
     function metersTo(lat, lng, to) {
       if (lat == null || lng == null || !to) return Infinity;
@@ -147,7 +153,7 @@
         window.QB_LIVE = { lat, lng, acc: pos.coords.accuracy };
         if (!orderId) return;
         const o = (API.orders || []).find((x) => x.id === orderId);
-        if (!o || o.status === 'delivered') return;
+        if (!o || o.status === 'delivered' || o.status === 'cancelled') return;
         API.patch(orderId, { riderLat: lat, riderLng: lng });
       };
       navigator.geolocation.getCurrentPosition(push, () => {}, opt);
@@ -160,7 +166,7 @@
       const onPos = (pos) => {
         state.liveLat = pos.coords.latitude; state.liveLng = pos.coords.longitude;
         window.QB_LIVE = { lat: state.liveLat, lng: state.liveLng, acc: pos.coords.accuracy };
-        const live = ongoing().find((o) => liveJob(o));
+        const live = ongoing().find((o) => liveJob(o) && o.status !== 'delivered');
         if (live) API.patch(live.id, { riderLat: state.liveLat, riderLng: state.liveLng });
       };
       if (!gpsStarted) {
@@ -719,10 +725,13 @@
         if (!o) return;
         if (!closeToShop(o)) return;
         const u = me();
-        await API.patch(id, { status: 'picked_up', riderId: u.id, riderName: u.name, riderPhone: u.phone, riderLat: state.liveLat, riderLng: state.liveLng });
+        const body = { status: 'picked_up', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (state.liveLat != null && state.liveLng != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+        await API.patch(id, body);
         try { await API.sendMessage(id, 'QuickBite', 'system', 'Order picked up. ' + (u.name || 'Rider') + ' is on the way to you.'); } catch (_) {}
         state.orderId = id;
         state.screen = 'live';
+        state.filter = 'going';
         startLiveGps(id);
         render(true);
       });
@@ -732,11 +741,14 @@
         if (!o || !headingToCustomer(o)) return;
         if (!closeToCust(o)) return;
         stopLiveGps();
-        startRiderGps();
-        await API.patch(id, { status: 'delivered' });
+        const drop = { status: 'delivered' };
+        if (state.liveLat != null && state.liveLng != null) { drop.riderLat = state.liveLat; drop.riderLng = state.liveLng; }
+        await API.patch(id, drop);
         try { await API.sendMessage(id, 'QuickBite', 'system', 'Order delivered.'); } catch (_) {}
         state.orderId = id;
         state.screen = 'delivered';
+        state.filter = 'done';
+        startRiderGps();
         render(true);
       });
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {

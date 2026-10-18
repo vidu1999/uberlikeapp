@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18k" />
-  <link rel="stylesheet" href="/css/ui.css?v=18k" />
-  <link rel="stylesheet" href="/css/track.css?v=18k" />
-  <link rel="stylesheet" href="/css/qb.css?v=18k" />
+  <link rel="stylesheet" href="/css/app.css?v=18l" />
+  <link rel="stylesheet" href="/css/ui.css?v=18l" />
+  <link rel="stylesheet" href="/css/track.css?v=18l" />
+  <link rel="stylesheet" href="/css/qb.css?v=18l" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18k"></script>
-  <script src="/js/api.js?v=18k"></script>
-  <script src="/js/maps.js?v=18k"></script>
-  <script src="/js/track-ui.js?v=18k"></script>
+  <script src="/js/live.js?v=18l"></script>
+  <script src="/js/api.js?v=18l"></script>
+  <script src="/js/maps.js?v=18l"></script>
+  <script src="/js/track-ui.js?v=18l"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -722,9 +722,18 @@
         startLiveLocation();
         return;
       }
-      if (state.lockTrack && state.trackId) {
-        const live = API.orders.find((x) => x.id === state.trackId);
-        if (live && live.status !== 'cancelled') state.screen = live.status === 'delivered' ? 'done' : 'track';
+      {
+        const live = (state.trackId && API.orders.find((x) => x.id === state.trackId))
+          || (state.lastOrder && API.orders.find((x) => x.id === state.lastOrder.id));
+        if (live) state.lastOrder = live;
+        if (live && live.status === 'delivered' && (state.lockTrack || state.screen === 'track' || state.screen === 'chat')) {
+          state.screen = 'done';
+          state.lockTrack = false;
+          state.loc.frozen = false;
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+        } else if (state.lockTrack && live && live.status !== 'cancelled') {
+          state.screen = 'track';
+        }
       }
       const uid = API.user && API.user.id;
       const phone = API.user && API.user.phone;
@@ -761,7 +770,15 @@
       if (state.screen === 'done') { root.innerHTML = doneView(); bindApp(); return; }
       if (state.screen === 'track') {
         const o = API.orders.find((x) => x.id === state.trackId);
-        if (o && o.status === 'delivered') { root.innerHTML = doneView(); bindApp(); return; }
+        if (o && o.status === 'delivered') {
+          state.screen = 'done';
+          state.lockTrack = false;
+          state.loc.frozen = false;
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+          root.innerHTML = doneView(o);
+          bindApp();
+          return;
+        }
         const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
         const hasRider = o && o.riderName ? '1' : '0';
         if (existing && o && state.mapHandle && existing.dataset.hasRider === hasRider) {
