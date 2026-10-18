@@ -185,6 +185,18 @@
     throw new Error('WhatsApp sender is not connected. Paste your Green-API idInstance and apiTokenInstance.');
   }
 
+  function asRows(v) {
+    if (Array.isArray(v)) return v;
+    if (!v || typeof v !== 'object') return [];
+    if (Array.isArray(v.data)) return v.data;
+    if (Array.isArray(v.accounts)) return v.accounts;
+    if (Array.isArray(v.shops)) return v.shops;
+    if (Array.isArray(v.items)) return v.items;
+    if (Array.isArray(v.orders)) return v.orders;
+    if (Array.isArray(v.messages)) return v.messages;
+    return [];
+  }
+
   async function sbGet(table) {
     const base = String(window.QB_SUPABASE_URL).replace(/\/$/, '');
     const ctrl = new AbortController();
@@ -197,7 +209,9 @@
     }
     const text = await res.text();
     if (!res.ok) throw new Error('Supabase ' + table.split('?')[0] + ' ' + res.status);
-    return text ? JSON.parse(text) : [];
+    let parsed = [];
+    try { parsed = text ? JSON.parse(text) : []; } catch (_) { parsed = []; }
+    return asRows(parsed);
   }
 
   async function sbSend(path, method, body) {
@@ -342,12 +356,11 @@
     if (API._accs && Date.now() - API._accsAt < 4000) return API._accs;
     let rows = [];
     if (sbConfigured()) {
-      try { rows = await sbGet('accounts?select=*'); } catch (_) {}
+      try { rows = await sbGet('accounts?select=*'); } catch (_) { rows = []; }
+    } else {
+      try { rows = asRows(await getJSON('/api/accounts')); } catch (_) { rows = []; }
     }
-    if (!rows || !rows.length) {
-      try { rows = await getJSON('/api/accounts') || []; } catch (_) { rows = []; }
-    }
-    API._accs = (rows || []).map(function (r) { return mapAccount(r); }).filter(function (a) { return a && a.id && !isDemoAccount(a); });
+    API._accs = asRows(rows).map(function (r) { return mapAccount(r); }).filter(function (a) { return a && a.id && !isDemoAccount(a); });
     API._accsAt = Date.now();
     return API._accs;
   }
@@ -718,11 +731,11 @@
     }
     if (sbConfigured()) {
       try {
-        (await sbGet('accounts?id=eq.' + encodeURIComponent(id) + '&select=*') || []).forEach(add);
+        asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(id) + '&select=*')).forEach(add);
       } catch (_) {}
       for (let i = 0; i < variants.length; i++) {
         try {
-          (await sbGet('accounts?phone=eq.' + encodeURIComponent(variants[i]) + '&select=*') || []).forEach(add);
+          asRows(await sbGet('accounts?phone=eq.' + encodeURIComponent(variants[i]) + '&select=*')).forEach(add);
         } catch (_) {}
       }
     }
@@ -777,11 +790,11 @@
       sbGet('orders?select=*'),
       sbGet('messages?select=*'),
     ]);
-    API.shops = (shopRows || []).map(mapShop);
-    API.items = (itemRows || []).map(mapItem);
-    API.orders = (orderRows || []).map(mapOrder);
+    API.shops = asRows(shopRows).map(mapShop);
+    API.items = asRows(itemRows).map(mapItem);
+    API.orders = asRows(orderRows).map(mapOrder);
     API.messages = {};
-    for (const m of msgRows || []) {
+    for (const m of asRows(msgRows)) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
       list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts, thread: m.thread });
     }
@@ -816,10 +829,10 @@
       return;
     }
     const data = await getJSON('/api/state');
-    API.shops = data.shops;
-    API.items = data.items;
-    API.orders = data.orders || [];
-    API.messages = data.messages || {};
+    API.shops = asRows(data && data.shops);
+    API.items = asRows(data && data.items);
+    API.orders = asRows(data && data.orders);
+    API.messages = (data && data.messages && typeof data.messages === 'object' && !Array.isArray(data.messages)) ? data.messages : {};
     scopeData();
     notify();
   };
@@ -840,9 +853,9 @@
       try {
         let q = 'accounts?select=*&role=eq.' + encodeURIComponent(role === 'user' ? 'customer' : role);
         if (phone) q += '&phone=eq.' + encodeURIComponent(normalizePhone(phone));
-        const rows = await sbGet(q);
-        const picked = (rows || []).find((a) => !isDemoAccount(a) && String(a.pin) === String(pin))
-          || (rows || []).find((a) => !isDemoAccount(a));
+        const rows = asRows(await sbGet(q));
+        const picked = rows.find((a) => !isDemoAccount(a) && String(a.pin) === String(pin))
+          || rows.find((a) => !isDemoAccount(a));
         if (picked) {
           const acc = mapAccount(picked);
           API.user = acc;
