@@ -781,7 +781,13 @@ class OrderRepository {
     final u = user;
     if (u == null) return <Order>[];
     if (u.role == 'customer' || u.role == 'user') {
-      return next.where((o) => o.userId == u.id || o.customerPhone == u.phone).toList();
+      final phone = _normPhone(u.phone);
+      final key = _phoneKey(phone);
+      return next.where((o) {
+        if (o.userId == u.id) return true;
+        final p = _normPhone(o.customerPhone ?? '');
+        return p.isNotEmpty && (p == phone || _phoneKey(p) == key);
+      }).toList();
     }
     if (u.role == 'shop') {
       final sid = u.shopId ?? '';
@@ -803,6 +809,8 @@ class OrderRepository {
         'shop_id': o.shopId,
         'shop_name': o.shopName,
         'customer_name': o.customerName,
+        'customer_phone': o.customerPhone,
+        'address': o.address,
         'status': o.status.apiName,
         'total_amount': o.totalAmount,
         'data': o.toJson(),
@@ -955,17 +963,18 @@ class OrderRepository {
             .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload))
             .timeout(const Duration(seconds: 8));
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          cartNotifier.value = [];
           final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
           await _pushOrder(created);
+          cartNotifier.value = [];
           await refresh();
+          _keepOrder(created);
           return created;
         }
       } catch (_) {}
     }
     final shop = Catalog.shops.where((s) => s.id == cart.first.shopId).toList();
     final created = Order(
-      id: 'ORD-${DateTime.now().millisecondsSinceEpoch % 1000000}',
+      id: 'ORD-${DateTime.now().millisecondsSinceEpoch}',
       userId: u?.id ?? '',
       shopId: cart.first.shopId,
       status: OrderStatus.pending,
@@ -976,11 +985,19 @@ class OrderRepository {
       timestamp: DateTime.now(),
       shopName: shop.isNotEmpty ? shop.first.name : 'Shop',
       customerName: u?.name ?? 'Guest',
+      customerPhone: u?.phone,
+      address: address,
     );
     await _pushOrder(created);
     cartNotifier.value = [];
     await refresh();
+    _keepOrder(created);
     return created;
+  }
+
+  void _keepOrder(Order created) {
+    if (orders.any((o) => o.id == created.id)) return;
+    ordersNotifier.value = [created, ...orders];
   }
 
   Future<Order> addOrder(Order order) async {
@@ -1153,8 +1170,12 @@ class OrderRepository {
 
   Future<void> _pushOrder(Order o) async {
     try {
-      await _sbWrite('orders', 'POST', [_orderRow(o)]);
-    } catch (_) {}
+      await _sbUpsert('orders', [_orderRow(o)]);
+    } catch (_) {
+      try {
+        await _sbWrite('orders', 'POST', [_orderRow(o)]);
+      } catch (_) {}
+    }
   }
 
   Future<void> _patch(String id, Map<String, dynamic> body) async {

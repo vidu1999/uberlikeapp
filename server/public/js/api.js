@@ -254,6 +254,34 @@
     };
   }
 
+  function mapOrder(r) {
+    if (!r) return r;
+    let d = r.data;
+    if (typeof d === 'string') {
+      try { d = JSON.parse(d); } catch (_) { d = null; }
+    }
+    if (!d || typeof d !== 'object') d = {};
+    const o = Object.assign({}, r, d);
+    o.id = d.id || r.id;
+    o.userId = d.userId || r.user_id || r.userId || '';
+    o.shopId = d.shopId || r.shop_id || r.shopId || '';
+    o.shopName = d.shopName || r.shop_name || r.shopName || '';
+    o.customerName = d.customerName || r.customer_name || r.customerName || '';
+    o.customerPhone = d.customerPhone || r.customer_phone || r.customerPhone || '';
+    o.address = d.address || r.address || '';
+    o.status = d.status || r.status || 'pending';
+    o.items = d.items || o.items || [];
+    o.totalAmount = Number(d.totalAmount != null ? d.totalAmount : r.total_amount) || 0;
+    o.deliveryLat = Number(d.deliveryLat != null ? d.deliveryLat : o.deliveryLat);
+    o.deliveryLng = Number(d.deliveryLng != null ? d.deliveryLng : o.deliveryLng);
+    o.riderId = d.riderId || o.riderId || null;
+    o.riderName = d.riderName || o.riderName || null;
+    o.riderPhone = d.riderPhone || o.riderPhone || null;
+    o.riderLat = d.riderLat != null ? d.riderLat : o.riderLat;
+    o.riderLng = d.riderLng != null ? d.riderLng : o.riderLng;
+    return o;
+  }
+
   const DEMO_SHOP_IDS = ['SHOP_1','SHOP_2','SHOP_3','SHOP_4','SHOP_5','SHOP_6','SHOP_7','SHOP_8','SHOP_9','SHOP_10','SHOP_11'];
   const DEMO_ACCOUNT_IDS = ['USER_1','USER_2','SHOP_STAFF','RIDER_77'];
   const DEMO_PHONES = ['0771234567','0771112222','0772223333','0775556666'];
@@ -342,7 +370,12 @@
     }
     if (me.role === 'customer' || me.role === 'user') {
       const phone = normalizePhone(me.phone);
-      API.orders = API.orders.filter((o) => o.userId === me.id || normalizePhone(o.customerPhone) === phone);
+      const key = phoneKey(phone);
+      API.orders = API.orders.filter((o) => {
+        if (o.userId === me.id || o.user_id === me.id) return true;
+        const p = normalizePhone(o.customerPhone || o.customer_phone || '');
+        return p && (p === phone || phoneKey(p) === key);
+      });
     } else if (me.role === 'shop') {
       const sid = me.shopId;
       API.shops = API.shops.filter((s) => s.id === sid);
@@ -577,12 +610,7 @@
   }
 
   function nextOrderId() {
-    let seq = 1000;
-    for (const o of API.orders) {
-      const n = Number(String(o.id || '').replace(/\D/g, ''));
-      if (n > seq) seq = n;
-    }
-    return 'ORD-' + (seq + 1);
+    return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
   async function pullSupabase() {
@@ -600,7 +628,7 @@
     ]);
     API.shops = (shopRows || []).map(mapShop);
     API.items = (itemRows || []).map(mapItem);
-    API.orders = (orderRows || []).map((r) => (r.data && r.data.id ? r.data : r));
+    API.orders = (orderRows || []).map(mapOrder);
     API.messages = {};
     for (const m of msgRows || []) {
       const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
@@ -1184,7 +1212,7 @@
       };
     }
     if (sbConfigured()) {
-      await sbSend('orders', 'POST', [orderRow(order)]);
+      await sbPutRow('orders', orderRow(order));
       try {
         await sbSend('messages', 'POST', [{
           id: 'm0',
@@ -1196,7 +1224,15 @@
         }]);
       } catch (_) {}
     }
-    await API.refresh();
+    if (!API.orders.some((o) => o.id === order.id)) API.orders.unshift(order);
+    scopeData();
+    notify(true);
+    try { await API.refresh(); } catch (_) {}
+    if (!API.orders.some((o) => o.id === order.id)) {
+      API.orders.unshift(order);
+      scopeData();
+      notify(true);
+    }
     return order;
   };
 

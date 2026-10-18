@@ -22,11 +22,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _place() async {
     setState(() => placing = true);
+    final place = UserPlace.instance;
+    final lat = (place.custom || place.frozen) ? place.lat : (place.liveLat ?? place.lat);
+    final lng = (place.custom || place.frozen) ? place.lng : (place.liveLng ?? place.lng);
     final order = await OrderRepository.instance.checkout(
       address: _addr.text,
       paymentMethod: pay,
-      deliveryLat: UserPlace.instance.lat,
-      deliveryLng: UserPlace.instance.lng,
+      deliveryLat: lat,
+      deliveryLng: lng,
     );
     if (!mounted) return;
     setState(() => placing = false);

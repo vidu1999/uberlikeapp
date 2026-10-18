@@ -228,6 +228,12 @@
 .loc-stage { flex: 1; min-height: 240px; position: relative; background: #e8eef5; }
 .loc-map { position: absolute; inset: 0; }
 .loc-map .leaflet-container { height: 100%; width: 100%; }
+.loc-center-pin {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -100%);
+  z-index: 2; pointer-events: none;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,.28));
+}
 .loc-me {
   position: absolute; right: 14px; bottom: 16px; z-index: 3;
   width: 44px; height: 44px; border-radius: 50%; border: 0; background: #fff;

@@ -15,10 +15,10 @@
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18c"></script>
-  <script src="/js/api.js?v=18c"></script>
-  <script src="/js/maps.js?v=18c"></script>
-  <script src="/js/track-ui.js?v=18c"></script>
+  <script src="/js/live.js?v=18d"></script>
+  <script src="/js/api.js?v=18d"></script>
+  <script src="/js/maps.js?v=18d"></script>
+  <script src="/js/track-ui.js?v=18d"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -90,6 +90,13 @@
       if (custom) state.loc.custom = true;
       window.QB_LIVE = { lat: state.loc.liveLat, lng: state.loc.liveLng };
     }
+    function deliveryPoint() {
+      if (state.loc.custom || state.loc.frozen) return { lat: state.loc.lat, lng: state.loc.lng };
+      if (state.loc.liveLat != null && state.loc.liveLng != null) {
+        return { lat: state.loc.liveLat, lng: state.loc.liveLng };
+      }
+      return { lat: state.loc.lat, lng: state.loc.lng };
+    }
     async function labelAt(lat, lng) {
       if (typeof reversePlace === 'function') return reversePlace(lat, lng);
       return lat.toFixed(5) + ', ' + lng.toFixed(5);
@@ -114,8 +121,8 @@
         if (errEl) errEl.textContent = state.loc.err;
         return;
       }
-      const opt = { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 };
-      const onFix = async (pos) => {
+      const opt = { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 };
+      const onFix = (pos) => {
         const acc = Number(pos.coords.accuracy || 999);
         if (state.loc.acc != null && state.loc.acc <= 12 && acc > 40) return;
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
@@ -126,19 +133,21 @@
         window.QB_LIVE = { lat, lng, acc };
         paintLiveUi();
         const first = !state.loc._gps;
+        state.loc._gps = true;
         if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, state.loc.label, false);
         if (first) {
-          state.loc._gps = true;
-          const label = await labelAt(lat, lng);
-          if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, label, false);
           if (state.loc.openMapOnce) {
             state.loc.openMapOnce = false;
             state.screen = 'locate';
             state.locFrom = 'home';
-            render();
-          } else {
-            render({ keepScroll: true });
           }
+          render({ keepScroll: true });
+          labelAt(lat, lng).then((label) => {
+            if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, label, false);
+            const el = document.querySelector('[data-loc-label]');
+            if (el) el.textContent = label;
+            render({ keepScroll: true });
+          }).catch(() => {});
         }
       };
       const onErr = (err) => {
@@ -158,12 +167,9 @@
       }
     }
     function tryAutoGps() {
-      if (state.loc._gps || !navigator.geolocation) return;
-      if (navigator.permissions && navigator.permissions.query) {
-        navigator.permissions.query({ name: 'geolocation' }).then((p) => {
-          if (p.state === 'granted') startLiveLocation();
-        }).catch(() => {});
-      }
+      if (!navigator.geolocation) return;
+      if (state.loc._gps) return;
+      startLiveLocation();
     }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -484,12 +490,13 @@
         <div class="loc-hits hidden" data-loc-hits></div>
         <div class="loc-stage">
           <div class="loc-map" id="locMap"></div>
+          <div class="loc-center-pin" aria-hidden="true"><div class="drop-pin"><span></span></div></div>
           <button class="loc-me" type="button" data-loc-me title="My live location">◎</button>
         </div>
         <div class="loc-sheet">
           <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live GPS <span data-loc-acc>${esc(gpsText())}</span></div>
           <b data-loc-label>${esc(state.loc.label)}</b>
-          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Drag the green pin to set the delivery address.'}</p>
+          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Move the map to change the green delivery pin.'}</p>
           <p class="err" data-loc-err></p>
           <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
         </div>
@@ -651,12 +658,13 @@
         bindGate();
         return;
       }
-      if (!state.loc._gps && !restoredSession) {
+      if (API.user) tryAutoGps();
+      if (!state.loc._gps && !state.loc.liveLat && !restoredSession) {
         if (!root.querySelector('[data-locperm]')) {
           root.innerHTML = locPermView();
           bindLocPerm();
         }
-        tryAutoGps();
+        startLiveLocation();
         return;
       }
       if (state.lockTrack && state.trackId) {
@@ -793,6 +801,7 @@
       state.locHandle = mountLocationPicker(mapEl, {
         lat: pinLat, lng: pinLng,
         liveLat: state.loc.liveLat, liveLng: state.loc.liveLng,
+        custom: !!(state.loc.custom || state.loc.frozen),
       });
       paintLiveUi();
       let seq = 0;
@@ -892,15 +901,22 @@
         if (!state.cart.length) return;
         place.disabled = true; place.textContent = 'Placing…';
         try {
+          const pin = deliveryPoint();
+          if (!state.loc.custom && !state.loc.frozen && pin.lat != null) {
+            setPlace(pin.lat, pin.lng, state.loc.label, false);
+          }
           const order = await API.placeOrder({
             shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
             customerPhone: API.user.phone, address: state.address, note: state.note,
             paymentMethod: state.payment, deliveryType: state.deliveryType, deliveryFee: fee(),
-            deliveryLat: state.loc.lat, deliveryLng: state.loc.lng, items: state.cart,
+            deliveryLat: pin.lat, deliveryLng: pin.lng, items: state.cart,
           });
           state.cart = []; saveCart();
           state.loc.custom = true;
           state.loc.frozen = true;
+          if (order && order.id && !(API.orders || []).some((o) => o.id === order.id)) {
+            API.orders.unshift(order);
+          }
           openTrack(order.id, true);
         } catch (e) { alert(e.message); place.disabled = false; }
       };

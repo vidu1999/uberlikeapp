@@ -285,12 +285,15 @@
   }
 
   global.reversePlace = async function (lat, lng) {
+    const ctrl = new AbortController();
+    const t = setTimeout(function () { ctrl.abort(); }, 4000);
     try {
-      const r = await fetch('https://photon.komoot.io/reverse?lon=' + lng + '&lat=' + lat);
+      const r = await fetch('https://photon.komoot.io/reverse?lon=' + lng + '&lat=' + lat, { signal: ctrl.signal });
       const j = await r.json();
       const f = j.features && j.features[0];
       if (f) return photonLabel(f);
     } catch (_) {}
+    finally { clearTimeout(t); }
     return lat.toFixed(5) + ', ' + lng.toFixed(5);
   };
 
@@ -315,15 +318,10 @@
     const startLng = opts.liveLng != null ? opts.liveLng : (Number(opts.lng) || 80.411);
     const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([startLat, startLng], 18);
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    let follow = opts.liveLat != null;
+    let follow = !opts.custom;
+    let userMoved = false;
     let liveMarker = null;
     let accCircle = null;
-    const pin = L.marker([startLat, startLng], {
-      icon: dropPinIcon(),
-      draggable: true,
-      autoPan: true,
-      zIndexOffset: 1100,
-    }).addTo(map);
     if (opts.liveLat != null && opts.liveLng != null) {
       liveMarker = L.marker([opts.liveLat, opts.liveLng], {
         icon: liveDotIcon(),
@@ -331,24 +329,24 @@
         interactive: false,
       }).addTo(map);
     }
-    pin.on('dragstart', () => { follow = false; });
-    setTimeout(() => map.invalidateSize(), 80);
-    setTimeout(() => map.invalidateSize(), 300);
-    setTimeout(() => map.invalidateSize(), 800);
+    map.on('dragstart', function () { userMoved = true; follow = false; });
+    setTimeout(function () { map.invalidateSize(); }, 80);
+    setTimeout(function () { map.invalidateSize(); }, 300);
+    setTimeout(function () { map.invalidateSize(); }, 800);
     return {
       map,
       getCenter() {
-        const p = pin.getLatLng();
+        const p = map.getCenter();
         return { lat: p.lat, lng: p.lng };
       },
       setView(lat, lng, z) {
         follow = false;
-        pin.setLatLng([lat, lng]);
+        userMoved = true;
         map.setView([lat, lng], z || 18);
       },
       goLive(lat, lng, z) {
         follow = true;
-        pin.setLatLng([lat, lng]);
+        userMoved = false;
         map.setView([lat, lng], z || 18);
       },
       setLive(lat, lng, acc) {
@@ -378,17 +376,17 @@
             accCircle.setRadius(meters);
           }
         }
-        if (follow) {
-          pin.setLatLng([lat, lng]);
+        if (follow && !userMoved) {
           map.setView([lat, lng], Math.max(map.getZoom(), 18));
         }
       },
       onMoveEnd(fn) {
-        const fire = () => {
-          const p = pin.getLatLng();
+        const fire = function () {
+          const p = map.getCenter();
           fn(p.lat, p.lng);
         };
-        pin.on('dragend', fire);
+        map.on('moveend', fire);
+        setTimeout(fire, 200);
       },
       destroy() {
         try { map.remove(); } catch (_) {}
