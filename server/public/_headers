@@ -1,6 +1,7 @@
 /*
   Cache-Control: no-store, no-cache, must-revalidate
   Permissions-Policy: geolocation=(self)
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 /js/*
   Cache-Control: no-store, no-cache, must-revalidate

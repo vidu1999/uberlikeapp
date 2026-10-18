@@ -1303,6 +1303,154 @@
     return enterAccount(want, phone);
   };
 
+  function googlePhone(sub) {
+    let d = String(sub || '').replace(/\D/g, '');
+    if (!d) {
+      let n = 0;
+      const s = String(sub || '');
+      for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+      d = String(n);
+    }
+    d = (d + '00000000').slice(-8);
+    return '99' + d;
+  }
+
+  async function lookupEmail(email, role) {
+    email = String(email || '').trim().toLowerCase();
+    if (!email || email.indexOf('@') < 0) return null;
+    const want = roleTag(role || 'customer');
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('accounts?email=ilike.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*'));
+        for (let i = 0; i < rows.length; i++) {
+          const a = mapAccount(rows[i]);
+          if (a && !isDemoAccount(a) && String(a.email || '').toLowerCase() === email) return a;
+        }
+      } catch (_) {}
+    }
+    const list = await allAccounts();
+    return list.find(function (a) {
+      return String(a.email || '').toLowerCase() === email && sameRole(a.role, want) && !isDemoAccount(a);
+    }) || null;
+  }
+
+  function parseJwt(tok) {
+    const parts = String(tok || '').split('.');
+    if (parts.length < 2) return {};
+    const p = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = p + '==='.slice((p.length + 3) % 4);
+    try {
+      return JSON.parse(atob(pad));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  API.parseGoogleJwt = parseJwt;
+
+  API.signInGoogle = async function (profile) {
+    const email = String((profile && profile.email) || '').trim().toLowerCase();
+    const name = String((profile && (profile.name || profile.given_name)) || '').trim() || (email.split('@')[0] || 'Google user');
+    const sub = String((profile && profile.sub) || '');
+    if (!email.includes('@')) throw new Error('Google did not share an email for this account.');
+    const role = 'customer';
+    let row = await lookupEmail(email, role);
+    if (!row && sub) row = await lookupPhone(googlePhone(sub), role);
+    if (!row) {
+      const phone = googlePhone(sub || email);
+      row = await saveAccount({
+        id: accountIdFor(phone, role),
+        name: name,
+        phone: phone,
+        email: email,
+        pin: 'google',
+        role: role,
+        address: 'Sri Lanka',
+      });
+    } else {
+      const patch = {};
+      if (name && (!row.name || row.name === 'Guest')) patch.name = name;
+      if (email && String(row.email || '').toLowerCase() !== email) patch.email = email;
+      if (Object.keys(patch).length) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch); } catch (_) {}
+        Object.assign(row, patch);
+      }
+    }
+    API.user = mapAccount(row);
+    API.token = 'sb_' + row.id;
+    saveSession();
+    notify(true);
+    return API.user;
+  };
+
+  API.googleSignIn = function () {
+    return new Promise(function (resolve, reject) {
+      const clientId = String(window.QB_GOOGLE_CLIENT_ID || '').trim();
+      if (!clientId) {
+        reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
+        return;
+      }
+      function done(profile) {
+        if (profile && profile.email) resolve(profile);
+        else reject(new Error('Google did not share an email for this account.'));
+      }
+      function fromAccessToken(accessToken) {
+        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: 'Bearer ' + accessToken },
+        }).then(function (r) { return r.json(); }).then(done).catch(reject);
+      }
+      function start() {
+        try {
+          if (window.google && google.accounts && google.accounts.oauth2) {
+            const tc = google.accounts.oauth2.initTokenClient({
+              client_id: clientId,
+              scope: 'openid email profile',
+              callback: function (resp) {
+                if (!resp || resp.error) {
+                  reject(new Error((resp && (resp.error_description || resp.error)) || 'Google sign-in was cancelled'));
+                  return;
+                }
+                fromAccessToken(resp.access_token);
+              },
+            });
+            tc.requestAccessToken({ prompt: 'select_account' });
+            return;
+          }
+        } catch (e) {
+          reject(e);
+          return;
+        }
+        const redirect = location.origin + location.pathname;
+        const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: redirect,
+          response_type: 'token',
+          scope: 'openid email profile',
+          prompt: 'select_account',
+          include_granted_scopes: 'true',
+        }).toString();
+        location.assign(url);
+      }
+      if (window.google && google.accounts && google.accounts.oauth2) {
+        start();
+        return;
+      }
+      const existing = document.querySelector('script[data-gsi]');
+      if (existing) {
+        existing.addEventListener('load', start);
+        existing.addEventListener('error', function () { reject(new Error('Could not load Google Sign-In.')); });
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true;
+      s.dataset.gsi = '1';
+      s.onload = start;
+      s.onerror = function () { reject(new Error('Could not load Google Sign-In.')); };
+      document.head.appendChild(s);
+    });
+  };
+
   API.verifiedPhone = function (role) {
     const v = API._verified;
     if (!v || !sameRole(v.role, role)) return '';

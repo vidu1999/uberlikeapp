@@ -52,9 +52,15 @@
 }
 
 .qb-auth {
-  min-height: 100%; background: #07130f; color: #fff;
+  flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+  background: #07130f; color: #fff;
   padding: 36px 22px 28px; display: flex; flex-direction: column;
 }
+.qb-google {
+  background: #121c18 !important; color: #fff !important; border-color: #1f2e28 !important;
+  margin-bottom: 8px; cursor: pointer; pointer-events: auto; position: relative; z-index: 3;
+}
+.qb-google:disabled { opacity: 0.7; cursor: wait; }
 .qb-auth .qb-logo { margin-bottom: 18px; }
 .qb-auth h1 { font-size: 26px; font-weight: 800; margin: 8px 0 4px; text-align: center; }
 .qb-auth .sub { text-align: center; color: #9CA3AF; margin: 0 0 22px; }

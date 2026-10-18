@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../app.dart';
 import '../config.dart';
 import '../data/repository.dart';
@@ -279,6 +280,42 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _googleSignIn() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final google = GoogleSignIn(
+        scopes: const ['email', 'profile'],
+        clientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
+        serverClientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
+      );
+      final acc = await google.signIn();
+      if (!mounted) return;
+      if (acc == null) {
+        setState(() {
+          busy = false;
+          error = 'Google sign-in cancelled';
+        });
+        return;
+      }
+      await OrderRepository.instance.signInWithGoogle(
+        email: acc.email,
+        name: acc.displayName ?? acc.email,
+        sub: acc.id,
+      );
+      if (!mounted) return;
+      setState(() => busy = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (codeStep) return _otp();
@@ -343,9 +380,9 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 18),
           const Center(child: Text('or', style: TextStyle(color: Color(0xFF6B7280)))),
           const SizedBox(height: 12),
-          _ghost('Continue with Google'),
+          _ghost('Continue with Google', onPressed: _googleSignIn),
           const SizedBox(height: 8),
-          _ghost('Continue with Apple'),
+          _ghost('Continue with Apple', onPressed: () => setState(() => error = 'Use Google or WhatsApp to sign in.')),
           if (widget.role == UserRole.customer) ...[
             const SizedBox(height: 22),
             Center(
@@ -824,7 +861,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _ghost(String label) {
+  Widget _ghost(String label, {VoidCallback? onPressed}) {
     return SizedBox(
       height: 48,
       child: OutlinedButton(
@@ -833,8 +870,8 @@ class _LoginScreenState extends State<LoginScreen> {
           side: const BorderSide(color: Color(0xFF1F2E28)),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         ),
-        onPressed: busy ? null : _send,
-        child: Text(label),
+        onPressed: busy ? null : (onPressed ?? _send),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
       ),
     );
   }

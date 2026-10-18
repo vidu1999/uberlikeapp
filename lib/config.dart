@@ -10,6 +10,11 @@ class AppConfig {
     'SUPABASE_URL',
     defaultValue: 'https://ofbirobpstnzlriwscwu.supabase.co',
   );
+  static String googleClientId = const String.fromEnvironment(
+    'GOOGLE_CLIENT_ID',
+    defaultValue: '',
+  );
+
   static String supabaseAnon = const String.fromEnvironment(
     'SUPABASE_ANON',
     defaultValue:

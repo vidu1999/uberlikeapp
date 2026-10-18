@@ -685,6 +685,76 @@ class OrderRepository {
     return true;
   }
 
+  String _googlePhone(String sub) {
+    var d = sub.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) {
+      var n = 0;
+      for (final u in sub.codeUnits) {
+        n = (n * 31 + u) & 0x7fffffff;
+      }
+      d = n.toString();
+    }
+    if (d.length >= 8) {
+      d = d.substring(d.length - 8);
+    } else {
+      d = d.padLeft(8, '0');
+    }
+    return '99$d';
+  }
+
+  Future<void> signInWithGoogle({required String email, required String name, required String sub}) async {
+    await _loadSupabaseConfig();
+    email = email.trim().toLowerCase();
+    name = name.trim();
+    if (!email.contains('@')) throw Exception('Google did not share an email for this account.');
+    const role = 'customer';
+    Map<String, dynamic>? row;
+    try {
+      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
+          row = m;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (row == null) {
+      final list = await _allAccounts();
+      for (final m in list) {
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
+          row = m;
+          break;
+        }
+      }
+    }
+    if (row == null && sub.isNotEmpty) {
+      row = await _lookupPhone(_googlePhone(sub), role);
+    }
+    if (row == null) {
+      final phone = _googlePhone(sub.isNotEmpty ? sub : email);
+      row = {
+        'id': _accountIdFor(phone, role),
+        'name': name.isEmpty ? email.split('@').first : name,
+        'phone': phone,
+        'email': email,
+        'pin': 'google',
+        'role': role,
+        'address': 'Sri Lanka',
+      };
+      try {
+        await _sbWrite('accounts', 'POST', [row]);
+      } catch (_) {
+        row = await _lookupPhone(phone, role) ?? row;
+      }
+    }
+    token = 'sb_${row['id']}';
+    userNotifier.value = SessionUser.fromJson(row);
+    await loadFavs();
+    connectedNotifier.value = true;
+    await _persist();
+    await refresh();
+  }
+
   bool needsShopRegister = false;
   bool needsRiderRegister = false;
   String? verifiedPhone;

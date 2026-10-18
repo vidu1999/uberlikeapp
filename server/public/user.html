@@ -7,18 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18o" />
-  <link rel="stylesheet" href="/css/ui.css?v=18o" />
-  <link rel="stylesheet" href="/css/track.css?v=18o" />
-  <link rel="stylesheet" href="/css/qb.css?v=18o" />
+  <link rel="stylesheet" href="/css/app.css?v=18p" />
+  <link rel="stylesheet" href="/css/ui.css?v=18p" />
+  <link rel="stylesheet" href="/css/track.css?v=18p" />
+  <link rel="stylesheet" href="/css/qb.css?v=18p" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18o"></script>
-  <script src="/js/api.js?v=18o"></script>
-  <script src="/js/maps.js?v=18o"></script>
-  <script src="/js/track-ui.js?v=18o"></script>
+  <script src="/js/live.js?v=18p"></script>
+  <script src="/js/api.js?v=18p"></script>
+  <script src="/js/maps.js?v=18p"></script>
+  <script src="/js/track-ui.js?v=18p"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -244,6 +245,7 @@
       heartOn: '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.6-9.5-8.5C.3 9.2 2.2 5 6.2 5c2 0 3.4 1 4.3 2.2C11.4 6 12.8 5 14.8 5c4 0 5.9 4.2 3.7 7.5C19 16.4 12 21 12 21z"/></svg>',
       mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
       lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+      google: '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7 12.9 19.6C14.7 15.2 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.3 5.3C39.3 36.1 44 30.7 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>',
     };
 
     function nav() {
@@ -378,8 +380,8 @@
         <p class="err" data-err></p>
         <button class="btn-qb" data-signin>Sign In</button>
         <div class="qb-or">or</div>
-        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28;margin-bottom:8px">Continue with Google</button>
-        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28">Continue with Apple</button>
+        <button class="btn-outline qb-google" type="button" data-google>${SVG.google} Continue with Google</button>
+        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28" data-apple>Continue with Apple</button>
         <div class="qb-foot">Don't have an account? <button class="link" data-go-reg>Sign Up</button></div>
       </div>`;
     }
@@ -714,6 +716,35 @@
       </div>${nav()}`;
     }
 
+    async function consumeGoogleRedirect() {
+      const hash = String(location.hash || '').replace(/^#/, '');
+      const hp = new URLSearchParams(hash);
+      const qp = new URLSearchParams(location.search);
+      const access = hp.get('access_token') || qp.get('access_token');
+      const cred = hp.get('credential') || hp.get('id_token') || qp.get('id_token');
+      if (!access && !cred) return false;
+      try {
+        history.replaceState({}, '', location.pathname);
+      } catch (_) {}
+      const err = document.querySelector('[data-err]');
+      try {
+        let profile = null;
+        if (cred && API.parseGoogleJwt) profile = API.parseGoogleJwt(cred);
+        if ((!profile || !profile.email) && access) {
+          const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + access } });
+          profile = await r.json();
+        }
+        await API.signInGoogle(profile);
+        state.gate = 'app';
+        state.tab = 'home';
+        state.screen = 'home';
+        render();
+        return true;
+      } catch (e) {
+        if (err) err.textContent = e.message || 'Google sign-in failed';
+        return false;
+      }
+    }
     async function startOtp(phone) {
       state.otp.phone = phone;
       state.otp.err = '';
@@ -774,7 +805,7 @@
       if (!API.user && state.gate !== 'app') {
         if (state.gate === 'splash') { root.innerHTML = splash(); return; }
         if (state.gate === 'onboard') { root.innerHTML = onboard(); bindGate(); return; }
-        if (state.gate === 'login') { root.innerHTML = loginView(); bindGate(); return; }
+        if (state.gate === 'login') { root.innerHTML = loginView(); bindGate(); consumeGoogleRedirect(); return; }
         if (state.gate === 'register') { root.innerHTML = registerView(); bindGate(); return; }
         if (state.gate === 'otp') { root.innerHTML = otpView(); bindGate(); bindOtp(); return; }
         if (state.gate === 'download') { root.innerHTML = downloadView(); bindGate(); return; }
@@ -783,6 +814,7 @@
         state.gate = 'login';
         root.innerHTML = loginView();
         bindGate();
+        consumeGoogleRedirect();
         return;
       }
       if (API.user) { loadFavs(); tryAutoGps(); }
@@ -906,6 +938,35 @@
         const err = root.querySelector('[data-err]');
         signin.disabled = true; signin.textContent = 'Sending code…';
         try { await startOtp(id); } catch (e) { if (err) err.textContent = e.message; signin.disabled = false; signin.textContent = 'Sign In'; }
+      };
+      const googleBtn = root.querySelector('[data-google]');
+      if (googleBtn) googleBtn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = '';
+        googleBtn.disabled = false;
+        googleBtn.style.pointerEvents = 'auto';
+        googleBtn.disabled = true;
+        const html = googleBtn.innerHTML;
+        googleBtn.textContent = 'Opening Google…';
+        try {
+          const profile = await API.googleSignIn();
+          await API.signInGoogle(profile);
+          state.gate = 'app';
+          state.tab = 'home';
+          state.screen = 'home';
+          render();
+        } catch (ex) {
+          if (err) err.textContent = ex.message || 'Google sign-in failed';
+          googleBtn.disabled = false;
+          googleBtn.innerHTML = html;
+        }
+      };
+      const apple = root.querySelector('[data-apple]');
+      if (apple) apple.onclick = () => {
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = 'Use Google or WhatsApp to sign in.';
       };
       const reg = root.querySelector('[data-register]');
       if (reg) reg.onclick = async () => {
