@@ -512,7 +512,43 @@
     return user;
   }
 
-  async function ensureShopRow(user) {
+  function isPlaceholderName(name) {
+    const n = String(name || '').trim().toLowerCase();
+    return !n || n === 'rider' || n === 'guest' || n === 'user' || n === 'shop owner' || n === 'delivery partner';
+  }
+
+  API.isShopRegistered = function () {
+    const u = API.user;
+    if (!u || !sameRole(u.role, 'shop')) return false;
+    const sid = u.shopId || u.shop_id || (u.phone && shopIdFor(u.phone)) || '';
+    if (!sid || isDemoShop(sid)) return false;
+    const shop = (API.shops || []).find((s) => s.id === sid);
+    if (shop && String(shop.name || '').trim()) return true;
+    const rec = u.phone && API.recallShopProfile ? API.recallShopProfile(u.phone) : null;
+    return !!(rec && String(rec.shopName || '').trim());
+  };
+
+  API.isRiderRegistered = function () {
+    const u = API.user;
+    if (!u || !sameRole(u.role, 'rider') || !u.id) return false;
+    return !isPlaceholderName(u.name);
+  };
+
+  API.parkForRegister = function (role) {
+    const u = API.user;
+    const phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone(role)) || '';
+    API.user = null;
+    API.token = null;
+    try {
+      sessionKeys(role).forEach(storeDel);
+      sessionKeys(API.roleHint).forEach(storeDel);
+      cookieClear(role);
+      cookieClear(API.roleHint);
+    } catch (_) {}
+    if (phone) persistVerified({ role: roleTag(role), phone: normalizePhone(phone) });
+  };
+
+  async function ensureShopRow(user, opts) {
     user = attachShopIdentity(user);
     if (!user || !sameRole(user.role, 'shop')) return user;
     const sid = user.shopId;
@@ -529,20 +565,26 @@
     }
     if (!shop) {
       const rec = (user.phone && API.recallShopProfile(user.phone)) || {};
+      const p = pendingShop() || {};
+      const name = String(p.shopName || rec.shopName || '').trim();
+      if (!name) {
+        if (opts && opts.required) throw new Error('Register your shop first.');
+        return user;
+      }
       shop = {
         id: sid,
-        name: rec.shopName || user.shopName || user.name || 'My Shop',
+        name: name,
         category: 'Bakery',
         rating: 5,
         reviews: 0,
         is_open: true,
-        lat: Number(rec.lat) || 8.335,
-        lng: Number(rec.lng) || 80.4108,
+        lat: Number(p.lat || rec.lat) || 8.335,
+        lng: Number(p.lng || rec.lng) || 80.4108,
         km: 0,
         eta: '20–35 min',
         fee: 200,
         hours: '08:00 AM – 10:00 PM',
-        address: rec.address || '',
+        address: p.address || rec.address || '',
         image: '/img/shop-bakery.jpg',
         promo: rec.promo || '',
       };
@@ -910,11 +952,39 @@
       API.setPendingShop(null);
       try { API.shops.push(mapShop(shop)); } catch (_) {}
     }
+    if (row && role === 'rider') {
+      const pr = pendingRider() || {};
+      if (pr.name && !isPlaceholderName(pr.name)) {
+        row.name = String(pr.name).trim();
+        if (pr.email) row.email = pr.email;
+        try {
+          await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', { name: row.name, email: row.email || null });
+        } catch (_) {}
+      }
+      API.setPendingRider(null);
+    }
+    if (!row && role === 'rider') {
+      const pr = pendingRider() || {};
+      if (isPlaceholderName(pr.name)) throw new Error('Register as a rider first.');
+      row = {
+        id: accountIdFor(phone, 'rider'),
+        name: String(pr.name).trim(),
+        phone,
+        email: pr.email || '',
+        pin: 'otp',
+        role: 'rider',
+        address: 'Sri Lanka',
+        vehicle: pr.vehicle || 'Honda Dio · BDX 1234',
+        rating: 5,
+      };
+      API.setPendingRider(null);
+      row = await saveAccount(row);
+    }
     if (!row) {
       const pr = pendingRider() || {};
       row = {
         id: accountIdFor(phone, role),
-        name: role === 'rider' ? (pr.name || 'Rider') : (pr.name || 'Guest'),
+        name: pr.name || 'Guest',
         phone,
         email: pr.email || '',
         pin: 'otp',
@@ -922,10 +992,6 @@
         address: 'Sri Lanka',
       };
       API.setPendingRider(null);
-      if (role === 'rider') {
-        row.vehicle = pr.vehicle || 'Honda Dio · BDX 1234';
-        row.rating = 5;
-      }
       row = await saveAccount(row);
     }
     API.user = mapAccount(row);
@@ -1059,6 +1125,8 @@
   API.completeRiderRegister = async function () {
     const phone = API.verifiedPhone('rider');
     if (!phone) throw new Error('Verify WhatsApp first.');
+    const p = pendingRider() || {};
+    if (isPlaceholderName(p.name)) throw new Error('Register as a rider first.');
     const user = await enterAccount('rider', phone);
     clearVerified('rider');
     return user;
@@ -1278,6 +1346,9 @@
   };
 
   API.patch = async function (id, body) {
+    if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
+      if (!API.isRiderRegistered()) throw new Error('Register as a rider first, then accept orders.');
+    }
     let order = null;
     try {
       order = await getJSON('/api/orders/' + encodeURIComponent(id), {
@@ -1366,10 +1437,16 @@
   };
 
   API.saveItem = async function (item) {
-    if (API.user && sameRole(API.user.role, 'shop')) {
-      API.user = await ensureShopRow(API.user);
-      saveSession();
+    if (!API.user || !sameRole(API.user.role, 'shop')) {
+      throw new Error('Register as a shop owner first, then add items.');
     }
+    try {
+      API.user = await ensureShopRow(API.user, { required: true });
+      saveSession();
+    } catch (e) {
+      throw new Error('Register your shop first, then add items.');
+    }
+    if (!API.isShopRegistered()) throw new Error('Register your shop first, then add items.');
     let sid = item.shopId || item.shop_id || (API.user && API.user.shopId) || '';
     if (!sid || isDemoShop(sid)) {
       sid = (API.user && API.user.phone && shopIdFor(API.user.phone)) || '';

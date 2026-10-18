@@ -109,6 +109,24 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     AppConfig.baseUrl = AppConfig.normalize(AppConfig.baseUrl);
     try {
+      if (widget.role == UserRole.rider && register && OrderRepository.instance.needsRiderRegister) {
+        if (_name.text.trim().isEmpty || _phone.text.trim().isEmpty) {
+          setState(() {
+            busy = false;
+            error = 'Enter your name and phone.';
+          });
+          return;
+        }
+        OrderRepository.instance.pendingRider = {
+          'name': _name.text.trim(),
+          'phone': _phone.text.trim(),
+          'email': _email.text.trim(),
+        };
+        await OrderRepository.instance.completeRiderRegister();
+        if (!mounted) return;
+        setState(() => busy = false);
+        return;
+      }
       if (widget.role == UserRole.shop && register && OrderRepository.instance.needsShopRegister) {
         if (_shopName.text.trim().isEmpty || _name.text.trim().isEmpty) {
           setState(() {
@@ -240,7 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         return;
       }
-      if (OrderRepository.instance.needsShopRegister) {
+      if (OrderRepository.instance.needsShopRegister || OrderRepository.instance.needsRiderRegister) {
         final p = OrderRepository.instance.verifiedPhone;
         if (p != null && p.isNotEmpty) _phone.text = p;
         setState(() {

@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css" />
-  <link rel="stylesheet" href="/css/ui.css" />
-  <link rel="stylesheet" href="/css/track.css" />
+  <link rel="stylesheet" href="/css/app.css?v=18g" />
+  <link rel="stylesheet" href="/css/ui.css?v=18g" />
+  <link rel="stylesheet" href="/css/track.css?v=18g" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18f"></script>
-  <script src="/js/api.js?v=18f"></script>
-  <script src="/js/maps.js?v=18f"></script>
-  <script src="/js/track-ui.js?v=18f"></script>
-  <script src="/js/otp-login.js?v=18f"></script>
+  <script src="/js/live.js?v=18g"></script>
+  <script src="/js/api.js?v=18g"></script>
+  <script src="/js/maps.js?v=18g"></script>
+  <script src="/js/track-ui.js?v=18g"></script>
+  <script src="/js/otp-login.js?v=18g"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -529,18 +529,11 @@
           root.innerHTML = otpView();
           OtpLogin.bind({ role: 'shop', onReady: async (out) => {
             if (out && out.needsRegister) {
-              try {
-                await API.completeShopRegister();
-                state.tab = 'account';
-                render();
-                return;
-              } catch (_) {
-                state.auth = 'register';
-                state.fromReg = true;
-                state.reg.phone = out.phone || state.loginId;
-                render();
-                return;
-              }
+              state.auth = 'register';
+              state.fromReg = true;
+              state.reg.phone = out.phone || state.loginId;
+              render();
+              return;
             }
             state.tab = 'dash';
             state.auth = 'login';
@@ -567,6 +560,10 @@
         return;
       }
       killRegMap();
+      if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
+        goShopRegister();
+        return;
+      }
       if (state.trackId) {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (!o || o.status === 'cancelled') { state.trackId = null; }
@@ -603,6 +600,22 @@
           if (sc) sc.scrollTop = y;
         }
       }
+    }
+    function goShopRegister() {
+      const phone = (API.user && API.user.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || state.reg.phone || state.loginId;
+      const rec = (phone && API.recallShopProfile) ? API.recallShopProfile(phone) : null;
+      if (rec) {
+        if (!state.reg.shopName) state.reg.shopName = rec.shopName || '';
+        if (!state.reg.ownerName) state.reg.ownerName = rec.ownerName || '';
+        if (!state.reg.address) state.reg.address = rec.address || '';
+        if (state.reg.lat == null && rec.lat != null) state.reg.lat = Number(rec.lat);
+        if (state.reg.lng == null && rec.lng != null) state.reg.lng = Number(rec.lng);
+      }
+      if (phone) state.reg.phone = phone;
+      if (API.user && API.parkForRegister) API.parkForRegister('shop');
+      state.auth = 'register';
+      state.fromReg = true;
+      render();
     }
     function bindAuth() {
       const root = document.getElementById('root');
@@ -714,6 +727,7 @@
       });
       root.querySelectorAll('[data-close-order]').forEach((b) => b.onclick = () => { state.screen = ''; state.orderId = null; render(); });
       root.querySelectorAll('[data-add-item]').forEach((b) => b.onclick = () => {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
         state.itemId = null; state.itemDraft = { category: 'Food', isAvailable: true }; state.screen = 'item'; render();
       });
       root.querySelectorAll('[data-edit-item]').forEach((b) => b.onclick = () => {
@@ -745,6 +759,7 @@
       };
       const save = root.querySelector('[data-save-item]');
       if (save) save.onclick = async () => {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
         const d = readItemForm();
         if (!d.name) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Enter an item name.'; return; }
         save.disabled = true; save.textContent = 'Saving…';

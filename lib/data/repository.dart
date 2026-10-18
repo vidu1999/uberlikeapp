@@ -110,6 +110,10 @@ class OrderRepository {
   static const _demoAccounts = {'USER_1', 'USER_2', 'SHOP_STAFF', 'RIDER_77'};
   static const _demoPhones = {'0771234567', '0771112222', '0772223333', '0775556666'};
 
+  bool _isPlaceholderName(String? name) {
+    final n = (name ?? '').trim().toLowerCase();
+    return n.isEmpty || n == 'rider' || n == 'guest' || n == 'user' || n == 'shop owner' || n == 'delivery partner';
+  }
   bool _isDemoShop(String? id) => _demoShops.contains(id);
   bool _isDemoPhone(String? phone) => _demoPhones.contains(_normPhone(phone ?? ''));
   bool _isDemoAccountMap(Map<String, dynamic>? a) {
@@ -172,18 +176,21 @@ class OrderRepository {
     final existing = await _sbGet('shops?id=eq.$sid&select=id');
     if (existing.isEmpty) {
       final rec = await _recalledShop(u.phone);
+      final p = pendingShop;
+      final name = (p?['shopName'] ?? rec?['shopName'] ?? '').trim();
+      if (name.isEmpty) throw Exception('Register your shop first.');
       await _sbUpsert('shops', [
         {
           'id': sid,
-          'name': rec?['shopName'] ?? u.shopName ?? 'My Shop',
+          'name': name,
           'category': 'Bakery',
           'rating': 5,
           'reviews': 0,
           'is_open': true,
-          'lat': double.tryParse(rec?['lat'] ?? '') ?? 8.335,
-          'lng': double.tryParse(rec?['lng'] ?? '') ?? 80.4108,
+          'lat': double.tryParse(p?['lat'] ?? rec?['lat'] ?? '') ?? 8.335,
+          'lng': double.tryParse(p?['lng'] ?? rec?['lng'] ?? '') ?? 80.4108,
           'hours': '08:00 AM – 10:00 PM',
-          'address': rec?['address'] ?? '',
+          'address': p?['address'] ?? rec?['address'] ?? '',
           'image': '/img/shop-bakery.jpg',
           'promo': '',
         }
@@ -346,21 +353,52 @@ class OrderRepository {
       pendingShop = null;
       createdShop = true;
     }
+    if (user != null && role == 'rider') {
+      final pr = pendingRider;
+      final name = (pr?['name'] ?? '').trim();
+      if (name.isNotEmpty && !_isPlaceholderName(name)) {
+        user['name'] = name;
+        if ((pr?['email'] ?? '').isNotEmpty) user['email'] = pr!['email'];
+        try {
+          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', {'name': name, 'email': user['email']});
+        } catch (_) {}
+      }
+      pendingRider = null;
+    }
+    if (user == null && role == 'rider') {
+      final pr = pendingRider;
+      final name = (pr?['name'] ?? '').trim();
+      if (_isPlaceholderName(name)) throw Exception('Register as a rider first.');
+      user = {
+        'id': _accountIdFor(phone, 'rider'),
+        'name': name,
+        'phone': phone,
+        'email': pr?['email'] ?? '',
+        'role': 'rider',
+        'pin': 'otp',
+        'address': 'Sri Lanka',
+        'vehicle': pr?['vehicle'] ?? 'Honda Dio · BDX 1234',
+        'rating': 5,
+      };
+      pendingRider = null;
+      try {
+        await _sbWrite('accounts', 'POST', [user]);
+      } catch (_) {
+        final again = await _lookupPhone(phone, 'rider');
+        if (again != null) user = again;
+      }
+    }
     if (user == null) {
       final pr = pendingRider;
       user = {
         'id': _accountIdFor(phone, role),
-        'name': role == 'rider' ? (pr?['name'] ?? 'Rider') : (pr?['name'] ?? 'Guest'),
+        'name': pr?['name'] ?? 'Guest',
         'phone': phone,
         'email': pr?['email'] ?? '',
         'role': role,
         'pin': 'otp',
         'address': 'Sri Lanka',
       };
-      if (role == 'rider') {
-        user['vehicle'] = pr?['vehicle'] ?? 'Honda Dio · BDX 1234';
-        user['rating'] = 5;
-      }
       pendingRider = null;
       try {
         await _sbWrite('accounts', 'POST', [user]);
@@ -535,10 +573,56 @@ class OrderRepository {
   Future<void> completeShopRegister() async {
     final phone = verifiedPhone;
     if (phone == null || phone.isEmpty) throw Exception('Verify WhatsApp first.');
+    final p = pendingShop;
+    if (p == null || ((p['shopName'] ?? '').trim().isEmpty && (p['ownerName'] ?? '').trim().isEmpty)) {
+      throw Exception('Register your shop first.');
+    }
     await _enterAccount('shop', phone);
     needsShopRegister = false;
     verifiedPhone = null;
     await _clearVerified();
+  }
+
+  Future<void> completeRiderRegister() async {
+    final phone = verifiedPhone;
+    if (phone == null || phone.isEmpty) throw Exception('Verify WhatsApp first.');
+    final p = pendingRider;
+    if (_isPlaceholderName(p?['name'])) throw Exception('Register as a rider first.');
+    await _enterAccount('rider', phone);
+    needsRiderRegister = false;
+    verifiedPhone = null;
+    await _clearVerified();
+  }
+
+  bool get isShopRegistered {
+    final u = user;
+    if (u == null || u.role != 'shop') return false;
+    final sid = (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null') ? u.shopId! : (u.phone.isNotEmpty ? _shopIdFor(u.phone) : '');
+    if (sid.isEmpty) return false;
+    for (final s in Catalog.shops) {
+      if (s.id == sid && s.name.trim().isNotEmpty) return true;
+    }
+    if ((u.shopName ?? '').trim().isNotEmpty) return true;
+    return false;
+  }
+
+  bool get isRiderRegistered {
+    final u = user;
+    if (u == null || u.role != 'rider') return false;
+    return !_isPlaceholderName(u.name);
+  }
+
+  Future<void> parkForRegister(String role) async {
+    final phone = user?.phone ?? verifiedPhone ?? '';
+    userNotifier.value = null;
+    token = null;
+    if (phone.isNotEmpty) {
+      verifiedPhone = phone;
+      needsShopRegister = role == 'shop';
+      needsRiderRegister = role == 'rider';
+      await _persistVerified(role, phone);
+    }
+    await _persist();
   }
 
   Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
@@ -1065,6 +1149,9 @@ class OrderRepository {
 
   Future<void> assignRider(String id, {String? riderId, String? riderName, String? riderPhone}) async {
     final u = user;
+    if (u != null && u.role == 'rider' && !isRiderRegistered) {
+      throw Exception('Register as a rider first, then accept orders.');
+    }
     await _patch(id, {
       'riderId': riderId ?? u?.id,
       'riderName': riderName ?? u?.name,
@@ -1164,19 +1251,22 @@ class OrderRepository {
     bool available = true,
     String? shopId,
   }) async {
+    if (user == null || user!.role != 'shop') {
+      throw Exception('Register as a shop owner first, then add items.');
+    }
     if (name.trim().isEmpty) throw Exception('Enter an item name.');
     var sid = shopId ?? '';
     if (sid.isEmpty || sid == 'SHOP_1' || sid == 'null') {
       sid = user?.shopId ?? '';
     }
-    if (sid.isEmpty || sid == 'SHOP_1') {
+    try {
       sid = await _ensureShopRow();
-    } else {
-      try {
-        await _ensureShopRow();
-      } catch (_) {}
+    } catch (_) {
+      throw Exception('Register your shop first, then add items.');
     }
-    if (sid.isEmpty) throw Exception('Shop is not in the database. Register the shop, then add items.');
+    if (sid.isEmpty || !isShopRegistered) {
+      throw Exception('Register your shop first, then add items.');
+    }
     final itemId = (id != null && id.isNotEmpty) ? id : 'ITM_${DateTime.now().millisecondsSinceEpoch}';
     await _sbUpsert('menu_items', [
       {

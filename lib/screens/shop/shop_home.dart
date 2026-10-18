@@ -31,6 +31,24 @@ class _ShopHomeState extends State<ShopHome> {
       tab = 3;
       OrderRepository.instance.openShopProfile = false;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requireRegistered());
+  }
+
+  Future<void> _requireRegistered() async {
+    await OrderRepository.instance.refresh();
+    if (!mounted) return;
+    if (!OrderRepository.instance.isShopRegistered) {
+      await OrderRepository.instance.parkForRegister('shop');
+    }
+  }
+
+  Future<void> _addOrEdit({CatalogItem? item}) async {
+    if (!OrderRepository.instance.isShopRegistered) {
+      await OrderRepository.instance.parkForRegister('shop');
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => ShopItemEdit(item: item)));
   }
 
   String get shopId {
@@ -441,7 +459,7 @@ class _ShopHomeState extends State<ShopHome> {
                 ...list.map((it) {
                   final img = (it.image != null && it.image!.isNotEmpty) ? _url(it.image!) : null;
                   return ListTile(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopItemEdit(item: it))),
+                    onTap: () => _addOrEdit(item: it),
                     leading: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: img == null
@@ -464,7 +482,7 @@ class _ShopHomeState extends State<ShopHome> {
               bottom: 16,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: Brand.green, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14)),
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ShopItemEdit())),
+                onPressed: () => _addOrEdit(),
                 icon: const Icon(Icons.add),
                 label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w800)),
               ),

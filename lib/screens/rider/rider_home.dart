@@ -37,6 +37,15 @@ class _RiderHomeState extends State<RiderHome> {
   void initState() {
     super.initState();
     _watchGps();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requireRegistered());
+  }
+
+  Future<void> _requireRegistered() async {
+    await OrderRepository.instance.refresh();
+    if (!mounted) return;
+    if (!OrderRepository.instance.isRiderRegistered) {
+      await OrderRepository.instance.parkForRegister('rider');
+    }
   }
 
   @override
@@ -203,6 +212,10 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   Future<void> _accept(Order o) async {
+    if (!OrderRepository.instance.isRiderRegistered) {
+      await OrderRepository.instance.parkForRegister('rider');
+      return;
+    }
     await OrderRepository.instance.assignRider(o.id);
     await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);
     if (lat != null && lng != null) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app.dart';
 import '../config.dart';
+import '../data/repository.dart';
 import '../theme.dart';
 import 'login_screen.dart';
 
@@ -36,6 +37,11 @@ class _WelcomeFlowState extends State<WelcomeFlow> {
   @override
   void initState() {
     super.initState();
+    final repo = OrderRepository.instance;
+    if (repo.needsShopRegister || repo.needsRiderRegister) {
+      page = 4;
+      return;
+    }
     Future<void>.delayed(const Duration(milliseconds: 1700), () {
       if (!mounted) return;
       setState(() => page = widget.role == UserRole.customer ? 1 : 4);

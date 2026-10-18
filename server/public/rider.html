@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18f" />
-  <link rel="stylesheet" href="/css/ui.css?v=18f" />
-  <link rel="stylesheet" href="/css/track.css?v=18f" />
+  <link rel="stylesheet" href="/css/app.css?v=18g" />
+  <link rel="stylesheet" href="/css/ui.css?v=18g" />
+  <link rel="stylesheet" href="/css/track.css?v=18g" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18f"></script>
-  <script src="/js/api.js?v=18f"></script>
-  <script src="/js/maps.js?v=18f"></script>
-  <script src="/js/track-ui.js?v=18f"></script>
-  <script src="/js/otp-login.js?v=18f"></script>
+  <script src="/js/live.js?v=18g"></script>
+  <script src="/js/api.js?v=18g"></script>
+  <script src="/js/maps.js?v=18g"></script>
+  <script src="/js/track-ui.js?v=18g"></script>
+  <script src="/js/otp-login.js?v=18g"></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
@@ -558,6 +558,17 @@
       render(true);
     }
 
+    function goRiderRegister() {
+      const phone = (API.user && API.user.phone) || (API.verifiedPhone && API.verifiedPhone('rider')) || state.reg.phone || state.loginId;
+      if (phone) state.reg.phone = phone;
+      if (API.user && API.user.name && !/^(rider|guest|user)$/i.test(String(API.user.name).trim())) {
+        state.reg.name = API.user.name;
+      }
+      if (API.user && API.parkForRegister) API.parkForRegister('rider');
+      state.auth = 'register';
+      state.fromReg = true;
+      render(true);
+    }
     function bindAuth() {
       const root = document.getElementById('root');
       const err = root.querySelector('[data-err]');
@@ -661,6 +672,7 @@
       if (online) online.onclick = () => { state.online = !state.online; render(true); };
       root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = async (e) => {
         e.stopPropagation();
+        if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
         const id = b.dataset.pick;
         const u = me();
         const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
@@ -673,6 +685,7 @@
         render(true);
       });
       root.querySelectorAll('[data-nav]').forEach((b) => b.onclick = async () => {
+        if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
         const id = b.dataset.nav;
         const u = me();
         const o = (API.orders || []).find((x) => x.id === id);
@@ -780,19 +793,11 @@
             root.innerHTML = otpView();
             OtpLogin.bind({ role: 'rider', onReady: async (out) => {
               if (out && out.needsRegister) {
-                try {
-                  await API.completeRiderRegister();
-                  state.tab = 'home';
-                  startRiderGps();
-                  render(true);
-                  return;
-                } catch (_) {
-                  state.auth = 'register';
-                  state.fromReg = true;
-                  state.reg.phone = out.phone || state.loginId;
-                  render(true);
-                  return;
-                }
+                state.auth = 'register';
+                state.fromReg = true;
+                state.reg.phone = out.phone || state.loginId;
+                render(true);
+                return;
               }
               state.tab = 'home';
               startRiderGps();
@@ -812,6 +817,10 @@
           }
           root.innerHTML = loginView();
           bindAuth();
+          return;
+        }
+        if (API.isRiderRegistered && !API.isRiderRegistered()) {
+          goRiderRegister();
           return;
         }
         startRiderGps();
