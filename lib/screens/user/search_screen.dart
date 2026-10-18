@@ -7,8 +7,7 @@ import '../../theme.dart';
 import 'shop_menu_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  final bool favouritesOnly;
-  const SearchScreen({super.key, this.favouritesOnly = false});
+  const SearchScreen({super.key});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -17,7 +16,6 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   String query = '';
   String category = 'All';
-  late bool favsOnly;
   final _focus = FocusNode();
 
   static const cats = ['All', 'Burgers', 'Pizza', 'Bakery', 'Beverages'];
@@ -25,9 +23,8 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    favsOnly = widget.favouritesOnly;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!favsOnly) _focus.requestFocus();
+      _focus.requestFocus();
     });
   }
 
@@ -82,9 +79,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<Shop> _shops() {
     final q = query.trim().toLowerCase();
-    final favs = OrderRepository.instance.favs;
     var list = Catalog.shops.where((s) => _shopCat(s) && _shopQuery(s, q)).toList();
-    if (favsOnly) list = list.where((s) => favs.contains(s.id)).toList();
     final p = UserPlace.instance;
     list.sort((a, b) {
       final da = UserPlace.km(p.lat, p.lng, a.lat ?? p.lat, a.lng ?? p.lng);
@@ -96,10 +91,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<CatalogItem> _items() {
     final q = query.trim().toLowerCase();
-    final favs = OrderRepository.instance.favs;
     return Catalog.items.where((it) {
       if (!it.isAvailable) return false;
-      if (favsOnly && !favs.contains(it.shopId)) return false;
       if (!_itemCat(it)) return false;
       if (q.isEmpty) return category != 'All';
       Shop? shop;
@@ -138,28 +131,38 @@ class _SearchScreenState extends State<SearchScreen> {
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [BoxShadow(color: Color(0x0F111827), blurRadius: 16, offset: Offset(0, 6))],
       ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        leading: _photo(s.image ?? '/img/shop-bakery.jpg'),
-        title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
-            Row(children: [
-              const Icon(Icons.star_rounded, color: Brand.star, size: 16),
-              Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-              Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
-            ]),
-          ],
-        ),
-        trailing: IconButton(
-          icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
-          onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
-            if (mounted) setState(() {});
-          }),
-        ),
+      child: InkWell(
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _photo(s.image ?? '/img/shop-bakery.jpg'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                    Row(children: [
+                      const Icon(Icons.star_rounded, color: Brand.star, size: 16),
+                      Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                      Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                    ]),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
+                  if (mounted) setState(() {});
+                }),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -210,7 +213,7 @@ class _SearchScreenState extends State<SearchScreen> {
           final shops = _shops();
           final items = _items();
           final q = query.trim();
-          final shopHead = favsOnly ? 'Your Favourites' : (q.isNotEmpty ? 'Shops' : (category == 'All' ? 'Popular Near You' : category));
+          final shopHead = q.isNotEmpty ? 'Shops' : (category == 'All' ? 'Popular Near You' : category);
           return Scaffold(
             backgroundColor: const Color(0xFFF7F8FA),
             body: SafeArea(
@@ -227,7 +230,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           icon: const Icon(Icons.arrow_back),
                         ),
                         const SizedBox(width: 8),
-                        Text(favsOnly ? 'Favourites' : 'Search Shops & Items', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                        const Text('Search Shops & Items', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                       ],
                     ),
                   ),
@@ -290,9 +293,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           Padding(
                             padding: const EdgeInsets.all(24),
                             child: Text(
-                              favsOnly
-                                  ? 'Tap the heart on a shop to save it here.'
-                                  : (q.isNotEmpty ? 'No shops or items match that search.' : 'No shops nearby yet.'),
+                              q.isNotEmpty ? 'No shops or items match that search.' : 'No shops nearby yet.',
                               style: const TextStyle(color: Brand.muted),
                             ),
                           ),

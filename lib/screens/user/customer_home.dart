@@ -311,28 +311,38 @@ class _CustomerHomeState extends State<CustomerHome> {
             final liked = OrderRepository.instance.favs.contains(s.id);
             final km = _km(s);
             final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews == 0 ? '120+' : s.reviews}';
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              leading: _photo(s.image ?? '/img/shop-bakery.jpg'),
-              title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
-                  Row(children: [
-                    const Icon(Icons.star_rounded, color: Brand.star, size: 16),
-                    Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                    Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
-                  ]),
-                ],
-              ),
-              trailing: IconButton(
-                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
-                onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
-                  if (mounted) setState(() {});
-                }),
-              ),
+            return InkWell(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s))),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _photo(s.image ?? '/img/shop-bakery.jpg'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
+                          Row(children: [
+                            const Icon(Icons.star_rounded, color: Brand.star, size: 16),
+                            Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                          ]),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                      onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
+                        if (mounted) setState(() {});
+                      }),
+                    ),
+                  ],
+                ),
+              ),
             );
           }),
         ],
@@ -369,11 +379,6 @@ class _CustomerHomeState extends State<CustomerHome> {
           ),
           const SizedBox(height: 16),
           ListTile(leading: const Icon(Icons.receipt_long_outlined), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
-          ListTile(
-            leading: const Icon(Icons.favorite_outline),
-            title: const Text('Favourites'),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen(favouritesOnly: true))),
-          ),
           const ListTile(leading: Icon(Icons.location_on_outlined), title: Text('Addresses')),
           const ListTile(leading: Icon(Icons.credit_card_outlined), title: Text('Payment Methods')),
           const ListTile(leading: Icon(Icons.notifications_outlined), title: Text('Notifications')),

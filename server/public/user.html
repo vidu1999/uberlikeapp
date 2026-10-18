@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18m" />
-  <link rel="stylesheet" href="/css/ui.css?v=18m" />
-  <link rel="stylesheet" href="/css/track.css?v=18m" />
-  <link rel="stylesheet" href="/css/qb.css?v=18m" />
+  <link rel="stylesheet" href="/css/app.css?v=18n" />
+  <link rel="stylesheet" href="/css/ui.css?v=18n" />
+  <link rel="stylesheet" href="/css/track.css?v=18n" />
+  <link rel="stylesheet" href="/css/qb.css?v=18n" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18m"></script>
-  <script src="/js/api.js?v=18m"></script>
-  <script src="/js/maps.js?v=18m"></script>
-  <script src="/js/track-ui.js?v=18m"></script>
+  <script src="/js/live.js?v=18n"></script>
+  <script src="/js/api.js?v=18n"></script>
+  <script src="/js/maps.js?v=18n"></script>
+  <script src="/js/track-ui.js?v=18n"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -50,7 +50,6 @@
       screen: 'home',
       query: '',
       category: 'All',
-      showFavs: false,
       shopId: null,
       menuTab: 'menu',
       menuCat: 'Cakes',
@@ -287,7 +286,6 @@
     function filteredShops() {
       const q = state.query.trim().toLowerCase();
       let shops = (API.shops || []).filter((s) => shopMatchesCat(s) && shopMatchesQuery(s, q));
-      if (state.showFavs) shops = shops.filter((s) => state.favs.includes(s.id));
       return shops.slice().sort((a, b) => distKm(a) - distKm(b));
     }
     function itemMatchesCat(it) {
@@ -305,15 +303,17 @@
       const q = state.query.trim().toLowerCase();
       return (API.items || []).filter((it) => {
         if (it.isAvailable === false) return false;
-        if (state.showFavs && !state.favs.includes(it.shopId)) return false;
         if (!itemMatchesCat(it)) return false;
         if (!q) return state.category !== 'All';
         const shop = API.shopOf(it.shopId);
         return [it.name, it.category, it.desc, it.description, shop && shop.name].join(' ').toLowerCase().includes(q);
       });
     }
+    function heartBtn(id) {
+      const liked = state.favs.includes(id);
+      return `<button type="button" class="heart ${liked ? 'on' : ''}" data-fav="${id}" aria-label="${liked ? 'Remove favourite' : 'Add favourite'}">${liked ? SVG.heartOn : SVG.heart}</button>`;
+    }
     function shopRow(s, asCard) {
-      const liked = state.favs.includes(s.id);
       const km = distKm(s);
       const rev = s.reviews >= 100 ? s.reviews + '+' : (s.reviews || 0);
       const cls = asCard ? 'shop-card' : 'shop-row';
@@ -324,7 +324,7 @@
           <div class="meta">${esc(s.category || 'Shop')}</div>
           <div class="rate"><span class="star">★</span> ${Number(s.rating || 0).toFixed(1)} <em>(${rev})</em> · ${km} km</div>
         </div>
-        <button class="heart ${liked?'on':''}" data-fav="${s.id}" aria-label="${liked ? 'Remove favourite' : 'Add favourite'}">${liked ? SVG.heartOn : SVG.heart}</button>
+        ${heartBtn(s.id)}
       </div>`;
     }
     function itemRow(it) {
@@ -492,28 +492,19 @@
       const q = state.query.trim();
       const shops = filteredShops();
       const items = filteredItems();
-      const favShops = (API.shops || []).filter((s) => state.favs.includes(s.id));
-      const title = state.showFavs ? 'Favourites' : 'Search Shops & Items';
-      const shopHead = state.showFavs ? 'Your Favourites' : (q ? 'Shops' : (state.category === 'All' ? 'Popular Near You' : state.category));
+      const shopHead = q ? 'Shops' : (state.category === 'All' ? 'Popular Near You' : state.category);
       const chips = CATS.map((c) => `<button class="s-chip ${state.category===c.id?'on':''}" data-cat="${c.id}">${esc(c.label)}</button>`).join('');
       let body = '';
-      if (!q && !state.showFavs && favShops.length) {
-        body += `<div class="sec-row"><h2>Your Favourites</h2><button class="see" data-go-favs>See All ›</button></div>`
-          + favShops.slice(0, 4).map((s) => shopRow(s, true)).join('');
-      }
       if (items.length) {
         body += `<div class="sec-row"><h2>Items</h2></div>` + items.slice(0, 40).map(itemRow).join('');
       }
-      const listed = (!q && !state.showFavs && favShops.length)
-        ? shops.filter((s) => !state.favs.includes(s.id))
-        : shops;
-      if (listed.length) {
-        body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + listed.map((s) => shopRow(s, true)).join('');
-      } else if (!items.length && (state.showFavs || q || !favShops.length)) {
-        body += `<div class="pad muted">${state.showFavs ? 'Tap the heart on a shop to save it here.' : (q ? 'No shops or items match that search.' : 'No shops nearby yet.')}</div>`;
+      if (shops.length) {
+        body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + shops.map((s) => shopRow(s, true)).join('');
+      } else if (!items.length) {
+        body += `<div class="pad muted">${q ? 'No shops or items match that search.' : 'No shops nearby yet.'}</div>`;
       }
       return `<div class="scroll qb-search-page">
-        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>${title}</b></div>
+        <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
         <div class="s-chips">${chips}</div>
         ${body}
@@ -529,6 +520,7 @@
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
+          ${heartBtn(shop.id)}
           <div class="overlay">
             <h1>${esc(shop.name)}</h1>
             <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${distKm(shop)} km</div>
@@ -713,7 +705,6 @@
         </div>
         <div class="prof-list">
           <button data-tab="orders">${SVG.orders} My Orders</button>
-          <button data-go-favs>${SVG.heartOn} Favourites</button>
           <button>${SVG.pin} Addresses</button>
           <button>${SVG.lock} Payment Methods</button>
           <button>${SVG.bell} Notifications</button>
@@ -1047,12 +1038,12 @@
 
     function bindApp() {
       const root = document.getElementById('root');
-      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; state.showFavs = false; render(); });
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
       const q = document.getElementById('q');
       if (q) {
         q.oninput = (e) => {
           state.query = e.target.value;
-          if (state.screen !== 'search') { state.screen = 'search'; state.showFavs = false; }
+          if (state.screen !== 'search') state.screen = 'search';
           render({ keepScroll: true });
           const n = document.getElementById('q');
           if (n) { n.focus(); n.selectionStart = n.selectionEnd = n.value.length; }
@@ -1060,15 +1051,13 @@
         q.onfocus = () => {
           if (state.screen === 'search') return;
           state.screen = 'search';
-          state.showFavs = false;
           render({ keepScroll: true });
           const n = document.getElementById('q');
           if (n) n.focus();
         };
       }
       root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render({ keepScroll: true }); });
-      root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; state.showFavs = false; render(); });
-      root.querySelectorAll('[data-go-favs]').forEach((b) => b.onclick = () => { state.screen = 'search'; state.showFavs = true; state.query = ''; state.category = 'All'; render(); });
+      root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
       root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();

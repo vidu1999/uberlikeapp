@@ -27,7 +27,9 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: OrderRepository.instance.favsNotifier,
+      builder: (context, favs, __) => ValueListenableBuilder<int>(
       valueListenable: Catalog.version,
       builder: (context, _, __) {
         final items = Catalog.items.where((i) => i.shopId == widget.shop.id).toList();
@@ -35,6 +37,7 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
         cat ??= cats.isEmpty ? null : cats.first;
         final list = items.where((i) => cat == null || i.category == cat).toList();
         final hero = _url(widget.shop.image);
+        final liked = favs.contains(widget.shop.id);
         return Scaffold(
           backgroundColor: Colors.white,
           body: Column(
@@ -54,6 +57,17 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
                     child: CircleAvatar(
                       backgroundColor: Colors.white,
                       child: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.pop(context)),
+                    ),
+                  ),
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 8,
+                    right: 12,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.white,
+                      child: IconButton(
+                        icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                        onPressed: () => OrderRepository.instance.toggleFav(widget.shop.id),
+                      ),
                     ),
                   ),
                   Positioned(
@@ -151,6 +165,7 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
           ),
         );
       },
+    ),
     );
   }
 }

@@ -160,9 +160,10 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 }
 
 .shop-row, .shop-card, .item-card {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: flex-start; gap: 12px;
   padding: 10px 16px; cursor: pointer;
 }
+.item-card { align-items: center; }
 .shop-row .thumb, .shop-card .thumb, .item-card .thumb {
   width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: #eee; flex: none;
 }
@@ -194,10 +195,15 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 }
 .s-chip.on { background: var(--g); color: #fff; }
 .heart {
-  margin-left: auto; width: 36px; height: 36px; border: 0; background: transparent;
+  margin-left: auto; margin-top: -2px; width: 36px; height: 36px; border: 0; background: transparent;
   color: #F9A8A8; cursor: pointer; display: grid; place-items: center; flex: none;
 }
 .heart.on { color: #EF4444; }
+.menu-hero .heart {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  width: 40px; height: 40px; border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.16); margin: 0;
+}
 
 .live-pill {
   margin: 8px 16px;
