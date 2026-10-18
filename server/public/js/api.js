@@ -1408,25 +1408,70 @@
     return mapped;
   };
 
+  function chatReadKey(orderId, role) {
+    return 'qb_chat_read_' + String(role || '') + '_' + String(orderId || '');
+  }
+  API.unreadCount = function (orderId, myRole) {
+    const msgs = (API.messages || {})[orderId] || [];
+    let readAt = 0;
+    try { readAt = Number(localStorage.getItem(chatReadKey(orderId, myRole)) || 0); } catch (_) {}
+    let n = 0;
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (!m || m.role === myRole || m.role === 'system') continue;
+      if (Number(m.ts || 0) > readAt) n++;
+    }
+    return n;
+  };
+  API.markChatRead = function (orderId, myRole) {
+    try { localStorage.setItem(chatReadKey(orderId, myRole), String(Date.now())); } catch (_) {}
+  };
+  API.quickReplies = function (role) {
+    if (role === 'rider') {
+      return ["I'm on my way", "I've arrived", "Order picked up", "I'm downstairs", "Please come to the gate"];
+    }
+    return ['Where are you?', "I'm at the gate", 'Please call me', 'Leave at the door', 'Thank you'];
+  };
+
   API.sendMessage = async function (orderId, from, role, text) {
+    const body = String(text || '').trim();
+    if (!body) return null;
+    const msg = {
+      id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      from: from,
+      role: role,
+      text: body,
+      ts: Date.now(),
+    };
+    const list = API.messages[orderId] || (API.messages[orderId] = []);
+    list.push(msg);
+    notify(true);
     try {
       await getJSON('/api/orders/' + encodeURIComponent(orderId) + '/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, role, text }),
+        body: JSON.stringify({ from, role, text: body }),
       });
     } catch (_) {}
     if (sbConfigured()) {
-      await sbSend('messages', 'POST', [{
-        id: 'm' + Date.now(),
-        order_id: orderId,
-        sender: from,
-        role: role,
-        body: text,
-        ts: Date.now(),
-      }]);
+      try {
+        await sbSend('messages', 'POST', [{
+          id: msg.id,
+          order_id: orderId,
+          sender: from,
+          role: role,
+          body: body,
+          ts: msg.ts,
+        }]);
+      } catch (_) {}
     }
-    return API.refresh();
+    try { await API.refresh(); } catch (_) {}
+    const after = API.messages[orderId] || (API.messages[orderId] = []);
+    if (!after.some((x) => x.id === msg.id || (x.text === msg.text && x.role === msg.role))) {
+      after.push(msg);
+      notify(true);
+    }
+    return msg;
   };
 
   API.reset = function () {

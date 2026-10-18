@@ -27,7 +27,18 @@ class OrderRepository {
 
   List<Order> get orders => ordersNotifier.value;
   final Map<String, Order> _keptOrders = {};
+  final Map<String, int> _chatRead = {};
   SessionUser? get user => userNotifier.value;
+
+  int unreadCount(String orderId, String myRole) {
+    final readAt = _chatRead[orderId] ?? 0;
+    final msgs = messages[orderId] ?? const <ChatMessage>[];
+    return msgs.where((m) => m.role != myRole && m.role != 'system' && m.ts > readAt).length;
+  }
+
+  void markChatRead(String orderId) {
+    _chatRead[orderId] = DateTime.now().millisecondsSinceEpoch;
+  }
 
   void _maybeUnfreeze() {
     final u = user;
@@ -1066,6 +1077,17 @@ class OrderRepository {
   }
 
   Future<void> sendMessage(String orderId, String text, String role, String from) async {
+    final body = text.trim();
+    if (body.isEmpty) return;
+    final msg = ChatMessage(
+      id: 'm${DateTime.now().millisecondsSinceEpoch}',
+      from: from,
+      role: role,
+      text: body,
+      ts: DateTime.now().millisecondsSinceEpoch,
+    );
+    (messages[orderId] ??= <ChatMessage>[]).add(msg);
+    ordersNotifier.value = List<Order>.of(orders);
     final uri = _uri('/api/orders/$orderId/messages');
     if (uri != null) {
       try {
@@ -1073,7 +1095,7 @@ class OrderRepository {
             .post(
               uri,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'from': from, 'role': role, 'text': text}),
+              body: jsonEncode({'from': from, 'role': role, 'text': body}),
             )
             .timeout(const Duration(seconds: 8));
       } catch (_) {}
@@ -1081,16 +1103,21 @@ class OrderRepository {
     try {
       await _sbWrite('messages', 'POST', [
         {
-          'id': 'm${DateTime.now().millisecondsSinceEpoch}',
+          'id': msg.id,
           'order_id': orderId,
           'sender': from,
           'role': role,
-          'body': text,
-          'ts': DateTime.now().millisecondsSinceEpoch,
+          'body': body,
+          'ts': msg.ts,
         }
       ]);
     } catch (_) {}
     await refresh();
+    final list = messages[orderId] ?? <ChatMessage>[];
+    if (!list.any((m) => m.id == msg.id || (m.text == msg.text && m.role == msg.role))) {
+      (messages[orderId] ??= <ChatMessage>[]).add(msg);
+      ordersNotifier.value = List<Order>.of(orders);
+    }
   }
 
   Future<void> saveShop({

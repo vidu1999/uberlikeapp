@@ -614,11 +614,7 @@ class _RiderHomeState extends State<RiderHome> {
                   ),
                 ),
                 IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
-                IconButton.filled(
-                  style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)),
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(orderId: o.id, myRole: 'rider'))),
-                  icon: const Icon(Icons.chat_bubble, color: Brand.green),
-                ),
+                _chatBtn(o.id),
               ],
             ),
           ),
@@ -722,6 +718,7 @@ class _RiderHomeState extends State<RiderHome> {
                     ],
                   ),
                 ),
+                _chatBtn(o.id, iconColor: Colors.white, bg: Brand.navy2),
               ],
             ),
           ),
@@ -751,6 +748,8 @@ class _RiderHomeState extends State<RiderHome> {
                       ),
                     ),
                     IconButton.filled(style: IconButton.styleFrom(backgroundColor: const Color(0xFF123D28)), onPressed: () {}, icon: const Icon(Icons.call, color: Brand.green)),
+                    const SizedBox(width: 6),
+                    _chatBtn(o.id),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -787,6 +786,23 @@ class _RiderHomeState extends State<RiderHome> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _chatBtn(String orderId, {Color iconColor = Brand.green, Color bg = const Color(0xFF123D28)}) {
+    final n = OrderRepository.instance.unreadCount(orderId, 'rider');
+    return IconButton.filled(
+      style: IconButton.styleFrom(backgroundColor: bg),
+      onPressed: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(orderId: orderId, myRole: 'rider')));
+        if (mounted) setState(() {});
+      },
+      icon: Badge(
+        isLabelVisible: n > 0,
+        smallSize: 10,
+        backgroundColor: Brand.red,
+        child: Icon(Icons.chat_bubble, color: iconColor),
+      ),
     );
   }
 

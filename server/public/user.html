@@ -2,23 +2,23 @@
 <html lang="en" data-role="customer">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>QuickBite</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18e" />
-  <link rel="stylesheet" href="/css/ui.css?v=18e" />
-  <link rel="stylesheet" href="/css/track.css?v=18e" />
-  <link rel="stylesheet" href="/css/qb.css?v=18e" />
+  <link rel="stylesheet" href="/css/app.css?v=18f" />
+  <link rel="stylesheet" href="/css/ui.css?v=18f" />
+  <link rel="stylesheet" href="/css/track.css?v=18f" />
+  <link rel="stylesheet" href="/css/qb.css?v=18f" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18e"></script>
-  <script src="/js/api.js?v=18e"></script>
-  <script src="/js/maps.js?v=18e"></script>
-  <script src="/js/track-ui.js?v=18e"></script>
+  <script src="/js/live.js?v=18f"></script>
+  <script src="/js/api.js?v=18f"></script>
+  <script src="/js/maps.js?v=18f"></script>
+  <script src="/js/track-ui.js?v=18f"></script>
   <script>
     const APK = {
       shop: 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk',
@@ -571,14 +571,52 @@
         <button class="btn-ghost-qb" data-tab="orders">View Order Details</button>
       </div>`;
     }
+    function chatBubblesHtml() {
+      const msgs = API.messages[state.trackId] || [];
+      return msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
+    }
+    function paintUserChat(root) {
+      const b = (root || document).querySelector('#bubbles');
+      if (!b) return;
+      const html = chatBubblesHtml();
+      const fp = String((API.messages[state.trackId] || []).length) + ':' + html.length;
+      if (b.getAttribute('data-fp') === fp) return;
+      const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
+      b.innerHTML = html;
+      b.setAttribute('data-fp', fp);
+      if (atBottom) b.scrollTop = b.scrollHeight;
+    }
+    function bindChatKeyboard() {
+      const apply = () => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const kb = Math.max(0, (window.innerHeight || document.documentElement.clientHeight) - vv.height - (vv.offsetTop || 0));
+        document.documentElement.style.setProperty('--kb', kb + 'px');
+        const b = document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+      };
+      if (!bindChatKeyboard._on) {
+        bindChatKeyboard._on = true;
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
+        }
+        window.addEventListener('focusin', apply);
+      }
+      apply();
+    }
     function chatView() {
       const o = API.orders.find((x) => x.id === state.trackId);
-      const msgs = API.messages[state.trackId] || [];
-      return `<div class="back-row"><button class="back-fab" data-back-track>←</button><b>${esc(o?.riderName || 'Courier')}</b></div>
-        <div class="chat" style="flex:1;min-height:0">
-          <div class="bubbles" id="bubbles">${msgs.map((m) => `<div class="bubble ${m.role==='customer'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}</div>
-          <form class="composer" id="chatForm"><input name="text" placeholder="Message…" autocomplete="off" /><button class="btn sm green" type="submit">Send</button></form>
-        </div>`;
+      const quick = (API.quickReplies && API.quickReplies('customer')) || [];
+      return `<div class="chat-page" data-chat-root="${esc(state.trackId || '')}">
+        <div class="chat-head"><button class="back-fab" data-back-track type="button">←</button><b>${esc(o?.riderName || 'Courier')}</b></div>
+        <div class="bubbles" id="bubbles">${chatBubblesHtml()}</div>
+        <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+        <form class="composer" id="chatForm">
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="Message…" />
+          <button class="btn sm green" type="submit">Send</button>
+        </form>
+      </div>`;
     }
     function accountView() {
       const u = API.user || {};
@@ -690,7 +728,17 @@
       const phone = API.user && API.user.phone;
       const active = (API.orders || []).some((o) => o.status !== 'delivered' && o.status !== 'cancelled' && (o.userId === uid || o.customerPhone === phone));
       if (!active) state.loc.frozen = false;
-      if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; bindApp(); return; }
+      if (state.screen === 'chat') {
+        const keep = root.querySelector('[data-chat-root="' + state.trackId + '"]');
+        if (keep) { paintUserChat(keep); return; }
+        if (API.markChatRead) API.markChatRead(state.trackId, 'customer');
+        root.innerHTML = chatView();
+        const b=document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+        bindApp();
+        bindChatKeyboard();
+        return;
+      }
       if (state.screen === 'locate') {
         const keep = root.querySelector('[data-locate-root]') && state.locHandle;
         if (keep) return;
@@ -960,7 +1008,13 @@
         } catch (e) { alert(e.message); place.disabled = false; place.textContent = 'Place Order'; }
       };
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
-      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => { state.trackId = b.dataset.chat; state.screen = 'chat'; state.lockTrack = false; render(); });
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        state.trackId = b.dataset.chat;
+        state.screen = 'chat';
+        state.lockTrack = false;
+        if (API.markChatRead) API.markChatRead(state.trackId, 'customer');
+        render();
+      });
       root.querySelectorAll('[data-back-track]').forEach((b) => b.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); });
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = leaveTrack);
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = leaveTrack);
@@ -973,14 +1027,30 @@
         const o = API.orders.find((x) => x.id === state.trackId);
         if (state.mapHandle && o) state.mapHandle.locate(o);
       };
+      async function sendUserChat(text) {
+        const body = String(text || '').trim();
+        if (!body || !state.trackId) return;
+        const form = document.getElementById('chatForm');
+        if (form && form.text) form.text.value = '';
+        await API.sendMessage(state.trackId, API.user.name, 'customer', body);
+        if (API.markChatRead) API.markChatRead(state.trackId, 'customer');
+        const keep = document.querySelector('[data-chat-root]');
+        if (keep) paintUserChat(keep);
+        const input = document.querySelector('#chatForm input[name="text"]');
+        if (input) input.focus();
+      }
       const form = document.getElementById('chatForm');
-      if (form) form.onsubmit = async (e) => {
-        e.preventDefault();
-        const text = form.text.value.trim();
-        if (!text) return;
-        form.text.value = '';
-        await API.sendMessage(state.trackId, API.user.name, 'customer', text);
-      };
+      if (form) {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          await sendUserChat(form.text && form.text.value);
+        };
+        const input = form.querySelector('input[name="text"]');
+        if (input) input.addEventListener('focus', bindChatKeyboard);
+      }
+      root.querySelectorAll('[data-quick]').forEach((b) => {
+        b.onclick = () => sendUserChat(b.getAttribute('data-quick'));
+      });
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => {
         API.logout();

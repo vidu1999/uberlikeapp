@@ -2,23 +2,23 @@
 <html lang="en" data-role="rider">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>QuickBite Rider</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css" />
-  <link rel="stylesheet" href="/css/ui.css" />
-  <link rel="stylesheet" href="/css/track.css" />
+  <link rel="stylesheet" href="/css/app.css?v=18f" />
+  <link rel="stylesheet" href="/css/ui.css?v=18f" />
+  <link rel="stylesheet" href="/css/track.css?v=18f" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18e"></script>
-  <script src="/js/api.js?v=18e"></script>
-  <script src="/js/maps.js?v=18e"></script>
-  <script src="/js/track-ui.js?v=18e"></script>
-  <script src="/js/otp-login.js?v=18e"></script>
+  <script src="/js/live.js?v=18f"></script>
+  <script src="/js/api.js?v=18f"></script>
+  <script src="/js/maps.js?v=18f"></script>
+  <script src="/js/track-ui.js?v=18f"></script>
+  <script src="/js/otp-login.js?v=18f"></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
@@ -255,7 +255,9 @@
 
     function jobCard(o, { accept } = {}) {
       const km = kmOf(o).toFixed(1);
+      const unread = !accept && API.unreadCount && API.unreadCount(o.id, 'rider');
       return `<div class="rd-card-job" data-open="${esc(o.id)}">
+        ${unread ? '<i class="unread-dot"></i>' : ''}
         <img src="${esc(thumb(o))}" alt="" />
         <div class="grow">
           <b>${esc(oid(o.id))}</b>
@@ -335,7 +337,7 @@
           <div class="grow"><b>${esc(o.customerName || 'Customer')}</b><div class="sub">${esc(phone || 'WhatsApp customer')}</div></div>
           <div class="acts">
             ${phone ? `<a class="ico" href="${telHref(phone)}">${SVG.phone}</a>` : ''}
-            <button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}</button>
+            <button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>
           </div>
         </div>
         <div class="rd-block">
@@ -474,19 +476,55 @@
       </div>`;
     }
 
+    function chatBubblesHtml() {
+      const msgs = (API.messages || {})[state.orderId] || [];
+      return msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
+    }
+    function paintRiderChat(root) {
+      const b = (root || document).querySelector('#bubbles');
+      if (!b) return;
+      const html = chatBubblesHtml();
+      const fp = String(((API.messages || {})[state.orderId] || []).length) + ':' + html.length;
+      if (b.getAttribute('data-fp') === fp) return;
+      const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
+      b.innerHTML = html;
+      b.setAttribute('data-fp', fp);
+      if (atBottom) b.scrollTop = b.scrollHeight;
+    }
+    function bindChatKeyboard() {
+      const apply = () => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const kb = Math.max(0, (window.innerHeight || document.documentElement.clientHeight) - vv.height - (vv.offsetTop || 0));
+        document.documentElement.style.setProperty('--kb', kb + 'px');
+        const b = document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+      };
+      if (!bindChatKeyboard._on) {
+        bindChatKeyboard._on = true;
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
+        }
+        window.addEventListener('focusin', apply);
+        window.addEventListener('focusout', () => {
+          setTimeout(() => document.documentElement.style.setProperty('--kb', '0px'), 60);
+        });
+      }
+      apply();
+    }
     function chatView() {
       const o = (API.orders || []).find((x) => x.id === state.orderId);
-      const msgs = (API.messages || {})[state.orderId] || [];
-      return `<div class="back-row"><button class="back-fab" data-close type="button">←</button><b>${esc(o?.customerName || 'Customer')}</b></div>
-        <div class="chat" style="flex:1;min-height:0">
-          <div class="bubbles" id="bubbles">
-            ${msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('')}
-          </div>
-          <form class="composer" id="chatForm">
-            <input name="text" placeholder="Message the customer…" autocomplete="off" />
-            <button class="btn sm green" type="submit">Send</button>
-          </form>
-        </div>`;
+      const quick = (API.quickReplies && API.quickReplies('rider')) || [];
+      return `<div class="chat-page" data-chat-root="${esc(state.orderId || '')}">
+        <div class="chat-head"><button class="back-fab" data-close type="button">←</button><b>${esc(o?.customerName || 'Customer')}</b></div>
+        <div class="bubbles" id="bubbles">${chatBubblesHtml()}</div>
+        <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+        <form class="composer" id="chatForm">
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="Message the customer…" />
+          <button class="btn sm green" type="submit">Send</button>
+        </form>
+      </div>`;
     }
 
     function mapIdleView() {
@@ -676,6 +714,7 @@
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
         state.orderId = b.dataset.chat;
         state.screen = 'chat';
+        if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
         render(true);
       });
       root.querySelectorAll('[data-close]').forEach((b) => b.onclick = () => {
@@ -684,14 +723,33 @@
         killMap();
         render(true);
       });
+      async function sendRiderChat(text) {
+        const body = String(text || '').trim();
+        if (!body || !state.orderId) return;
+        const form = document.getElementById('chatForm');
+        if (form && form.text) form.text.value = '';
+        await API.sendMessage(state.orderId, me().name, 'rider', body);
+        if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
+        const keep = document.querySelector('[data-chat-root]');
+        if (keep) paintRiderChat(keep);
+        const input = document.querySelector('#chatForm input[name="text"]');
+        if (input) input.focus();
+      }
       const form = document.getElementById('chatForm');
-      if (form) form.onsubmit = async (e) => {
-        e.preventDefault();
-        const text = form.text.value.trim();
-        if (!text) return;
-        form.text.value = '';
-        await API.sendMessage(state.orderId, me().name, 'rider', text);
-      };
+      if (form) {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          await sendRiderChat(form.text && form.text.value);
+        };
+        const input = form.querySelector('input[name="text"]');
+        if (input) {
+          input.setAttribute('inputmode', 'text');
+          input.addEventListener('focus', bindChatKeyboard);
+        }
+      }
+      root.querySelectorAll('[data-quick]').forEach((b) => {
+        b.onclick = () => sendRiderChat(b.getAttribute('data-quick'));
+      });
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => {
         stopLiveGps();
@@ -757,6 +815,24 @@
           return;
         }
         startRiderGps();
+        if (state.screen === 'chat' && state.orderId) {
+          const keep = root.querySelector('[data-chat-root="' + state.orderId + '"]');
+          const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
+          if (keep && (!force || typing)) {
+            paintRiderChat(keep);
+            return;
+          }
+          killMap();
+          if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
+          root.innerHTML = chatView();
+          bind();
+          bindChatKeyboard();
+          const b = document.getElementById('bubbles');
+          if (b) b.scrollTop = b.scrollHeight;
+          const input = document.querySelector('#chatForm input[name="text"]');
+          if (input) setTimeout(() => input.focus(), 50);
+          return;
+        }
         if (state.screen === 'live' && state.orderId) {
           const o = (API.orders || []).find((x) => x.id === state.orderId);
           if (o && o.status === 'delivered') {
@@ -808,7 +884,6 @@
         else if (state.screen === 'docs') root.innerHTML = docsView();
         else if (state.screen === 'vehicle') root.innerHTML = vehicleView();
         else if (state.screen === 'help') root.innerHTML = helpView();
-        else if (state.screen === 'chat') { root.innerHTML = chatView(); const b=document.getElementById('bubbles'); if(b) b.scrollTop=b.scrollHeight; }
         else if (state.tab === 'orders') root.innerHTML = ordersView();
         else if (state.tab === 'earn') root.innerHTML = earnView();
         else if (state.tab === 'profile') root.innerHTML = profileView();

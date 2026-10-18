@@ -24,6 +24,15 @@
     return '#' + String(id || '').replace('_', '-');
   }
 
+  function viewerRole(viewer) {
+    return viewer === 'customer' ? 'customer' : viewer === 'shop' ? 'shop' : 'rider';
+  }
+
+  function unreadDot(orderId, viewer) {
+    const n = (typeof API !== 'undefined' && API.unreadCount) ? API.unreadCount(orderId, viewerRole(viewer)) : 0;
+    return `<i class="unread-dot${n ? '' : ' hidden'}" data-unread-dot></i>`;
+  }
+
   function statusLabel(s) {
     return (
       {
@@ -181,7 +190,7 @@
           <h1>${title}</h1>
           <small>Order ${esc(oid(order.id))}</small>
         </div>
-        <span class="online-pill"><i></i> Online</span>
+        <button class="rd-chat-fab" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
       </div>
       <div class="rd-zoom">
         <button type="button" data-locate aria-label="Locate">◎</button>
@@ -208,9 +217,9 @@
             <div><small>Distance</small><b data-km>${km.toFixed(1)} km</b></div>
           </div>
         </div>
-        <div class="rd-btns">
+          <div class="rd-btns">
           <a class="btn-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}">${ICO_PHONE} Call</a>
-          <button class="btn-chat" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat</button>
+          <button class="btn-chat" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat${unreadDot(order.id, viewer)}</button>
         </div>
         <p class="rd-near ${close ? 'ok' : ''} ${nearTxt ? '' : 'hidden'}" data-near>${esc(nearTxt)}</p>
         <button class="btn-drop ${showPickup ? '' : 'hidden'}" data-pickup="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Confirm pickup</button>
@@ -281,6 +290,10 @@
     const done = root.querySelector('[data-done]');
     if (done) done.classList.toggle('hidden', !(order.status === 'delivered' && viewer !== 'rider'));
     root.dataset.hasRider = order.riderName ? '1' : '0';
+    const n = (typeof API !== 'undefined' && API.unreadCount) ? API.unreadCount(order.id, viewerRole(viewer)) : 0;
+    root.querySelectorAll('[data-unread-dot]').forEach((el) => {
+      el.classList.toggle('hidden', !n);
+    });
   }
 
   function liveOrder(orders) {

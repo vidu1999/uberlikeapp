@@ -107,10 +107,21 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           ],
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(20)),
-                        child: const Text('●  Online', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 12)),
+                      IconButton.filled(
+                        style: IconButton.styleFrom(backgroundColor: Brand.navy2),
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => ChatScreen(orderId: current.id, myRole: 'customer')),
+                          );
+                          if (mounted) setState(() {});
+                        },
+                        icon: Badge(
+                          isLabelVisible: OrderRepository.instance.unreadCount(current.id, 'customer') > 0,
+                          smallSize: 10,
+                          backgroundColor: Brand.red,
+                          child: const Icon(Icons.chat_bubble, color: Colors.white),
+                        ),
                       ),
                     ],
                   ),
