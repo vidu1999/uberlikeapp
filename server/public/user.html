@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18r" />
-  <link rel="stylesheet" href="/css/ui.css?v=18r" />
-  <link rel="stylesheet" href="/css/track.css?v=18r" />
-  <link rel="stylesheet" href="/css/qb.css?v=18r" />
+  <link rel="stylesheet" href="/css/app.css?v=18s" />
+  <link rel="stylesheet" href="/css/ui.css?v=18s" />
+  <link rel="stylesheet" href="/css/track.css?v=18s" />
+  <link rel="stylesheet" href="/css/qb.css?v=18s" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18r"></script>
-  <script src="/js/api.js?v=18r"></script>
-  <script src="/js/maps.js?v=18r"></script>
-  <script src="/js/track-ui.js?v=18r"></script>
+  <script src="/js/live.js?v=18s"></script>
+  <script src="/js/api.js?v=18s"></script>
+  <script src="/js/maps.js?v=18s"></script>
+  <script src="/js/track-ui.js?v=18s"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -80,6 +80,7 @@
       loginId: '',
       loginPw: '',
       reg: { name: '', phone: '', email: '', password: '' },
+      wa: { open: false, step: 'phone', phone: '', err: '' },
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
@@ -374,7 +375,7 @@
           <div class="qb-tag">Good Food, Fast Delivery</div>
         </div>
         <h1>Welcome Back 👋</h1>
-        <p class="sub">Sign in to continue. Same number can also be Shop and Rider — but only one User account.</p>
+        <p class="sub">Google or email &amp; password to enter. WhatsApp once before Place Order if this account has not verified yet.</p>
         <div class="qb-field"><span class="ico">${SVG.mail}</span><input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" /></div>
         <div class="qb-field"><span class="ico">${SVG.lock}</span><input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
         <button class="qb-forgot" type="button">Forgot Password?</button>
@@ -614,7 +615,29 @@
           <div class="totals"><div class="row tot"><span>Total</span><span>${rs(sub+f)}</span></div></div>
           <button class="btn-qb" id="place">Place Order</button>
         </div>
-      </div>`;
+      </div>${state.wa.open ? waSheet() : ''}`;
+    }
+    function waSheet() {
+      const w = state.wa || {};
+      const codeStep = w.step === 'code';
+      return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
+        + '<b>Verify WhatsApp to place this order</b>'
+        + '<p>Google and email logins must verify WhatsApp once. After that you can order anytime.</p>'
+        + (codeStep
+          ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
+            + '<div class="otp-boxes">'
+            + '<input data-wad="0" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="1" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
+            + '</div><p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-qb" type="button" data-wa-verify>Verify &amp; place order</button>'
+            + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
+          : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
+            + '<p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-qb" type="button" data-wa-send>Send WhatsApp code</button>'))
+        + '<button class="qb-skip" type="button" data-wa-close>Cancel</button>'
+        + '</div></div>';
     }
     function ordersView() {
       const mine = API.orders;
@@ -936,9 +959,28 @@
       const signin = root.querySelector('[data-signin]');
       if (signin) signin.onclick = async () => {
         const id = (document.getElementById('loginId') || {}).value || state.loginId;
+        const pw = (document.getElementById('loginPw') || {}).value || state.loginPw;
+        state.loginId = id;
+        state.loginPw = pw;
         const err = root.querySelector('[data-err]');
-        signin.disabled = true; signin.textContent = 'Sending code…';
-        try { await startOtp(id); } catch (e) { if (err) err.textContent = e.message; signin.disabled = false; signin.textContent = 'Sign In'; }
+        signin.disabled = true;
+        try {
+          if (String(id).includes('@')) {
+            signin.textContent = 'Signing in…';
+            await API.signInPassword(id, pw);
+            state.gate = 'app';
+            state.tab = 'home';
+            state.screen = 'home';
+            render();
+            return;
+          }
+          signin.textContent = 'Sending code…';
+          await startOtp(id);
+        } catch (e) {
+          if (err) err.textContent = e.message;
+          signin.disabled = false;
+          signin.textContent = 'Sign In';
+        }
       };
       const googleBtn = root.querySelector('[data-google]');
       if (googleBtn) googleBtn.onclick = async (e) => {
@@ -984,6 +1026,13 @@
           if (out.app === 'shop' || out.app === 'rider') {
             state.downloadRole = out.app;
             state.gate = 'download';
+            render();
+            return;
+          }
+          if (out.next === 'app') {
+            state.gate = 'app';
+            state.tab = 'home';
+            state.screen = 'home';
             render();
             return;
           }
@@ -1145,7 +1194,7 @@
       });
       root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render({ keepScroll: true }); });
       const place = document.getElementById('place');
-      if (place) place.onclick = async () => {
+      async function placeNow() {
         const addr = document.getElementById('addr');
         if (addr) state.address = addr.value;
         const pay = document.querySelector('input[name="pay"]:checked');
@@ -1159,7 +1208,12 @@
           render();
           return;
         }
-        place.disabled = true; place.textContent = 'Placing…';
+        if (!API.isWhatsAppVerified || !API.isWhatsAppVerified()) {
+          state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '' };
+          render({ keepScroll: true });
+          return;
+        }
+        if (place) { place.disabled = true; place.textContent = 'Placing…'; }
         try {
           if (!state.loc.custom && !state.loc.frozen && pin.lat != null) {
             setPlace(pin.lat, pin.lng, state.loc.label, false);
@@ -1175,12 +1229,86 @@
           state.loc.frozen = true;
           state.lastOrder = order;
           state.tab = 'orders';
+          state.wa = { open: false, step: 'phone', phone: '', err: '' };
           if (order && order.id && !(API.orders || []).some((o) => o.id === order.id)) {
             API.orders.unshift(order);
           }
           openTrack(order.id, true);
-        } catch (e) { alert(e.message); place.disabled = false; place.textContent = 'Place Order'; }
-      };
+        } catch (e) {
+          if (e && e.code === 'WHATSAPP_REQUIRED') {
+            state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '' };
+            render({ keepScroll: true });
+            return;
+          }
+          alert(e.message);
+          if (place) { place.disabled = false; place.textContent = 'Place Order'; }
+        }
+      }
+      if (place) place.onclick = placeNow;
+      (function bindWaSheet() {
+        const sheet = root.querySelector('[data-wa-sheet]');
+        if (!sheet) return;
+        const close = sheet.querySelector('[data-wa-close]');
+        if (close) close.onclick = () => {
+          state.wa.open = false;
+          render({ keepScroll: true });
+        };
+        const send = sheet.querySelector('[data-wa-send]');
+        if (send) send.onclick = async () => {
+          const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
+          state.wa.phone = phone;
+          send.disabled = true;
+          send.textContent = 'Sending…';
+          try {
+            const out = await API.sendOtp('customer', phone);
+            state.wa.phone = out.phone || phone;
+            state.wa.step = 'code';
+            state.wa.err = '';
+            render({ keepScroll: true });
+          } catch (e) {
+            state.wa.err = e.message || 'Could not send WhatsApp code';
+            render({ keepScroll: true });
+          }
+        };
+        const resend = sheet.querySelector('[data-wa-resend]');
+        if (resend) resend.onclick = async () => {
+          try {
+            await API.sendOtp('customer', state.wa.phone);
+            state.wa.err = 'Code sent again.';
+            render({ keepScroll: true });
+          } catch (e) {
+            state.wa.err = e.message || 'Could not resend';
+            render({ keepScroll: true });
+          }
+        };
+        const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+        async function verifyWa() {
+          const code = codeValue();
+          if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render({ keepScroll: true }); return; }
+          try {
+            await API.verifyOtp('customer', state.wa.phone, code);
+            state.wa.open = false;
+            state.wa.err = '';
+            await placeNow();
+          } catch (e) {
+            state.wa.err = e.message || 'Could not verify';
+            render({ keepScroll: true });
+          }
+        }
+        const verifyBtn = sheet.querySelector('[data-wa-verify]');
+        if (verifyBtn) verifyBtn.onclick = verifyWa;
+        sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
+          el.oninput = () => {
+            el.value = el.value.replace(/\D/g, '').slice(0, 1);
+            const i = Number(el.dataset.wad);
+            if (el.value && i < 3) {
+              const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
+              if (next) next.focus();
+            }
+            if (codeValue().length === 4) verifyWa();
+          };
+        });
+      })();
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
         const o = API.orders.find((x) => x.id === b.dataset.chat);

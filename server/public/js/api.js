@@ -278,6 +278,7 @@
 
   function mapAccount(r) {
     const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
+    if (r.pin != null) a.pin = r.pin;
     if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
     if (r.shopName || r.shop_name) a.shopName = r.shopName || r.shop_name;
     if (r.vehicle) a.vehicle = r.vehicle;
@@ -999,6 +1000,12 @@
         };
       }
     }
+    const email = String(payload.email || '').trim().toLowerCase();
+    const password = String(payload.password || '');
+    if (email.includes('@') && password.length >= 4) {
+      return API.signUpPassword({ name: payload.name, email: email, password: password });
+    }
+    if (!phone) throw new Error('Enter your WhatsApp number, or sign up with email and password.');
     API.setPendingRider({
       name: payload.name || 'Guest',
       email: payload.email || '',
@@ -1289,6 +1296,9 @@
     if (!match) throw new Error('That code does not match this phone number.');
     API._otp = null;
     const want = role || 'customer';
+    if (want === 'customer' && API.user && sameRole(API.user.role, 'customer')) {
+      return API.attachWhatsApp(phone);
+    }
     if (want === 'shop' || want === 'rider') {
       const existing = await lookupPhone(phone, want);
       if (existing) {
@@ -1378,6 +1388,118 @@
     }
     API.user = mapAccount(row);
     API.token = 'sb_' + row.id;
+    saveSession();
+    notify(true);
+    return API.user;
+  };
+
+  function withWaPin(pin) {
+    const s = String(pin || 'otp');
+    if (s === 'otp' || s === 'wa' || /\|wa$/.test(s)) return s;
+    return s + '|wa';
+  }
+
+  function passwordPhone(email) {
+    let d = String(email || '').replace(/\D/g, '');
+    if (!d) {
+      let n = 0;
+      const s = String(email || '');
+      for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+      d = String(n);
+    }
+    d = (d + '00000000').slice(-8);
+    return '98' + d;
+  }
+
+  function pinSecret(pin) {
+    let s = String(pin || '').replace(/\|wa$/, '');
+    if (s.indexOf('p:') === 0) return s.slice(2);
+    return s;
+  }
+
+  API.isWhatsAppVerified = function (user) {
+    const u = user || API.user;
+    if (!u) return false;
+    const pin = String(u.pin || '');
+    if (pin === 'otp' || pin === 'wa' || /\|wa$/.test(pin)) return true;
+    return /^07\d{8}$/.test(normalizePhone(u.phone));
+  };
+
+  function enterMapped(row) {
+    API.user = mapAccount(row);
+    if (row && row.pin != null) API.user.pin = row.pin;
+    API.token = 'sb_' + row.id;
+    saveSession();
+    notify(true);
+    return API.user;
+  }
+
+  API.signInPassword = async function (email, password) {
+    email = String(email || '').trim().toLowerCase();
+    password = String(password || '');
+    if (!email.includes('@')) throw new Error('Enter your email address.');
+    if (password.length < 4) throw new Error('Enter your password.');
+    const row = await lookupEmail(email, 'customer');
+    if (!row) throw new Error('No User account for this email. Sign up, use Google, or sign in with WhatsApp.');
+    const secret = pinSecret(row.pin);
+    if (secret === 'google') throw new Error('This email uses Google. Tap Continue with Google.');
+    if (secret === 'otp' || secret === 'wa' || !secret) {
+      throw new Error('This email signed up with WhatsApp. Sign in with your phone number.');
+    }
+    if (secret !== password) throw new Error('Wrong email or password.');
+    return enterMapped(row);
+  };
+
+  API.signUpPassword = async function (payload) {
+    const email = String((payload && payload.email) || '').trim().toLowerCase();
+    const password = String((payload && payload.password) || '');
+    const name = String((payload && payload.name) || '').trim() || (email.split('@')[0] || 'User');
+    if (!email.includes('@')) throw new Error('Enter your email address.');
+    if (password.length < 4) throw new Error('Create a password (at least 4 characters).');
+    const existing = await lookupEmail(email, 'customer');
+    if (existing) throw new Error('This email already has a User account. Sign in instead.');
+    const phone = passwordPhone(email);
+    const row = await saveAccount({
+      id: accountIdFor(phone, 'customer'),
+      name: name,
+      phone: phone,
+      email: email,
+      pin: 'p:' + password,
+      role: 'customer',
+      address: 'Sri Lanka',
+    });
+    enterMapped(row);
+    return { ok: true, next: 'app', user: API.user };
+  };
+
+  API.attachWhatsApp = async function (phone) {
+    phone = normalizePhone(phone);
+    if (!/^07\d{8}$/.test(phone)) throw new Error('Enter a valid WhatsApp number');
+    const u = API.user;
+    if (!u || !sameRole(u.role, 'customer')) throw new Error('Sign in first');
+    if (API.isWhatsAppVerified(u) && normalizePhone(u.phone) === phone) return u;
+    const taken = await lookupPhone(phone, 'customer');
+    if (taken && taken.id !== u.id) {
+      const uEmail = String(u.email || '').toLowerCase();
+      const tEmail = String(taken.email || '').toLowerCase();
+      if (!(uEmail && (!tEmail || tEmail === uEmail))) throw alreadyThisRoleError('customer');
+      const patch = { pin: withWaPin(taken.pin || 'otp') };
+      if (uEmail && tEmail !== uEmail) patch.email = uEmail;
+      if (u.name && (!taken.name || taken.name === 'Guest')) patch.name = u.name;
+      try { await sbSend('accounts?id=eq.' + encodeURIComponent(taken.id), 'PATCH', patch); } catch (_) {}
+      if (u.id && u.email) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', { email: null }); } catch (_) {}
+      }
+      Object.assign(taken, patch);
+      return enterMapped(taken);
+    }
+    const nextPin = withWaPin(u.pin || 'google');
+    try {
+      await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', { phone: phone, pin: nextPin });
+    } catch (_) {}
+    u.phone = phone;
+    u.pin = nextPin;
+    API.user = u;
     saveSession();
     notify(true);
     return API.user;
@@ -1613,6 +1735,12 @@
   };
 
   API.placeOrder = async function (payload) {
+    if (!API.isWhatsAppVerified()) {
+      const err = new Error('Verify WhatsApp before placing an order.');
+      err.code = 'WHATSAPP_REQUIRED';
+      throw err;
+    }
+    if (API.user && API.user.phone) payload = Object.assign({}, payload, { customerPhone: API.user.phone });
     let order = null;
     try {
       order = await getJSON('/api/orders', {

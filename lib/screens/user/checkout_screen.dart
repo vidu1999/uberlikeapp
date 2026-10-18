@@ -44,28 +44,135 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.dispose();
   }
 
+  Future<bool> _verifyWhatsApp() async {
+    final repo = OrderRepository.instance;
+    if (repo.isWhatsAppVerified()) return true;
+    final phoneCtrl = TextEditingController();
+    final codeCtrl = TextEditingController();
+    var step = 'phone';
+    var err = '';
+    var busy = false;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            return Padding(
+              padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 20 + MediaQuery.of(ctx).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Verify WhatsApp to place this order', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                  const SizedBox(height: 8),
+                  const Text('Google and email logins must verify WhatsApp once. After that you can order anytime.', style: TextStyle(color: Color(0xFF6B7280))),
+                  const SizedBox(height: 12),
+                  if (step == 'phone')
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: 'WhatsApp number', hintText: '07X XXX XXXX', border: OutlineInputBorder()),
+                    )
+                  else
+                    TextField(
+                      controller: codeCtrl,
+                      keyboardType: TextInputType.number,
+                      maxLength: 4,
+                      decoration: InputDecoration(labelText: '4-digit code sent to ${phoneCtrl.text}', border: const OutlineInputBorder()),
+                    ),
+                  if (err.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(err, style: const TextStyle(color: Color(0xFFB91C1C))),
+                  ],
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: Brand.green),
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            setModal(() {
+                              busy = true;
+                              err = '';
+                            });
+                            try {
+                              if (step == 'phone') {
+                                final out = await repo.sendOtp('customer', phoneCtrl.text);
+                                phoneCtrl.text = out?['phone']?.toString() ?? phoneCtrl.text;
+                                setModal(() {
+                                  step = 'code';
+                                  busy = false;
+                                });
+                              } else {
+                                final okCode = await repo.verifyOtp('customer', phoneCtrl.text, codeCtrl.text);
+                                if (!okCode) throw Exception('That code does not match this phone number.');
+                                if (ctx.mounted) Navigator.pop(ctx, true);
+                              }
+                            } catch (e) {
+                              setModal(() {
+                                busy = false;
+                                err = e.toString().replaceFirst('Exception: ', '');
+                              });
+                            }
+                          },
+                    child: Text(busy ? 'Please wait…' : (step == 'phone' ? 'Send WhatsApp code' : 'Verify & place order')),
+                  ),
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    phoneCtrl.dispose();
+    codeCtrl.dispose();
+    return ok == true && repo.isWhatsAppVerified();
+  }
+
   Future<void> _place() async {
     setState(() => placing = true);
-    final place = UserPlace.instance;
-    final lat = (place.custom || place.frozen) ? place.lat : (place.liveLat ?? place.lat);
-    final lng = (place.custom || place.frozen) ? place.lng : (place.liveLng ?? place.lng);
-    final order = await OrderRepository.instance.checkout(
-      address: _addr.text,
-      paymentMethod: pay,
-      deliveryLat: lat,
-      deliveryLng: lng,
-    );
-    if (!mounted) return;
-    setState(() => placing = false);
-    if (order == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not place order.')));
-      return;
+    try {
+      if (!OrderRepository.instance.isWhatsAppVerified()) {
+        final verified = await _verifyWhatsApp();
+        if (!verified) {
+          if (mounted) setState(() => placing = false);
+          return;
+        }
+      }
+      final place = UserPlace.instance;
+      final lat = (place.custom || place.frozen) ? place.lat : (place.liveLat ?? place.lat);
+      final lng = (place.custom || place.frozen) ? place.lng : (place.liveLng ?? place.lng);
+      final order = await OrderRepository.instance.checkout(
+        address: _addr.text,
+        paymentMethod: pay,
+        deliveryLat: lat,
+        deliveryLng: lng,
+      );
+      if (!mounted) return;
+      setState(() => placing = false);
+      if (order == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not place order.')));
+        return;
+      }
+      UserPlace.instance.freezeDelivery();
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => placing = false);
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (msg == 'WHATSAPP_REQUIRED') {
+        final verified = await _verifyWhatsApp();
+        if (verified) {
+          await _place();
+        }
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
-    UserPlace.instance.freezeDelivery();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id)),
-    );
   }
 
   @override

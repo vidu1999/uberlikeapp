@@ -61,6 +61,25 @@
   margin-bottom: 8px; cursor: pointer; pointer-events: auto; position: relative; z-index: 3;
 }
 .qb-google:disabled { opacity: 0.7; cursor: wait; }
+.qb-wa-mask {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 50;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.qb-wa-sheet {
+  width: 100%; max-width: 520px; background: #fff; color: #111;
+  border-radius: 22px 22px 0 0; padding: 20px 18px 28px;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.18);
+}
+.qb-wa-sheet b { display: block; font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+.qb-wa-sheet p { color: #6B7280; margin: 0 0 12px; line-height: 1.45; font-size: 14px; }
+.qb-wa-sheet input#waPhone {
+  width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; font-size: 16px; margin-bottom: 8px;
+}
+.qb-wa-sheet .otp-boxes { margin: 8px 0 12px; }
+.qb-wa-sheet .btn-ghost-qb {
+  width: 100%; margin-top: 8px; border: 0; background: 0; color: #00C853; font-weight: 700; cursor: pointer; padding: 10px;
+}
+.qb-wa-sheet .qb-skip { width: 100%; margin-top: 4px; }
 .qb-auth .qb-logo { margin-bottom: 18px; }
 .qb-auth h1 { font-size: 26px; font-weight: 800; margin: 8px 0 4px; text-align: center; }
 .qb-auth .sub { text-align: center; color: #9CA3AF; margin: 0 0 22px; }

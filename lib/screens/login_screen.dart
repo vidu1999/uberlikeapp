@@ -222,6 +222,28 @@ class _LoginScreenState extends State<LoginScreen> {
           'lng': '$_shopLng',
         };
       }
+      if (widget.role == UserRole.customer && !register) {
+        final id = _phone.text.trim();
+        if (id.contains('@')) {
+          await OrderRepository.instance.signInPassword(id, _pw.text);
+          if (!mounted) return;
+          setState(() => busy = false);
+          return;
+        }
+      }
+      if (widget.role == UserRole.customer && register && regRole == 'customer') {
+        final email = _email.text.trim();
+        if (email.contains('@') && _pw.text.trim().length >= 4) {
+          await OrderRepository.instance.signUpPassword(
+            name: _name.text.trim(),
+            email: email,
+            password: _pw.text.trim(),
+          );
+          if (!mounted) return;
+          setState(() => busy = false);
+          return;
+        }
+      }
       final data = await OrderRepository.instance.sendOtp(_apiRole, _phone.text);
       if (!mounted) return;
       phoneSent = data?['phone']?.toString() ?? _phone.text;
@@ -361,9 +383,15 @@ class _LoginScreenState extends State<LoginScreen> {
             style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
-          const Text('We’ll send a 4-digit code on WhatsApp. Same number can be User, Shop, and Rider — not two accounts in the same role.', style: TextStyle(color: Color(0xFF9CA3AF))),
+          Text(
+            shop || rider
+                ? 'We’ll send a 4-digit code on WhatsApp. Same number can be User, Shop, and Rider — not two accounts in the same role.'
+                : 'Google or email & password to enter. WhatsApp is required once before you place an order — skip if this account already verified.',
+            style: const TextStyle(color: Color(0xFF9CA3AF)),
+          ),
           const SizedBox(height: 20),
-          _field(_phone, 'Email or Phone Number', Icons.mail_outline, keyboard: TextInputType.phone),
+          _field(_phone, shop || rider ? 'Phone Number' : 'Email or Phone Number', Icons.mail_outline, keyboard: shop || rider ? TextInputType.phone : TextInputType.emailAddress),
+          if (!shop && !rider) _field(_pw, 'Password', Icons.lock_outline, obscure: true),
           if (error != null) ...[
             const SizedBox(height: 10),
             Text(error!, style: const TextStyle(color: Color(0xFFFCA5A5))),
@@ -374,7 +402,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
               onPressed: busy ? null : _send,
-              child: Text(busy ? 'Sending WhatsApp…' : 'Sign In', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
+              child: Text(busy ? 'Signing in…' : 'Sign In', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white)),
             ),
           ),
           const SizedBox(height: 18),
@@ -439,6 +467,8 @@ class _LoginScreenState extends State<LoginScreen> {
           TextField(controller: _phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(prefixText: '+94  ', labelText: 'Phone Number', border: OutlineInputBorder())),
           const SizedBox(height: 10),
           TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder())),
+          const SizedBox(height: 10),
+          TextField(controller: _pw, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
           if (error != null) ...[const SizedBox(height: 10), Text(error!, style: const TextStyle(color: Color(0xFFB91C1C)))],
           const SizedBox(height: 16),
           SizedBox(
@@ -531,13 +561,14 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _field(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard}) {
+  Widget _field(TextEditingController c, String hint, IconData icon, {TextInputType? keyboard, bool obscure = false}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(color: const Color(0xFF14241C), borderRadius: BorderRadius.circular(16)),
       child: TextField(
         controller: c,
         keyboardType: keyboard,
+        obscureText: obscure,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           prefixIcon: Icon(icon, color: const Color(0xFF9CA3AF)),

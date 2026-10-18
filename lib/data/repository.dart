@@ -258,6 +258,8 @@ class OrderRepository {
       vehicle: u.vehicle,
       shopId: sid,
       shopName: u.shopName,
+      email: u.email,
+      pin: u.pin,
     );
   }
 
@@ -655,6 +657,10 @@ class OrderRepository {
       } catch (_) {}
     }
     if (!match) return false;
+    if (role == 'customer' && user != null && _sameRole(user!.role, 'customer')) {
+      await attachWhatsApp(phone);
+      return true;
+    }
     if (role == 'shop' || role == 'rider') {
       final existing = await _lookupPhone(phone, role);
       if (existing != null) {
@@ -753,6 +759,174 @@ class OrderRepository {
     connectedNotifier.value = true;
     await _persist();
     await refresh();
+  }
+
+  String _passwordPhone(String email) {
+    var d = email.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) {
+      var n = 0;
+      for (final u in email.codeUnits) {
+        n = (n * 31 + u) & 0x7fffffff;
+      }
+      d = n.toString();
+    }
+    if (d.length >= 8) {
+      d = d.substring(d.length - 8);
+    } else {
+      d = d.padLeft(8, '0');
+    }
+    return '98$d';
+  }
+
+  String _pinSecret(String? pin) {
+    var s = (pin ?? '').replaceFirst(RegExp(r'\|wa$'), '');
+    if (s.startsWith('p:')) return s.substring(2);
+    return s;
+  }
+
+  String _withWaPin(String? pin) {
+    final s = pin ?? 'otp';
+    if (s == 'otp' || s == 'wa' || s.endsWith('|wa')) return s;
+    return '$s|wa';
+  }
+
+  bool isWhatsAppVerified([SessionUser? u]) {
+    u ??= user;
+    if (u == null) return false;
+    final pin = u.pin ?? '';
+    if (pin == 'otp' || pin == 'wa' || pin.endsWith('|wa')) return true;
+    return RegExp(r'^07\d{8}$').hasMatch(_normPhone(u.phone));
+  }
+
+  Future<void> _enterRow(Map<String, dynamic> row) async {
+    token = 'sb_${row['id']}';
+    userNotifier.value = SessionUser.fromJson(row);
+    await loadFavs();
+    connectedNotifier.value = true;
+    await _persist();
+    await refresh();
+  }
+
+  Future<void> signInPassword(String email, String password) async {
+    await _loadSupabaseConfig();
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    if (!email.contains('@')) throw Exception('Enter your email address.');
+    if (password.length < 4) throw Exception('Enter your password.');
+    Map<String, dynamic>? row;
+    try {
+      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
+          row = m;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (row == null) {
+      for (final m in await _allAccounts()) {
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', 'customer') && !_isDemoAccountMap(m)) {
+          row = m;
+          break;
+        }
+      }
+    }
+    if (row == null) throw Exception('No User account for this email. Sign up, use Google, or sign in with WhatsApp.');
+    final secret = _pinSecret('${row['pin'] ?? ''}');
+    if (secret == 'google') throw Exception('This email uses Google. Tap Continue with Google.');
+    if (secret == 'otp' || secret == 'wa' || secret.isEmpty) {
+      throw Exception('This email signed up with WhatsApp. Sign in with your phone number.');
+    }
+    if (secret != password) throw Exception('Wrong email or password.');
+    await _enterRow(row);
+  }
+
+  Future<void> signUpPassword({required String name, required String email, required String password}) async {
+    await _loadSupabaseConfig();
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    name = name.trim();
+    if (!email.contains('@')) throw Exception('Enter your email address.');
+    if (password.length < 4) throw Exception('Create a password (at least 4 characters).');
+    Map<String, dynamic>? existing;
+    try {
+      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
+          existing = m;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (existing != null) throw Exception('This email already has a User account. Sign in instead.');
+    final phone = _passwordPhone(email);
+    final row = <String, dynamic>{
+      'id': _accountIdFor(phone, 'customer'),
+      'name': name.isEmpty ? email.split('@').first : name,
+      'phone': phone,
+      'email': email,
+      'pin': 'p:$password',
+      'role': 'customer',
+      'address': 'Sri Lanka',
+    };
+    try {
+      await _sbWrite('accounts', 'POST', [row]);
+    } catch (_) {
+      final hit = await _lookupPhone(phone, 'customer');
+      if (hit != null) {
+        await _enterRow(hit);
+        return;
+      }
+    }
+    await _enterRow(row);
+  }
+
+  Future<void> attachWhatsApp(String phone) async {
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    if (!RegExp(r'^07\d{8}$').hasMatch(phone)) throw Exception('Enter a valid WhatsApp number');
+    final u = user;
+    if (u == null || !_sameRole(u.role, 'customer')) throw Exception('Sign in first');
+    if (isWhatsAppVerified(u) && _normPhone(u.phone) == phone) return;
+    final taken = await _lookupPhone(phone, 'customer');
+    if (taken != null && '${taken['id']}' != u.id) {
+      final uEmail = (u.email ?? '').toLowerCase();
+      final tEmail = '${taken['email'] ?? ''}'.toLowerCase();
+      if (!(uEmail.isNotEmpty && (tEmail.isEmpty || tEmail == uEmail))) {
+        throw Exception('This number already has a User account. Login instead — you cannot create another User with the same number.');
+      }
+      final patch = <String, dynamic>{'pin': _withWaPin('${taken['pin'] ?? 'otp'}')};
+      if (uEmail.isNotEmpty && tEmail != uEmail) patch['email'] = uEmail;
+      if (u.name.isNotEmpty && ('${taken['name']}' == 'Guest' || '${taken['name']}'.isEmpty)) patch['name'] = u.name;
+      try {
+        await _sbWrite('accounts?id=eq.${taken['id']}', 'PATCH', patch);
+      } catch (_) {}
+      if (u.email != null && u.email!.isNotEmpty) {
+        try {
+          await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'email': null});
+        } catch (_) {}
+      }
+      taken.addAll(patch);
+      await _enterRow(taken);
+      return;
+    }
+    final nextPin = _withWaPin(u.pin ?? 'google');
+    try {
+      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'phone': phone, 'pin': nextPin});
+    } catch (_) {}
+    userNotifier.value = SessionUser(
+      id: u.id,
+      name: u.name,
+      phone: phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: u.shopId,
+      shopName: u.shopName,
+      email: u.email,
+      pin: nextPin,
+    );
+    await _persist();
   }
 
   bool needsShopRegister = false;
@@ -1261,6 +1435,9 @@ class OrderRepository {
   }) async {
     final cart = cartNotifier.value;
     if (cart.isEmpty) return null;
+    if (!isWhatsAppVerified()) {
+      throw Exception('WHATSAPP_REQUIRED');
+    }
     final u = user;
     final dlat = deliveryLat ?? UserPlace.instance.lat;
     final dlng = deliveryLng ?? UserPlace.instance.lng;
