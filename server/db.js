@@ -18,7 +18,7 @@ function loadDotEnv() {
       if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
         v = v.slice(1, -1);
       }
-      if (k && process.env[k] == null) process.env[k] = v;
+      if (k && (process.env[k] == null || process.env[k] === '')) process.env[k] = v;
     }
   } catch (_) {}
 }
@@ -377,16 +377,20 @@ async function wipeAll() {
   ];
   const report = [];
   for (const [table, filter] of steps) {
-    await rest(table + '?' + filter, {
-      method: 'DELETE',
-      headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
-    });
-    let left = 0;
     try {
-      left = await countRows(table);
-    } catch (_) {
-      left = -1;
+      await rest(table + '?' + filter, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      if (/ 404 |does not exist|PGRST205|Could not find/i.test(msg)) {
+        report.push({ table, remaining: 0, skipped: true });
+        continue;
+      }
+      throw err;
     }
+    const left = await countRows(table);
     report.push({ table, remaining: left });
     if (left > 0) throw new Error('Wipe incomplete: ' + table + ' still has rows');
   }

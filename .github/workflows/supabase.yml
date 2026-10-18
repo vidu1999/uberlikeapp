@@ -34,9 +34,9 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_KEY:-}${SUPABASE_ANON_KEY:-}" ]; then
-            echo "Secrets empty — using repo .env if present"
-          fi
+          if [ -z "${SUPABASE_URL:-}" ]; then unset SUPABASE_URL || true; fi
+          if [ -z "${SUPABASE_KEY:-}" ]; then unset SUPABASE_KEY || true; fi
+          if [ -z "${SUPABASE_ANON_KEY:-}" ]; then unset SUPABASE_ANON_KEY || true; fi
           MODE="${{ github.event.inputs.mode }}"
           if [ -z "$MODE" ]; then
             MODE=wipe
