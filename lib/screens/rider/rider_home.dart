@@ -337,7 +337,7 @@ class _RiderHomeState extends State<RiderHome> {
                 body = _mapIdle(orders);
               }
             } else if (tab == 3) {
-              body = _earn(_done(orders));
+              body = _earnPage(_done(orders));
             } else if (tab == 4) {
               body = _profile(orders);
             } else {
@@ -909,7 +909,7 @@ class _RiderHomeState extends State<RiderHome> {
     );
   }
 
-  Widget _earn(List<Order> list) {
+  Widget _earnPage(List<Order> list) {
     final pay = list.fold<double>(0, (n, o) => n + _earn(o));
     final dist = list.fold<double>(0, (n, o) => n + _km(o));
     final buckets = List<double>.filled(7, 0);

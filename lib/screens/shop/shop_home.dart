@@ -5,6 +5,7 @@ import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../models/shop.dart';
 import '../../theme.dart';
+import '../../widgets/settings_button.dart';
 import 'shop_edit_profile.dart';
 import 'shop_item_edit.dart';
 import 'shop_order_details.dart';

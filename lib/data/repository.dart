@@ -1570,4 +1570,3 @@ class Catalog {
     version.value++;
   }
 }
-}
