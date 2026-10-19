@@ -681,6 +681,10 @@
     const n = String(name || '').trim().toLowerCase();
     return !n || n === 'shop' || n === 'my shop' || n === 'new shop' || n === 'shop owner';
   }
+  function isDemoShopName(name) {
+    const n = String(name || '').trim().toLowerCase();
+    return n === 'kandy bakers' || n === 'kandy baker' || n === 'demo shop';
+  }
 
   function ownerNameList(user) {
     const out = [];
@@ -730,16 +734,8 @@
   }
   function titleForShop(shop) {
     if (!shop) return 'Shop';
-    const id = shop.id;
-    const owner = (API._shopOwners || {})[id] || '';
     const n = String(shop.name || '').trim();
-    if (n && !isOwnerLikeShopName(n, API.user, id)) {
-      rememberPublicShopName(id, n, owner);
-      return n;
-    }
-    const hint = String(readTitleMap()[id] || '').trim();
-    if (hint && !isOwnerLikeShopName(hint, API.user, id)) return hint;
-    return n && !isOwnerLikeShopName(n, API.user, id) ? n : (hint || 'Shop');
+    return n || 'Shop';
   }
 
   function shopTitleKey(phone) {
@@ -793,30 +789,8 @@
     if (!user || !sameRole(user.role, 'shop')) return user;
     const sid = user.shopId || user.shop_id || (user.phone && shopIdFor(user.phone)) || '';
     if (!sid) return user;
-    const i = API.shops.findIndex((s) => s.id === sid);
-    if (i < 0) return user;
-    const shop = API.shops[i];
-    const found = publicNameCandidate(shop.name, user);
-    if (found) lockShopTitle(user.phone, found, user);
-    const next = readShopTitle(user.phone) || publicShopNameFor(shop, user);
-    if (!next || next === 'My Shop' || isOwnerLikeShopName(next, user)) {
-      if (isOwnerLikeShopName(user.shopName, user)) user.shopName = '';
-      return user;
-    }
-    lockShopTitle(user.phone, next, user);
-    rememberPublicShopName(sid, next, user.name);
-    if (String(shop.name || '') !== next) {
-      shop.name = next;
-      API.shops[i] = shop;
-      if (sbConfigured()) {
-        try { await sbSend('shops?id=eq.' + encodeURIComponent(sid), 'PATCH', { name: next }); } catch (_) {}
-      }
-    }
-    user.shopName = next;
-    try {
-      const rec = API.recallShopProfile(user.phone) || {};
-      API.rememberShopProfile(user.phone, Object.assign({}, rec, { shopId: sid, shopName: next, ownerName: rec.ownerName || user.name || '' }));
-    } catch (_) {}
+    const shop = API.shops.find((s) => s.id === sid);
+    if (shop && shop.name) user.shopName = shop.name;
     return user;
   }
 
@@ -830,56 +804,7 @@
     return lockShopTitle(phone, name, API.user);
   };
 
-  async function syncPublicShopNames() {
-    const owners = {};
-    try {
-      asRows(await sbGet('accounts?role=eq.shop&select=name,phone,shop_id')).forEach(function (a) {
-        if (!a || isDemoAccount(a)) return;
-        const sid = a.shop_id || (a.phone && shopIdFor(a.phone)) || '';
-        if (sid && !isDemoShop(sid)) owners[sid] = String(a.name || '').trim();
-      });
-    } catch (_) {}
-    API._shopOwners = owners;
-    const map = readTitleMap();
-    function take(sid, name) {
-      const id = String(sid || '');
-      const n = String(name || '').trim();
-      if (!id || isDemoShop(id) || !n || isPlaceholderShopName(n)) return;
-      const owner = owners[id] || '';
-      if (owner && n.toLowerCase() === owner.toLowerCase()) return;
-      map[id] = n;
-    }
-    (API.shops || []).forEach(function (s) { if (s) take(s.id, s.name); });
-    (API.orders || []).forEach(function (o) { if (o) take(o.shopId || o.shop_id, o.shopName); });
-    try { keptOrders.forEach(function (o) { if (o) take(o.shopId || o.shop_id, o.shopName); }); } catch (_) {}
-    try {
-      asRows(await sbGet('orders?select=shop_id,shop_name&limit=400')).forEach(function (r) {
-        take(r.shop_id, r.shop_name);
-      });
-    } catch (_) {}
-    writeTitleMap(map);
-    const patches = [];
-    API.shops = (API.shops || []).map(function (s) {
-      if (!s || isDemoShop(s.id)) return s;
-      const owner = owners[s.id] || '';
-      const n = String(s.name || '').trim();
-      const leaked = !!(owner && n.toLowerCase() === owner.toLowerCase()) || isPlaceholderShopName(n);
-      const want = String(map[s.id] || '').trim();
-      if (!leaked && n) {
-        take(s.id, n);
-        return s;
-      }
-      if (want && want !== n) {
-        patches.push({ id: s.id, name: want });
-        return Object.assign({}, s, { name: want });
-      }
-      return s;
-    });
-    writeTitleMap(map);
-    for (let i = 0; i < patches.length; i++) {
-      try { await sbSend('shops?id=eq.' + encodeURIComponent(patches[i].id), 'PATCH', { name: patches[i].name }); } catch (_) {}
-    }
-  }
+  async function syncPublicShopNames() {}
 
   API.isShopRegistered = function () {
     const u = API.user;
@@ -934,25 +859,15 @@
     const pinLat = finiteNum(p.lat != null ? p.lat : rec.lat);
     const pinLng = finiteNum(p.lng != null ? p.lng : rec.lng);
     const pinAddr = String(p.address || rec.address || '').trim();
-    const locked = readShopTitle(user.phone);
-    const wantName = publicNameCandidate(locked, user, sid)
-      || publicNameCandidate(p.shopName, user, sid)
-      || publicNameCandidate(rec.shopName, user, sid)
-      || publicNameCandidate(user.shopName, user, sid)
-      || publicNameCandidate(shop && shop.name, user, sid)
-      || String(readTitleMap()[sid] || '').trim();
-    if (wantName) {
-      lockShopTitle(user.phone, wantName, user);
-      rememberPublicShopName(sid, wantName, user.name);
-    }
     if (!shop) {
       if (sbConfigured() && !shopLookupOk) {
         const local = API.shops.find((s) => s.id === sid);
-        if (local) shop = { id: sid, name: wantName || local.name, category: local.category, rating: local.rating, reviews: local.reviews, is_open: local.isOpen !== false, lat: local.lat, lng: local.lng, hours: local.hours, address: local.address, image: local.image, promo: local.promo };
+        if (local) shop = { id: sid, name: local.name, category: local.category, rating: local.rating, reviews: local.reviews, is_open: local.isOpen !== false, lat: local.lat, lng: local.lng, hours: local.hours, address: local.address, image: local.image, promo: local.promo };
         else return user;
       } else {
-        const name = wantName;
-        if (!name) {
+        let name = String(p.shopName || rec.shopName || user.shopName || '').trim();
+        if (isDemoShopName(name) || isPlaceholderShopName(name)) name = String(p.shopName || '').trim();
+        if (!name || isDemoShopName(name) || isPlaceholderShopName(name)) {
           if (opts && opts.required) throw new Error('Register your shop first.');
           return user;
         }
@@ -984,24 +899,16 @@
       if (finiteNum(shop.lat) == null && pinLat != null) { shop.lat = pinLat; patch.lat = pinLat; }
       if (finiteNum(shop.lng) == null && pinLng != null) { shop.lng = pinLng; patch.lng = pinLng; }
       if (!String(shop.address || '').trim() && pinAddr) { shop.address = pinAddr; patch.address = pinAddr; }
-      const keep = wantName || publicNameCandidate(shop.name, user);
-      if (keep && String(shop.name || '') !== keep) {
-        shop.name = keep;
-        patch.name = keep;
-        lockShopTitle(user.phone, keep, user);
-      }
       if (Object.keys(patch).length && sbConfigured()) {
         try { await sbSend('shops?id=eq.' + encodeURIComponent(sid), 'PATCH', patch); } catch (_) {}
       }
       try { API.setPendingShop(null); } catch (_) {}
     }
     const mapped = mapShop(shop);
-    if (wantName) mapped.name = wantName;
     const i = API.shops.findIndex((s) => s.id === sid);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
     else API.shops.push(mapped);
-    if (mapped.name && !isOwnerLikeShopName(mapped.name, user)) user.shopName = mapped.name;
-    else if (isOwnerLikeShopName(user.shopName, user)) user.shopName = '';
+    if (mapped.name) user.shopName = mapped.name;
     return user;
   }
 
@@ -1268,20 +1175,6 @@
     const prevById = {};
     (API.orders || []).forEach((o) => { if (o && o.id) prevById[o.id] = o; });
     API.shops = asRows(shopRows).map(mapShop);
-    if (me && sameRole(me.role, 'shop')) {
-      const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
-      API.shops = API.shops.map(function (s) {
-        if (!s || s.id !== sid) return s;
-        const found = publicNameCandidate(s.name, me, sid);
-        if (found) {
-          lockShopTitle(me.phone, found, me);
-          rememberPublicShopName(sid, found, me.name);
-        }
-        const want = readShopTitle(me.phone) || readTitleMap()[sid] || found;
-        if (want && s.name !== want) return Object.assign({}, s, { name: want });
-        return s;
-      });
-    }
     API.items = asRows(itemRows).map(mapItem);
     API.orders = asRows(orderRows).map(mapOrder).map((o) => {
       const p = prevById[o.id];
@@ -1289,7 +1182,6 @@
       return o;
     });
     scopeData();
-    try { await syncPublicShopNames(); } catch (_) {}
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await repairShopPublicName(API.user); } catch (_) {}
       try { saveSession(); } catch (_) {}
@@ -1522,14 +1414,13 @@
         const existing = await sbGet('shops?id=eq.' + encodeURIComponent(shopId) + '&select=*');
         if (existing && existing[0]) shop = existing[0];
       } catch (_) {}
-      const ownerUser = { role: 'shop', name: p.ownerName || rec.ownerName || '', phone: phone };
-      const shopTitle = publicNameCandidate(shop && shop.name, ownerUser)
-        || publicNameCandidate(readShopTitle(phone), ownerUser)
-        || publicNameCandidate(p.shopName, ownerUser)
-        || publicNameCandidate(rec.shopName, ownerUser)
-        || 'New Shop';
-      lockShopTitle(phone, shopTitle, ownerUser);
-      rememberPublicShopName(shopId, shopTitle, ownerUser.name);
+      const typed = String(p.shopName || '').trim();
+      const existingName = String((shop && shop.name) || '').trim();
+      let shopTitle = typed;
+      if (existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) shopTitle = existingName;
+      if (!shopTitle || isDemoShopName(shopTitle) || isPlaceholderShopName(shopTitle)) {
+        throw new Error('Enter your shop name.');
+      }
       shop = Object.assign({}, shop || {}, {
         id: shopId,
         name: shopTitle,
@@ -2504,18 +2395,12 @@
     const id = shop.id || (API.user && API.user.shopId) || (API.user && API.user.phone ? shopIdFor(API.user.phone) : '');
     if (!id) throw new Error('Missing shop');
     const prev = API.shops.find((s) => s.id === id) || {};
-    const typed = String(shop.name || '').trim();
-    let nextName = typed;
-    if (API.user && sameRole(API.user.role, 'shop') && isOwnerLikeShopName(nextName, API.user)) {
-      nextName = readShopTitle(API.user.phone) || publicNameCandidate(prev.name, API.user) || '';
-    }
-    if (nextName && API.user && API.user.phone) {
-      lockShopTitle(API.user.phone, nextName, API.user);
-      rememberPublicShopName(id, nextName, API.user.name);
-    }
+    const nextName = String(shop.name || '').trim();
+    if (!nextName) throw new Error('Enter a shop name.');
+    if (isDemoShopName(nextName)) throw new Error('Choose your shop name — not a demo name.');
     const row = {
       id,
-      name: nextName || readShopTitle(API.user && API.user.phone) || prev.name || 'My Shop',
+      name: nextName,
       category: shop.category || prev.category || 'Bakery',
       rating: prev.rating || 5,
       reviews: prev.reviews || 0,
@@ -2530,7 +2415,10 @@
       image: shop.image || prev.image || '/img/shop-bakery.jpg',
       promo: shop.promo || shop.about || prev.promo || '',
     };
-    if (sbConfigured()) await sbUpsert('shops', [row]);
+    if (sbConfigured()) {
+      await sbUpsert('shops', [row]);
+      try { await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', { name: nextName }); } catch (_) {}
+    }
     const mapped = mapShop(row);
     const i = API.shops.findIndex((s) => s.id === id);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);

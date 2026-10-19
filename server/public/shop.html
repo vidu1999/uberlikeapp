@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19f" />
-  <link rel="stylesheet" href="/css/ui.css?v=19f" />
-  <link rel="stylesheet" href="/css/track.css?v=19f" />
+  <link rel="stylesheet" href="/css/app.css?v=19g" />
+  <link rel="stylesheet" href="/css/ui.css?v=19g" />
+  <link rel="stylesheet" href="/css/track.css?v=19g" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19f"></script>
-  <script src="/js/api.js?v=19f"></script>
-  <script src="/js/maps.js?v=19f"></script>
-  <script src="/js/track-ui.js?v=19f"></script>
-  <script src="/js/otp-login.js?v=19f"></script>
+  <script src="/js/live.js?v=19g"></script>
+  <script src="/js/api.js?v=19g"></script>
+  <script src="/js/maps.js?v=19g"></script>
+  <script src="/js/track-ui.js?v=19g"></script>
+  <script src="/js/otp-login.js?v=19g"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -75,7 +75,7 @@
       const s = API.shops.find((x) => x.id === sid) || {};
       return {
         id: sid,
-        name: (API.publicShopName ? API.publicShopName({ id: sid, name: s.name }) : (s.name || (API.user && API.user.shopName) || 'My Shop')),
+        name: s.name || (API.user && API.user.shopName) || 'My Shop',
         category: s.category || 'Bakery',
         rating: Number(s.rating || 0) || 5,
         reviews: Number(s.reviews || 0),
@@ -260,7 +260,7 @@
         <h1>Create Your Shop Account</h1>
         <p class="sub">Create your shop. Same number can also be User and Rider — not two shops.</p>
         <label>Shop Name</label>
-        <input id="regShop" placeholder="e.g. Kandy Bakers" value="${esc(r.shopName)}" />
+        <input id="regShop" placeholder="Your shop name" value="${esc(r.shopName)}" />
         <label>Owner Name</label>
         <input id="regOwner" placeholder="e.g. Nimal Perera" value="${esc(r.ownerName)}" />
         <label>Live location</label>
