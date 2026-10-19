@@ -39,7 +39,8 @@ class _CustomerHomeState extends State<CustomerHome> {
   }
 
   String get _name {
-    final n = OrderRepository.instance.user?.name ?? 'Vidura';
+    final n = (OrderRepository.instance.user?.name ?? '').trim();
+    if (n.isEmpty || n.toLowerCase() == 'guest') return 'there';
     return n.split(' ').first;
   }
 
@@ -365,10 +366,13 @@ class _CustomerHomeState extends State<CustomerHome> {
             }(),
           ),
           const SizedBox(height: 12),
-          Text(u?.name ?? 'Vidura', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          Text(u?.phone ?? '', style: const TextStyle(color: Brand.muted)),
+          Text((u?.name ?? '').trim().isEmpty ? 'User' : u!.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(
+            (u?.email ?? '').trim().isNotEmpty ? u!.email! : (u?.phone ?? ''),
+            style: const TextStyle(color: Brand.muted),
+          ),
           const SizedBox(height: 8),
-          Text(u?.address ?? 'New Town, Anuradhapura'),
+          Text((u?.address ?? '').trim().isEmpty ? '' : u!.address!),
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton.tonal(

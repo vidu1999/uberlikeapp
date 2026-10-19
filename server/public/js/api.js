@@ -401,6 +401,30 @@
     API._accsAt = Date.now();
     return API._accs;
   }
+  function mineOrder(o, me) {
+    if (!o || !me) return false;
+    if (sameRole(me.role, 'customer')) {
+      if (o.userId && me.id && String(o.userId) === String(me.id)) return true;
+      if (o.user_id && me.id && String(o.user_id) === String(me.id)) return true;
+      const p = normalizePhone(o.customerPhone || o.customer_phone || '');
+      const mine = normalizePhone(me.phone);
+      if (p && mine && (p === mine || phoneKey(p) === phoneKey(mine))) return true;
+      return false;
+    }
+    if (sameRole(me.role, 'shop')) {
+      const sid = me.shopId || me.shop_id || (me.phone && shopIdFor(me.phone)) || '';
+      return !!(sid && String(o.shopId || o.shop_id || '') === String(sid));
+    }
+    if (sameRole(me.role, 'rider')) {
+      if (me.id && (o.riderId === me.id || o.rider_id === me.id)) return true;
+      const rp = normalizePhone(o.riderPhone || o.rider_phone || '');
+      const mine = normalizePhone(me.phone);
+      if (rp && mine && (rp === mine || phoneKey(rp) === phoneKey(mine))) return true;
+      if (o.status === 'ready' && !o.riderId && !o.rider_id) return true;
+      return false;
+    }
+    return false;
+  }
   function scopeData() {
     API.shops = (API.shops || []).filter((s) => !isDemoShop(s.id));
     API.items = (API.items || []).filter((it) => !isDemoShop(it.shopId));
@@ -417,39 +441,38 @@
     const me = API.user;
     if (!me) {
       API.orders = [];
+      API.messages = {};
       return;
     }
-    if (me.role === 'customer' || me.role === 'user') {
-      const phone = normalizePhone(me.phone);
-      const key = phoneKey(phone);
-      API.orders = API.orders.filter((o) => {
-        if (o.userId === me.id || o.user_id === me.id) return true;
-        const p = normalizePhone(o.customerPhone || o.customer_phone || '');
-        return p && (p === phone || phoneKey(p) === key);
-      });
-      mergeKept();
-    } else if (me.role === 'shop') {
-      const sid = me.shopId;
+    if (sameRole(me.role, 'shop')) {
+      const sid = me.shopId || me.shop_id || (me.phone && shopIdFor(me.phone)) || '';
       API.shops = API.shops.filter((s) => s.id === sid);
       API.items = API.items.filter((it) => it.shopId === sid);
-      API.orders = API.orders.filter((o) => o.shopId === sid);
-    } else if (me.role === 'rider') {
-      API.orders = API.orders.filter((o) => {
-        if (o.riderId === me.id || o.riderPhone === me.phone) return true;
-        if (o.status === 'ready' && !o.riderId) return true;
-        return false;
-      });
     }
+    API.orders = API.orders.filter((o) => mineOrder(o, me));
+    mergeKept();
+    const allow = {};
+    (API.orders || []).forEach(function (o) { if (o && o.id) allow[o.id] = 1; });
+    const msgs = API.messages || {};
+    const nextMsgs = {};
+    Object.keys(msgs).forEach(function (k) { if (allow[k]) nextMsgs[k] = msgs[k]; });
+    API.messages = nextMsgs;
   }
   const keptOrders = [];
   function keptStorageKey() {
+    const id = (API.user && API.user.id) || '';
+    if (id) return 'qb_kept_orders_' + id;
     return 'qb_kept_orders_' + phoneKey((API.user && API.user.phone) || '');
+  }
+  function resetKept() {
+    keptOrders.length = 0;
   }
   function persistKept() {
     try { localStorage.setItem(keptStorageKey(), JSON.stringify(keptOrders.slice(0, 40))); } catch (_) {}
   }
   function keepOrder(o) {
     if (!o || !o.id) return o;
+    if (API.user && !mineOrder(o, API.user)) return o;
     const i = keptOrders.findIndex((x) => x.id === o.id);
     if (i >= 0) {
       const prev = keptOrders[i];
@@ -485,11 +508,13 @@
     return next;
   }
   function loadKept() {
+    resetKept();
     try {
       const arr = JSON.parse(localStorage.getItem(keptStorageKey()) || '[]');
       if (!Array.isArray(arr)) return;
       arr.forEach((o) => {
         if (!o || !o.id) return;
+        if (API.user && !mineOrder(o, API.user)) return;
         const i = keptOrders.findIndex((x) => x.id === o.id);
         if (i < 0) keptOrders.push(o);
         else {
@@ -504,6 +529,7 @@
     loadKept();
     keptOrders.forEach((o, idx) => {
       if (!o || !o.id) return;
+      if (!mineOrder(o, API.user)) return;
       const i = API.orders.findIndex((x) => x.id === o.id);
       if (i < 0) {
         API.orders.unshift(o);
@@ -870,18 +896,73 @@
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
 
+  async function hydrateUser() {
+    const u = API.user;
+    if (!u || !u.id || !sbConfigured()) return;
+    try {
+      const rows = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(u.id) + '&select=*'));
+      if (rows[0] && !isDemoAccount(rows[0])) {
+        const mapped = mapAccount(rows[0]);
+        API.user = Object.assign({}, u, mapped);
+        if (sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
+      }
+    } catch (_) {}
+  }
+
+  async function fetchMyOrderRows() {
+    const me = API.user;
+    if (!me) return [];
+    const tries = [];
+    if (sameRole(me.role, 'customer')) {
+      const parts = [];
+      if (me.id) parts.push('user_id.eq.' + me.id);
+      phoneVariants(me.phone).forEach(function (p) { parts.push('customer_phone.eq.' + p); });
+      if (parts.length) tries.push('orders?or=(' + parts.join(',') + ')&select=*');
+    } else if (sameRole(me.role, 'shop')) {
+      const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
+      if (sid) tries.push('orders?shop_id=eq.' + encodeURIComponent(sid) + '&select=*');
+    } else if (sameRole(me.role, 'rider')) {
+      const parts = ['and(status.eq.ready,rider_id.is.null)', 'status.eq.ready'];
+      if (me.id) {
+        parts.push('rider_id.eq.' + me.id);
+        parts.push('data->>riderId.eq.' + me.id);
+      }
+      phoneVariants(me.phone).forEach(function (p) {
+        parts.push('rider_phone.eq.' + p);
+        parts.push('data->>riderPhone.eq.' + p);
+      });
+      tries.push('orders?or=(' + parts.join(',') + ')&select=*');
+    }
+    for (let i = 0; i < tries.length; i++) {
+      try {
+        return asRows(await sbGet(tries[i]));
+      } catch (_) {}
+    }
+    try { return asRows(await sbGet('orders?select=*')); } catch (_) { return []; }
+  }
+
   async function pullSupabase() {
     await wipeTestNumber();
     await wipeDemo();
+    await hydrateUser();
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await ensureShopRow(API.user); } catch (_) {}
     }
     if (API.user) saveSession();
-    const [shopRows, itemRows, orderRows, msgRows] = await Promise.all([
-      sbGet('shops?select=*&order=id.asc'),
-      sbGet('menu_items?select=*&order=id.asc'),
-      sbGet('orders?select=*'),
-      sbGet('messages?select=*'),
+    const me = API.user;
+    let shopQ = 'shops?select=*&order=id.asc';
+    let itemQ = 'menu_items?select=*&order=id.asc';
+    if (me && sameRole(me.role, 'shop')) {
+      const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
+      if (sid) {
+        shopQ = 'shops?id=eq.' + encodeURIComponent(sid) + '&select=*';
+        itemQ = 'menu_items?shop_id=eq.' + encodeURIComponent(sid) + '&select=*';
+      }
+    }
+    const [shopRows, itemRows, orderRows] = await Promise.all([
+      sbGet(shopQ),
+      sbGet(itemQ),
+      fetchMyOrderRows(),
     ]);
     const prevById = {};
     (API.orders || []).forEach((o) => { if (o && o.id) prevById[o.id] = o; });
@@ -892,12 +973,19 @@
       if (p) o.status = mergeStatus(p.status, o.status);
       return o;
     });
-    API.messages = {};
-    for (const m of asRows(msgRows)) {
-      const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
-      list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts, thread: m.thread });
-    }
     scopeData();
+    API.messages = {};
+    const ids = (API.orders || []).map(function (o) { return o && o.id; }).filter(Boolean);
+    if (ids.length) {
+      try {
+        const inList = ids.map(function (id) { return '"' + String(id).replace(/"/g, '') + '"'; }).join(',');
+        const msgRows = asRows(await sbGet('messages?order_id=in.(' + inList + ')&select=*'));
+        for (const m of msgRows) {
+          const list = API.messages[m.order_id] || (API.messages[m.order_id] = []);
+          list.push({ id: m.id, from: m.sender, role: m.role, text: m.body, ts: m.ts, thread: m.thread });
+        }
+      } catch (_) {}
+    }
     notify();
   }
 
@@ -1198,7 +1286,13 @@
       API.setPendingRider(null);
       row = await saveAccount(row);
     }
-    API.user = mapAccount(row);
+    const mapped = mapAccount(row);
+    if (!API.user || API.user.id !== mapped.id) {
+      resetKept();
+      API.orders = [];
+      API.messages = {};
+    }
+    API.user = mapped;
     if (row.shopName) API.user.shopName = row.shopName;
     if (role === 'shop') {
       try { API.user = await ensureShopRow(API.user); } catch (_) { API.user = attachShopIdentity(API.user); }
@@ -1386,11 +1480,7 @@
         Object.assign(row, patch);
       }
     }
-    API.user = mapAccount(row);
-    API.token = 'sb_' + row.id;
-    saveSession();
-    notify(true);
-    return API.user;
+    return enterMapped(row);
   };
 
   function withWaPin(pin) {
@@ -1426,8 +1516,14 @@
   };
 
   function enterMapped(row) {
-    API.user = mapAccount(row);
-    if (row && row.pin != null) API.user.pin = row.pin;
+    const next = mapAccount(row);
+    if (row && row.pin != null) next.pin = row.pin;
+    if (!API.user || API.user.id !== next.id) {
+      resetKept();
+      API.orders = [];
+      API.messages = {};
+    }
+    API.user = next;
     API.token = 'sb_' + row.id;
     saveSession();
     notify(true);
@@ -1637,7 +1733,7 @@
   function cookieWrite(role, user) {
     try {
       const body = encodeURIComponent(JSON.stringify({
-        id: user.id, phone: user.phone, role: user.role, shopId: user.shopId || '', name: user.name || '', token: API.token || '',
+        id: user.id, phone: user.phone, role: user.role, shopId: user.shopId || '', name: user.name || '', email: user.email || '', token: API.token || '',
       }));
       document.cookie = cookieName(role) + '=' + body + ';path=/;max-age=31536000;SameSite=Lax';
     } catch (_) {}
@@ -1676,6 +1772,9 @@
     const role = (API.user && API.user.role) || API.roleHint || 'customer';
     API.user = null;
     API.token = null;
+    API.orders = [];
+    API.messages = {};
+    resetKept();
     API.setPendingShop(null);
     API.setPendingRider(null);
     clearVerified(role);

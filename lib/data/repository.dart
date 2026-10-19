@@ -33,6 +33,8 @@ class OrderRepository {
   Set<String> get favs => favsNotifier.value;
 
   String _favKey() {
+    final id = user?.id ?? '';
+    if (id.isNotEmpty) return 'qb_favs_$id';
     final d = (user?.phone ?? '').replaceAll(RegExp(r'\D'), '');
     final k = d.length >= 9 ? d.substring(d.length - 9) : (d.isEmpty ? 'guest' : d);
     return 'qb_favs_$k';
@@ -550,6 +552,12 @@ class OrderRepository {
     }
     var session = SessionUser.fromJson(user);
     if (role == 'shop') session = _withShopId(session);
+    if (this.user?.id != session.id) {
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
+      cartNotifier.value = <CartLine>[];
+    }
     userNotifier.value = session;
     await loadFavs();
     connectedNotifier.value = true;
@@ -753,12 +761,7 @@ class OrderRepository {
         row = await _lookupPhone(phone, role) ?? row;
       }
     }
-    token = 'sb_${row['id']}';
-    userNotifier.value = SessionUser.fromJson(row);
-    await loadFavs();
-    connectedNotifier.value = true;
-    await _persist();
-    await refresh();
+    await _enterRow(row);
   }
 
   String _passwordPhone(String email) {
@@ -799,7 +802,14 @@ class OrderRepository {
   }
 
   Future<void> _enterRow(Map<String, dynamic> row) async {
-    token = 'sb_${row['id']}';
+    final nextId = '${row['id']}';
+    if (user?.id != nextId) {
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
+      cartNotifier.value = <CartLine>[];
+    }
+    token = 'sb_$nextId';
     userNotifier.value = SessionUser.fromJson(row);
     await loadFavs();
     connectedNotifier.value = true;
@@ -1057,6 +1067,11 @@ class OrderRepository {
     needsShopRegister = false;
     needsRiderRegister = false;
     verifiedPhone = null;
+    _keptOrders.clear();
+    ordersNotifier.value = <Order>[];
+    messages.clear();
+    cartNotifier.value = <CartLine>[];
+    favsNotifier.value = <String>{};
     _clearVerified();
     _persist();
   }
@@ -1104,6 +1119,9 @@ class OrderRepository {
         return;
       }
       token = m['token']?.toString();
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
       userNotifier.value = u.role == 'shop' ? _withShopId(u) : u;
       if (userNotifier.value != null) await _clearVerified();
     } catch (_) {}
@@ -1235,6 +1253,26 @@ class OrderRepository {
     return list;
   }
 
+  bool _orderMine(Order o, SessionUser? u) {
+    if (u == null) return false;
+    if (u.role == 'customer' || u.role == 'user') {
+      if (o.userId == u.id) return true;
+      final p = _normPhone(o.customerPhone ?? '');
+      final mine = _normPhone(u.phone);
+      return p.isNotEmpty && mine.isNotEmpty && (p == mine || _phoneKey(p) == _phoneKey(mine));
+    }
+    if (u.role == 'shop') {
+      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+      return o.shopId == sid;
+    }
+    if (u.role == 'rider') {
+      if (o.riderId == u.id || o.riderPhone == u.phone) return true;
+      if (o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)) return true;
+      return false;
+    }
+    return false;
+  }
+
   List<Order> _mergeKept(List<Order> list) {
     if (_keptOrders.isEmpty) return list;
     final merged = list.map((o) {
@@ -1249,7 +1287,9 @@ class OrderRepository {
       return next;
     }).toList();
     final ids = merged.map((o) => o.id).toSet();
-    final extra = _keptOrders.values.where((o) => !ids.contains(o.id) && !_isDemoOrder(o)).toList();
+    final extra = _keptOrders.values
+        .where((o) => !ids.contains(o.id) && !_isDemoOrder(o) && _orderMine(o, user))
+        .toList();
     if (extra.isEmpty) return merged;
     return [...extra, ...merged];
   }
@@ -1268,27 +1308,8 @@ class OrderRepository {
     var next = list.where((o) => !_isDemoOrder(o)).toList();
     final u = user;
     if (u == null) return <Order>[];
-    if (u.role == 'customer' || u.role == 'user') {
-      final phone = _normPhone(u.phone);
-      final key = _phoneKey(phone);
-      next = next.where((o) {
-        if (o.userId == u.id) return true;
-        final p = _normPhone(o.customerPhone ?? '');
-        return p.isNotEmpty && (p == phone || _phoneKey(p) == key);
-      }).toList();
-      return _mergeKept(next);
-    }
-    if (u.role == 'shop') {
-      final sid = u.shopId ?? '';
-      return next.where((o) => o.shopId == sid).toList();
-    }
-    if (u.role == 'rider') {
-      return next.where((o) {
-        if (o.riderId == u.id || o.riderPhone == u.phone) return true;
-        if (o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)) return true;
-        return false;
-      }).toList();
-    }
+    next = next.where((o) => _orderMine(o, u)).toList();
+    if (u.role == 'customer' || u.role == 'user') return _mergeKept(next);
     return next;
   }
 
@@ -1306,18 +1327,74 @@ class OrderRepository {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
+  Future<void> _hydrateUser() async {
+    final u = user;
+    if (u == null || u.id.isEmpty) return;
+    try {
+      final rows = await _sbGet('accounts?id=eq.${Uri.encodeComponent(u.id)}&select=*');
+      if (rows.isEmpty) return;
+      final m = Map<String, dynamic>.from(rows.first as Map);
+      if (_isDemoAccountMap(m)) return;
+      userNotifier.value = SessionUser.fromJson(m);
+      if (userNotifier.value?.role == 'shop') {
+        userNotifier.value = _withShopId(userNotifier.value!);
+      }
+      await _persist();
+    } catch (_) {}
+  }
+
+  Future<List<dynamic>> _fetchMyOrderRows() async {
+    final u = user;
+    if (u == null) return <dynamic>[];
+    try {
+      if (u.role == 'customer' || u.role == 'user') {
+        final parts = <String>['user_id.eq.${u.id}'];
+        final p = _normPhone(u.phone);
+        if (p.isNotEmpty) parts.add('customer_phone.eq.$p');
+        return await _sbGet('orders?or=(${parts.join(',')})&select=*');
+      }
+      if (u.role == 'shop') {
+        final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+        return await _sbGet('orders?shop_id=eq.${Uri.encodeComponent(sid)}&select=*');
+      }
+      if (u.role == 'rider') {
+        final parts = <String>['status.eq.ready'];
+        if (u.id.isNotEmpty) {
+          parts.add('rider_id.eq.${u.id}');
+          parts.add('data->>riderId.eq.${u.id}');
+        }
+        final p = _normPhone(u.phone);
+        if (p.isNotEmpty) parts.add('data->>riderPhone.eq.$p');
+        return await _sbGet('orders?or=(${parts.join(',')})&select=*');
+      }
+    } catch (_) {}
+    try {
+      return await _sbGet('orders?select=*');
+    } catch (_) {
+      return <dynamic>[];
+    }
+  }
+
   Future<bool> _refreshFromSupabase() async {
     try {
       await _wipeDemo();
+      await _hydrateUser();
       if (user?.role == 'shop') {
         try {
           await _ensureShopRow();
         } catch (_) {}
       }
-      final shopRows = await _sbGet('shops?select=*&order=id.asc');
-      final itemRows = await _sbGet('menu_items?select=*&order=id.asc');
-      final orderRows = await _sbGet('orders?select=*');
-      final msgRows = await _sbGet('messages?select=*');
+      final u = user;
+      var shopQ = 'shops?select=*&order=id.asc';
+      var itemQ = 'menu_items?select=*&order=id.asc';
+      if (u != null && u.role == 'shop') {
+        final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+        shopQ = 'shops?id=eq.${Uri.encodeComponent(sid)}&select=*';
+        itemQ = 'menu_items?shop_id=eq.${Uri.encodeComponent(sid)}&select=*';
+      }
+      final shopRows = await _sbGet(shopQ);
+      final itemRows = await _sbGet(itemQ);
+      final orderRows = await _fetchMyOrderRows();
       final shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
       final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
       Catalog.set(shops, items);
@@ -1327,20 +1404,27 @@ class OrderRepository {
         ),
       );
       messages.clear();
-      for (final raw in msgRows) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        final oid = '${m['order_id'] ?? ''}';
-        if (oid.isEmpty) continue;
-        (messages[oid] ??= <ChatMessage>[]).add(
-          ChatMessage(
-            id: '${m['id']}',
-            from: '${m['sender'] ?? m['from'] ?? ''}',
-            role: '${m['role'] ?? ''}',
-            text: '${m['body'] ?? m['text'] ?? ''}',
-            ts: (m['ts'] as num?)?.toInt() ?? 0,
-            thread: m['thread']?.toString(),
-          ),
-        );
+      final ids = orders.map((o) => o.id).where((id) => id.isNotEmpty).toList();
+      if (ids.isNotEmpty) {
+        try {
+          final inList = ids.map((id) => '"${id.replaceAll('"', '')}"').join(',');
+          final msgRows = await _sbGet('messages?order_id=in.($inList)&select=*');
+          for (final raw in msgRows) {
+            final m = Map<String, dynamic>.from(raw as Map);
+            final oid = '${m['order_id'] ?? ''}';
+            if (oid.isEmpty) continue;
+            (messages[oid] ??= <ChatMessage>[]).add(
+              ChatMessage(
+                id: '${m['id']}',
+                from: '${m['sender'] ?? m['from'] ?? ''}',
+                role: '${m['role'] ?? ''}',
+                text: '${m['body'] ?? m['text'] ?? ''}',
+                ts: (m['ts'] as num?)?.toInt() ?? 0,
+                thread: m['thread']?.toString(),
+              ),
+            );
+          }
+        } catch (_) {}
       }
       connectedNotifier.value = true;
       _maybeUnfreeze();
@@ -1378,10 +1462,11 @@ class OrderRepository {
           _scopeItems(rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))),
         );
         messages.clear();
+        final allow = orders.map((o) => o.id).toSet();
         final rawMsg = data['messages'];
         if (rawMsg is Map) {
           rawMsg.forEach((k, v) {
-            if (v is List) {
+            if (v is List && allow.contains('$k')) {
               messages['$k'] = v
                   .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
                   .toList();

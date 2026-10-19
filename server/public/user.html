@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18s" />
-  <link rel="stylesheet" href="/css/ui.css?v=18s" />
-  <link rel="stylesheet" href="/css/track.css?v=18s" />
-  <link rel="stylesheet" href="/css/qb.css?v=18s" />
+  <link rel="stylesheet" href="/css/app.css?v=18t" />
+  <link rel="stylesheet" href="/css/ui.css?v=18t" />
+  <link rel="stylesheet" href="/css/track.css?v=18t" />
+  <link rel="stylesheet" href="/css/qb.css?v=18t" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18s"></script>
-  <script src="/js/api.js?v=18s"></script>
-  <script src="/js/maps.js?v=18s"></script>
-  <script src="/js/track-ui.js?v=18s"></script>
+  <script src="/js/live.js?v=18t"></script>
+  <script src="/js/api.js?v=18t"></script>
+  <script src="/js/maps.js?v=18t"></script>
+  <script src="/js/track-ui.js?v=18t"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -56,7 +56,7 @@
       menuTab: 'menu',
       menuCat: 'Cakes',
       trackId: null,
-      cart: JSON.parse(sessionStorage.getItem('sd_cart') || '[]'),
+      cart: [],
       favs: [],
       note: '',
       address: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
@@ -91,24 +91,37 @@
       }, 1800);
     }
 
-    function saveCart() { sessionStorage.setItem('sd_cart', JSON.stringify(state.cart)); }
-    function favKey() {
-      const p = String((API.user && API.user.phone) || '').replace(/\D/g, '');
-      const k = p.length >= 9 ? p.slice(-9) : (p || 'guest');
-      return 'qb_favs_' + k;
+    function accountKey() {
+      return (API.user && API.user.id) || 'guest';
     }
+    function cartKey() { return 'sd_cart_' + accountKey(); }
+    function saveCart() { sessionStorage.setItem(cartKey(), JSON.stringify(state.cart)); }
+    function loadCart() {
+      try {
+        const arr = JSON.parse(sessionStorage.getItem(cartKey()) || '[]');
+        state.cart = Array.isArray(arr) ? arr : [];
+      } catch (_) { state.cart = []; }
+    }
+    function favKey() { return 'qb_favs_' + accountKey(); }
     function loadFavs() {
       try {
-        const raw = localStorage.getItem(favKey()) || sessionStorage.getItem('sd_favs') || '[]';
+        const raw = localStorage.getItem(favKey()) || '[]';
         const arr = JSON.parse(raw);
         state.favs = Array.isArray(arr) ? arr.map(String) : [];
-      } catch (_) { state.favs = state.favs || []; }
+      } catch (_) { state.favs = []; }
     }
     function saveFavs() {
       try { localStorage.setItem(favKey(), JSON.stringify(state.favs)); } catch (_) {}
-      try { sessionStorage.setItem('sd_favs', JSON.stringify(state.favs)); } catch (_) {}
     }
-    loadFavs();
+    let localUserId = '';
+    function ensureUserLocal() {
+      const id = accountKey();
+      if (localUserId === id) return;
+      localUserId = id;
+      loadCart();
+      loadFavs();
+    }
+    ensureUserLocal();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function fee() { return state.deliveryType === 'express' ? 360 : 200; }
@@ -212,7 +225,11 @@
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function shopImg(s) { return (s && s.image) || '/img/shop-curry.jpg'; }
     function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
-    function firstName() { return (API.user?.name || 'Vidura').split(' ')[0]; }
+    function firstName() {
+      const n = String((API.user && API.user.name) || '').trim();
+      if (!n || /^guest$/i.test(n)) return 'there';
+      return n.split(/\s+/)[0];
+    }
     function hello() {
       const h = new Date().getHours();
       return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
@@ -724,8 +741,8 @@
         <div class="prof-head">
           <img src="/img/avatar-user.jpg" alt="" />
           <div class="grow">
-            <b>${esc(u.name || 'Vidura K Jayathilake')}</b>
-            <div class="muted">${esc(u.email || 'vidurakavindadev@gmail.com')}</div>
+            <b>${esc(u.name || 'User')}</b>
+            <div class="muted">${esc(u.email || u.phone || '')}</div>
           </div>
           <button class="edit-pill">Edit Profile</button>
         </div>
@@ -841,7 +858,7 @@
         consumeGoogleRedirect();
         return;
       }
-      if (API.user) { loadFavs(); tryAutoGps(); }
+      if (API.user) { ensureUserLocal(); tryAutoGps(); }
       if (!state.loc._gps && !state.loc.liveLat) {
         if (!root.querySelector('[data-locperm]')) {
           root.innerHTML = locPermView();
@@ -1361,6 +1378,11 @@
       if (logout) logout.onclick = () => {
         API.logout();
         restoredSession = false;
+        state.cart = [];
+        state.favs = [];
+        state.lastOrder = null;
+        state.trackId = null;
+        localUserId = '';
         state.gate = 'login';
         state.loc._gps = false;
         render();
