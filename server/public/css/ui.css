@@ -538,6 +538,10 @@ html[data-role="shop"] .app:has([data-otp-root]) {
 }
 .sp-auth input::placeholder { color: #9CA3AF; }
 .sp-auth input:focus { outline: 2px solid #BBF7D0; background: #fff; }
+.sp-auth .forgot {
+  display: block; width: 100%; text-align: right; color: #00C853; font-size: 13px; font-weight: 700;
+  margin: 8px 0 4px; cursor: pointer; border: 0; background: 0; padding: 0;
+}
 .sp-auth .btn-green {
   width: 100%; margin-top: 22px; background: #00C853; color: #fff; border: 0;
   border-radius: 28px; padding: 16px; font-weight: 800; font-size: 16px; cursor: pointer;

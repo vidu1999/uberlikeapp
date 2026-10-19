@@ -2013,19 +2013,27 @@
     return API.user;
   }
 
-  API.signInPassword = async function (email, password) {
-    email = String(email || '').trim().toLowerCase();
+  API.signInPassword = async function (id, password, role) {
+    const want = roleTag(role || API.roleHint || 'customer');
+    const email = String(id || '').trim().toLowerCase();
     password = String(password || '');
-    if (!email.includes('@')) throw new Error('Enter your email address.');
     if (password.length < 4) throw new Error('Enter your password.');
-    const row = await lookupEmail(email, 'customer');
-    if (!row) throw new Error('No User account for this email. Sign up, use Google, or sign in with WhatsApp.');
-    const secret = pinSecret(row.pin);
-    if (secret === 'google') throw new Error('This email uses Google. Tap Continue with Google.');
-    if (secret === 'otp' || secret === 'wa' || !secret) {
-      throw new Error('This email signed up with WhatsApp. Sign in with your phone number.');
+    let row = null;
+    if (email.includes('@')) {
+      row = await lookupEmail(email, want);
+    } else {
+      const phone = normalizePhone(id);
+      if (!phone) throw new Error('Enter your email or phone number.');
+      row = await lookupPhone(phone, want);
     }
-    if (secret !== password) throw new Error('Wrong email or password.');
+    const who = want === 'shop' ? 'Shop' : want === 'rider' ? 'Rider' : 'User';
+    if (!row) throw new Error('No ' + who + ' account for this login. Sign up, use Google, or sign in with WhatsApp.');
+    const secret = pinSecret(row.pin);
+    if (secret === 'google') throw new Error('This account uses Google. Tap Continue with Google.');
+    if (secret === 'otp' || secret === 'wa' || !secret) {
+      throw new Error('This account uses WhatsApp. Tap Continue with WhatsApp.');
+    }
+    if (secret !== password) throw new Error('Wrong email, phone, or password.');
     return enterMapped(row);
   };
 

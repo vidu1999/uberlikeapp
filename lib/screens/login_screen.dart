@@ -259,6 +259,16 @@ class _LoginScreenState extends State<LoginScreen> {
           'lng': '$_shopLng',
         };
       }
+      if (widget.role == UserRole.shop && !register) {
+        final id = _phone.text.trim();
+        final pw = _pw.text;
+        if (id.contains('@') || pw.trim().isNotEmpty) {
+          await OrderRepository.instance.signInPassword(id, pw, role: 'shop');
+          if (!mounted) return;
+          setState(() => busy = false);
+          return;
+        }
+      }
       if (widget.role == UserRole.customer && !register) {
         final id = _phone.text.trim();
         if (id.contains('@')) {
@@ -660,11 +670,20 @@ class _LoginScreenState extends State<LoginScreen> {
           const Text('Login to your shop account', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
           const SizedBox(height: 18),
           _lightField(_phone, 'Email or Phone Number', hint: 'Email or Phone Number', keyboard: TextInputType.emailAddress),
+          const SizedBox(height: 10),
+          _lightField(_pw, 'Password', hint: 'Password', obscure: true),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => error = 'Use Continue with WhatsApp or Google to get back in.'),
+              child: const Text('Forgot Password?', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
           if (error != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 4),
             Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           SizedBox(
             height: 54,
             child: FilledButton(
@@ -914,7 +933,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard, ValueChanged<String>? onChanged, String? hint}) {
+  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard, ValueChanged<String>? onChanged, String? hint, bool obscure = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -923,6 +942,7 @@ class _LoginScreenState extends State<LoginScreen> {
         TextField(
           controller: c,
           keyboardType: keyboard,
+          obscureText: obscure,
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint ?? label,

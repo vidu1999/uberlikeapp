@@ -1118,37 +1118,42 @@ class OrderRepository {
     await refresh();
   }
 
-  Future<void> signInPassword(String email, String password) async {
+  Future<void> signInPassword(String id, String password, {String role = 'customer'}) async {
     await _loadSupabaseConfig();
-    email = email.trim().toLowerCase();
+    role = _roleTag(role);
     password = password.trim();
-    if (!email.contains('@')) throw Exception('Enter your email address.');
     if (password.length < 4) throw Exception('Enter your password.');
     Map<String, dynamic>? row;
-    try {
-      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
-          row = m;
-          break;
+    final email = id.trim().toLowerCase();
+    if (email.contains('@')) {
+      try {
+        for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
+            row = m;
+            break;
+          }
+        }
+      } catch (_) {}
+      if (row == null) {
+        for (final m in await _allAccounts()) {
+          if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
+            row = m;
+            break;
+          }
         }
       }
-    } catch (_) {}
-    if (row == null) {
-      for (final m in await _allAccounts()) {
-        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', 'customer') && !_isDemoAccountMap(m)) {
-          row = m;
-          break;
-        }
-      }
+    } else {
+      row = await _lookupPhone(id, role);
     }
-    if (row == null) throw Exception('No User account for this email. Sign up, use Google, or sign in with WhatsApp.');
+    final who = role == 'shop' ? 'Shop' : role == 'rider' ? 'Rider' : 'User';
+    if (row == null) throw Exception('No $who account for this login. Sign up, use Google, or sign in with WhatsApp.');
     final secret = _pinSecret('${row['pin'] ?? ''}');
-    if (secret == 'google') throw Exception('This email uses Google. Tap Continue with Google.');
+    if (secret == 'google') throw Exception('This account uses Google. Tap Continue with Google.');
     if (secret == 'otp' || secret == 'wa' || secret.isEmpty) {
-      throw Exception('This email signed up with WhatsApp. Sign in with your phone number.');
+      throw Exception('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
-    if (secret != password) throw Exception('Wrong email or password.');
+    if (secret != password) throw Exception('Wrong email, phone, or password.');
     await _enterRow(row);
   }
 

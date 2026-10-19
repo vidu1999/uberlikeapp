@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19p" />
-  <link rel="stylesheet" href="/css/ui.css?v=19p" />
-  <link rel="stylesheet" href="/css/track.css?v=19p" />
+  <link rel="stylesheet" href="/css/app.css?v=19q" />
+  <link rel="stylesheet" href="/css/ui.css?v=19q" />
+  <link rel="stylesheet" href="/css/track.css?v=19q" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19p"></script>
-  <script src="/js/api.js?v=19p"></script>
-  <script src="/js/maps.js?v=19p"></script>
-  <script src="/js/track-ui.js?v=19p"></script>
-  <script src="/js/otp-login.js?v=19p"></script>
+  <script src="/js/live.js?v=19q"></script>
+  <script src="/js/api.js?v=19q"></script>
+  <script src="/js/maps.js?v=19q"></script>
+  <script src="/js/track-ui.js?v=19q"></script>
+  <script src="/js/otp-login.js?v=19q"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -29,6 +29,7 @@
       reg: { shopName: '', ownerName: '', phone: '', email: '', photo: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '',
+      loginPw: '',
       wa: { open: false, step: 'phone', phone: '', err: '' },
     };
     const STORE_MARK = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>';
@@ -163,6 +164,9 @@
         <p class="sub">Login to your shop account</p>
         <label>Email or Phone Number</label>
         <input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" autocomplete="username" />
+        <label>Password</label>
+        <input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" autocomplete="current-password" />
+        <button class="forgot" type="button" data-shop-forgot>Forgot Password?</button>
         <p class="err" data-err></p>
         <button class="btn-green" type="button" data-shop-login>Login</button>
         <div class="or">or</div>
@@ -904,10 +908,20 @@
           googleBtn.innerHTML = html;
         }
       };
+      const forgot = root.querySelector('[data-shop-forgot]');
+      if (forgot) forgot.onclick = () => {
+        if (err) err.textContent = 'Use Continue with WhatsApp or Google to get back in.';
+      };
+      const loginIdEl = document.getElementById('loginId');
+      if (loginIdEl) loginIdEl.oninput = () => { state.loginId = loginIdEl.value; };
+      const loginPwEl = document.getElementById('loginPw');
+      if (loginPwEl) loginPwEl.oninput = () => { state.loginPw = loginPwEl.value; };
       root.querySelectorAll('[data-shop-login]').forEach((b) => {
         b.onclick = async () => {
           const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
+          const pw = ((document.getElementById('loginPw') || {}).value || state.loginPw || '');
           state.loginId = id;
+          state.loginPw = pw;
           if (err) err.textContent = '';
           if (!id) {
             if (err) err.textContent = 'Enter email or phone.';
@@ -915,8 +929,21 @@
           }
           b.disabled = true;
           const label = b.textContent;
-          b.textContent = 'Sending WhatsApp…';
           try {
+            if (id.includes('@') || String(pw).trim()) {
+              if (!String(pw).trim()) {
+                if (err) err.textContent = 'Enter your password.';
+                b.disabled = false;
+                return;
+              }
+              b.textContent = 'Signing in…';
+              API.setPendingShop(null);
+              state.fromReg = false;
+              await API.signInPassword(id, pw, 'shop');
+              render();
+              return;
+            }
+            b.textContent = 'Sending WhatsApp…';
             const phone = API.normalizePhone ? API.normalizePhone(id) : id;
             state.loginId = phone;
             state.reg.phone = phone;
