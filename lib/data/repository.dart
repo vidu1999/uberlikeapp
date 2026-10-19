@@ -1584,6 +1584,8 @@ class OrderRepository {
     String paymentMethod = 'Cash on delivery',
     double? deliveryLat,
     double? deliveryLng,
+    double? deliveryFee,
+    Map<String, dynamic>? payment,
   }) async {
     final cart = cartNotifier.value;
     if (cart.isEmpty) return null;
@@ -1604,7 +1606,9 @@ class OrderRepository {
       'paymentMethod': paymentMethod,
       'deliveryLat': dlat,
       'deliveryLng': dlng,
+      'deliveryFee': deliveryFee ?? 200,
       'items': cart.map((e) => e.toJson()).toList(),
+      if (payment != null) 'payment': payment,
     };
     final uri = _uri('/api/orders');
     if (uri != null) {
@@ -1624,13 +1628,15 @@ class OrderRepository {
       } catch (_) {}
     }
     final shop = Catalog.shops.where((s) => s.id == cart.first.shopId).toList();
+    final fee = deliveryFee ?? 200;
+    final pay = payment;
     final created = Order(
       id: 'ORD-${DateTime.now().millisecondsSinceEpoch}',
       userId: u?.id ?? '',
       shopId: cart.first.shopId,
       status: OrderStatus.pending,
       items: cart.map((e) => DeliveryItem(name: e.name, qty: e.qty, price: e.price)).toList(),
-      totalAmount: cartTotal + 200,
+      totalAmount: cartTotal + fee,
       deliveryLat: dlat,
       deliveryLng: dlng,
       timestamp: DateTime.now(),
@@ -1641,6 +1647,12 @@ class OrderRepository {
       shopLat: shop.isNotEmpty ? shop.first.lat : null,
       shopLng: shop.isNotEmpty ? shop.first.lng : null,
       shopAddress: shop.isNotEmpty ? shop.first.address : null,
+      paymentMethod: paymentMethod,
+      paid: pay != null,
+      paymentStatus: pay != null ? '${pay['status'] ?? 'captured'}' : '',
+      paymentId: pay?['paymentId']?.toString(),
+      shopCredit: (pay?['shopCredit'] as num?)?.toDouble() ?? 0,
+      riderCredit: (pay?['riderCredit'] as num?)?.toDouble() ?? 0,
     );
     await _pushOrder(created);
     cartNotifier.value = [];

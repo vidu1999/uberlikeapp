@@ -214,8 +214,15 @@ function patchOrder(order, body) {
     order.riderLng = shop ? shop.lng : 80.3988;
   }
   if (body.status === 'picked_up' || body.status === 'on_the_way') order.pickedUpAt = order.pickedUpAt || new Date().toISOString();
-  if (body.status === 'delivered') order.deliveredAt = new Date().toISOString();
+  if (body.status === 'delivered') {
+    order.deliveredAt = new Date().toISOString();
+    if (order.paid && order.paymentStatus === 'captured' && !order.riderPaidAt) order.riderPaidAt = order.deliveredAt;
+  }
   order.updatedAt = new Date().toISOString();
+  if (order.status === 'cancelled' && order.paid && order.paymentStatus === 'captured') {
+    order.paymentStatus = 'refunded';
+    order.refundedAt = order.updatedAt;
+  }
   return order;
 }
 
@@ -537,6 +544,21 @@ async function handleApi(req, res, url) {
       timestamp: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    const pay = body.payment;
+    const method = String(body.paymentMethod || '');
+    const cardPay = pay && pay.paymentId
+      || (/visa|master|amex|card|••••/i.test(method) && !/cash/i.test(method));
+    if (cardPay) {
+      order.paid = true;
+      order.paymentStatus = (pay && pay.status) || 'captured';
+      order.paymentId = (pay && pay.paymentId) || ('PAY-' + Date.now().toString(36).toUpperCase());
+      order.paidAt = (pay && pay.paidAt) || order.timestamp;
+      order.shopCredit = Math.round(Number((pay && pay.shopCredit) != null ? pay.shopCredit : subtotal));
+      order.riderCredit = Math.round(Number((pay && pay.riderCredit) != null ? pay.riderCredit : deliveryFee));
+      order.paymentBrand = (pay && pay.brand) || method.split(' ')[0] || 'Card';
+      order.paymentLast4 = (pay && pay.last4) || method.replace(/\D/g, '').slice(-4);
+      order.shopPaidAt = order.paidAt;
+    }
     orders.unshift(order);
     messages[order.id] = [
       {

@@ -51,7 +51,7 @@
   let _fp = null;
   function fingerprint() {
     const orders = (API.orders || []).map((o) =>
-      [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng].join(':')
+      [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng, o.paymentStatus || '', o.paid ? '1' : '0'].join(':')
     ).join('|');
     const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
@@ -533,8 +533,15 @@
     next.status = body.status ? mergeStatus(prev.status, body.status) : prev.status;
     if (prev.status === 'delivered' && body.status !== 'cancelled') next.status = 'delivered';
     if (body.status === 'picked_up' || body.status === 'on_the_way') next.pickedUpAt = next.pickedUpAt || new Date().toISOString();
-    if (body.status === 'delivered') next.deliveredAt = next.deliveredAt || new Date().toISOString();
+    if (body.status === 'delivered') {
+      next.deliveredAt = next.deliveredAt || new Date().toISOString();
+      if (next.paid && next.paymentStatus === 'captured' && !next.riderPaidAt) next.riderPaidAt = next.deliveredAt;
+    }
     next.updatedAt = new Date().toISOString();
+    if (next.status === 'cancelled' && next.paid && next.paymentStatus === 'captured') {
+      next.paymentStatus = 'refunded';
+      next.refundedAt = next.updatedAt;
+    }
     API.orders[i] = next;
     keepOrder(next);
     return next;
@@ -1913,6 +1920,81 @@
     } catch (_) {}
   };
 
+  function luhnOk(num) {
+    const d = String(num || '').replace(/\D/g, '');
+    if (d.length < 13 || d.length > 19) return false;
+    let s = 0, alt = false;
+    for (let i = d.length - 1; i >= 0; i--) {
+      let n = d.charCodeAt(i) - 48;
+      if (n < 0 || n > 9) return false;
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      s += n; alt = !alt;
+    }
+    return s % 10 === 0;
+  }
+  API.isCardMethod = function (m) {
+    const s = String(m || '').toLowerCase();
+    if (s.indexOf('cash') !== -1) return false;
+    return /visa|master|amex|unionpay|jcb|discover|card|••••/.test(s);
+  };
+  API.shopCreditOf = function (o) {
+    if (!o || o.status === 'cancelled' || o.paymentStatus === 'refunded') return 0;
+    if (!o.paid && !API.isCardMethod(o.paymentMethod)) return 0;
+    if (o.shopCredit != null && o.shopCredit !== '') return Math.max(0, Number(o.shopCredit) || 0);
+    const sub = Number(o.subtotal);
+    if (sub > 0) return sub;
+    const fee = Number(o.deliveryFee) || 0;
+    return Math.max(0, (Number(o.totalAmount) || 0) - fee);
+  };
+  API.riderCreditOf = function (o) {
+    if (!o || o.status === 'cancelled' || o.paymentStatus === 'refunded') return 0;
+    if (o.riderCredit != null && o.riderCredit !== '') return Math.max(0, Number(o.riderCredit) || 0);
+    const fee = Number(o.deliveryFee);
+    if (fee > 0) return fee;
+    return 0;
+  };
+  function applyPay(order, pay, method) {
+    if (!order || !pay) return order;
+    order.paid = true;
+    order.paymentStatus = pay.status || 'captured';
+    order.paymentId = pay.paymentId;
+    order.paidAt = pay.paidAt || new Date().toISOString();
+    order.shopCredit = Math.round(Number(pay.shopCredit) || 0);
+    order.riderCredit = Math.round(Number(pay.riderCredit) || 0);
+    order.paymentBrand = pay.brand || '';
+    order.paymentLast4 = pay.last4 || '';
+    order.shopPaidAt = order.paidAt;
+    if (method) order.paymentMethod = method;
+    return order;
+  }
+  API.chargeCard = async function (input) {
+    input = input || {};
+    const number = String(input.number || '').replace(/\D/g, '');
+    const amount = Math.round(Number(input.amount) || 0);
+    if (amount < 1) throw new Error('Invalid payment amount.');
+    await new Promise((r) => setTimeout(r, 700));
+    if (number === '4000000000000002' || number === '4000000000000341') {
+      throw new Error('Card declined. Use another card.');
+    }
+    if (number && number.length >= 13 && !luhnOk(number)) {
+      throw new Error('Card declined.');
+    }
+    const last4 = String(input.last4 || (number ? number.slice(-4) : '')).replace(/\D/g, '').slice(-4);
+    const shopCredit = Math.round(Number(input.shopCredit != null ? input.shopCredit : amount));
+    const riderCredit = Math.round(Number(input.riderCredit != null ? input.riderCredit : 0));
+    return {
+      ok: true,
+      paymentId: 'PAY-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      status: 'captured',
+      amount: amount,
+      shopCredit: shopCredit,
+      riderCredit: riderCredit,
+      brand: input.brand || 'Card',
+      last4: last4,
+      paidAt: new Date().toISOString(),
+    };
+  };
+
   API.placeOrder = async function (payload) {
     if (!API.isWhatsAppVerified()) {
       const err = new Error('Verify WhatsApp before placing an order.');
@@ -1972,6 +2054,21 @@
         timestamp: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+    }
+    if (payload.payment && payload.payment.paymentId) {
+      applyPay(order, payload.payment, payload.paymentMethod);
+    } else if (API.isCardMethod(payload.paymentMethod) && !order.paid) {
+      const sub = Number(order.subtotal) || 0;
+      const fee = Number(order.deliveryFee) || 0;
+      applyPay(order, {
+        paymentId: 'PAY-' + Date.now().toString(36).toUpperCase(),
+        status: 'captured',
+        shopCredit: sub,
+        riderCredit: fee,
+        brand: String(payload.paymentMethod || 'Card').split(' ')[0],
+        last4: String(payload.paymentMethod || '').replace(/\D/g, '').slice(-4),
+        paidAt: new Date().toISOString(),
+      }, payload.paymentMethod);
     }
     const shopPin = shopOf(order.shopId);
     const sLat = finiteNum(order.shopLat != null ? order.shopLat : shopPin.lat);

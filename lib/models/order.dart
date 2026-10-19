@@ -152,6 +152,11 @@ class Order {
   final double? shopLng;
   final String? shopAddress;
   final String paymentMethod;
+  final bool paid;
+  final String paymentStatus;
+  final String? paymentId;
+  final double shopCredit;
+  final double riderCredit;
 
   const Order({
     required this.id,
@@ -177,7 +182,33 @@ class Order {
     this.shopLng,
     this.shopAddress,
     this.paymentMethod = 'Cash on delivery',
+    this.paid = false,
+    this.paymentStatus = '',
+    this.paymentId,
+    this.shopCredit = 0,
+    this.riderCredit = 0,
   });
+
+  bool get cardCaptured {
+    if (status == OrderStatus.cancelled || paymentStatus == 'refunded') return false;
+    if (paid) return true;
+    final m = paymentMethod.toLowerCase();
+    if (m.contains('cash')) return false;
+    return m.contains('visa') || m.contains('master') || m.contains('amex') || m.contains('card') || m.contains('••••');
+  }
+
+  double get shopShare {
+    if (!cardCaptured) return 0;
+    if (shopCredit > 0) return shopCredit;
+    if (riderCredit > 0 && totalAmount > riderCredit) return totalAmount - riderCredit;
+    return 0;
+  }
+
+  double get riderShare {
+    if (status == OrderStatus.cancelled || paymentStatus == 'refunded') return 0;
+    if (riderCredit > 0) return riderCredit;
+    return 0;
+  }
 
   Order copyWith({
     OrderStatus? status,
@@ -211,6 +242,11 @@ class Order {
       shopLng: shopLng,
       shopAddress: shopAddress,
       paymentMethod: paymentMethod,
+      paid: paid,
+      paymentStatus: paymentStatus,
+      paymentId: paymentId,
+      shopCredit: shopCredit,
+      riderCredit: riderCredit,
     );
   }
 
@@ -238,6 +274,11 @@ class Order {
         'shopLng': shopLng,
         'shopAddress': shopAddress,
         'paymentMethod': paymentMethod,
+        'paid': paid,
+        'paymentStatus': paymentStatus,
+        'paymentId': paymentId,
+        'shopCredit': shopCredit,
+        'riderCredit': riderCredit,
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
@@ -280,6 +321,11 @@ class Order {
       shopLng: j['shopLng'] is num ? (j['shopLng'] as num).toDouble() : double.tryParse('${j['shopLng'] ?? ''}'),
       shopAddress: j['shopAddress']?.toString(),
       paymentMethod: '${j['paymentMethod'] ?? j['payment_method'] ?? 'Cash on delivery'}',
+      paid: j['paid'] == true || j['paid'] == 'true' || '${j['paymentStatus'] ?? ''}' == 'captured',
+      paymentStatus: '${j['paymentStatus'] ?? ''}',
+      paymentId: j['paymentId']?.toString(),
+      shopCredit: (j['shopCredit'] as num?)?.toDouble() ?? 0,
+      riderCredit: (j['riderCredit'] as num?)?.toDouble() ?? 0,
     );
   }
 }

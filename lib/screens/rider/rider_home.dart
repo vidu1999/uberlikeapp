@@ -5,7 +5,6 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../app.dart';
 import '../../config.dart';
-import '../../data/pay_cards.dart';
 import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
@@ -144,7 +143,11 @@ class _RiderHomeState extends State<RiderHome> {
   List<Order> _done(List<Order> orders) =>
       orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).toList();
 
-  double _earn(Order o) => o.totalAmount > 0 ? o.totalAmount : 150;
+  double _earn(Order o) {
+    if (o.riderShare > 0) return o.riderShare;
+    if (o.riderCredit > 0) return o.riderCredit;
+    return o.totalAmount > 0 ? o.totalAmount : 150;
+  }
 
   double _km(Order o) {
     Shop? shop;
@@ -670,7 +673,9 @@ class _RiderHomeState extends State<RiderHome> {
                 const SizedBox(height: 6),
                 Text(o.paymentMethod, style: const TextStyle(fontWeight: FontWeight.w800)),
                 Text(
-                  PayCards.paidByCard(o.paymentMethod) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.',
+                  o.cardCaptured
+                      ? 'Paid by card — do not collect cash. Your fee Rs. ${o.riderShare.round()} hits the wallet on delivery.'
+                      : 'Collect cash on delivery.',
                   style: const TextStyle(color: Brand.soft, fontSize: 12),
                 ),
               ],

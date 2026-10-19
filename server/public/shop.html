@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18z" />
-  <link rel="stylesheet" href="/css/ui.css?v=18z" />
-  <link rel="stylesheet" href="/css/track.css?v=18z" />
+  <link rel="stylesheet" href="/css/app.css?v=19a" />
+  <link rel="stylesheet" href="/css/ui.css?v=19a" />
+  <link rel="stylesheet" href="/css/track.css?v=19a" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18z"></script>
-  <script src="/js/api.js?v=18z"></script>
-  <script src="/js/maps.js?v=18z"></script>
-  <script src="/js/track-ui.js?v=18z"></script>
-  <script src="/js/otp-login.js?v=18z"></script>
+  <script src="/js/live.js?v=19a"></script>
+  <script src="/js/api.js?v=19a"></script>
+  <script src="/js/maps.js?v=19a"></script>
+  <script src="/js/track-ui.js?v=19a"></script>
+  <script src="/js/otp-login.js?v=19a"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -53,6 +53,15 @@
     function shopOrders() {
       const sid = shopId();
       return API.orders.filter((o) => o.shopId === sid);
+    }
+    function cardPaid(o) {
+      if (!o || o.status === 'cancelled' || o.paymentStatus === 'refunded') return false;
+      return !!(o.paid || (API.isCardMethod && API.isCardMethod(o.paymentMethod)));
+    }
+    function shopShare(o) { return API.shopCreditOf ? API.shopCreditOf(o) : Number(o.shopCredit || o.subtotal || 0); }
+    function riderShare(o) { return API.riderCreditOf ? API.riderCreditOf(o) : Number(o.riderCredit || o.deliveryFee || 0); }
+    function shopWalletBal() {
+      return shopOrders().filter(cardPaid).reduce((n, o) => n + shopShare(o), 0);
     }
     function esc(s) {
       return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -402,7 +411,8 @@
         <div class="ol-pay">
           <b>Payment</b>
           <div>${esc(o.paymentMethod || 'Cash on delivery')}</div>
-          <small>${!/cash/i.test(String(o.paymentMethod||'')) && /visa|master|amex|card|••••|unionpay|jcb/i.test(String(o.paymentMethod||'')) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.'}</small>
+          <small>${cardPaid(o) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.'}</small>
+          ${cardPaid(o) ? `<div class="ol-split">Shop wallet +${rs(shopShare(o))} · Rider +${rs(riderShare(o))}</div>` : ''}
         </div>
         <div class="ol-steps">
           ${steps.map((s, i) => {
@@ -441,6 +451,7 @@
       const sales = today.reduce((n, o) => n + (o.totalAmount || 0), 0);
       const ordersN = today.length;
       const revenue = sales;
+      const wallet = shopWalletBal();
       const rating = s.rating || 4.8;
       return `<div class="scroll sp-prof">
         <div class="sp-prof-hero"><img src="${esc(s.image)}" alt="" /></div>
@@ -458,13 +469,28 @@
         <div class="sp-prof-stats">
           <div class="sp-prof-stat"><b>${ordersN}</b><span>Total Orders</span></div>
           <div class="sp-prof-stat"><b>${rs(revenue)}</b><span>Total Revenue</span></div>
-          <div class="sp-prof-stat"><b>${rating.toFixed(1)}</b><span>Rating</span></div>
+          <div class="sp-prof-stat"><b>${rs(wallet)}</b><span>Card wallet</span></div>
         </div>
+        <button class="sp-prof-out" type="button" data-open-wallet style="margin-top:8px">Card wallet · ${rs(wallet)}</button>
         <div class="sp-prof-about">
           <h3>About Us</h3>
           <p>${esc(shopAbout(s))}</p>
         </div>
         <button class="sp-prof-out" type="button" id="logout">Log Out</button>
+      </div>${nav()}`;
+    }
+    function walletView() {
+      const list = shopOrders().filter(cardPaid);
+      const bal = shopWalletBal();
+      return `<div class="scroll sp-prof">
+        <div class="sd-head"><button class="sd-bell" type="button" data-close-wallet style="margin-left:0;margin-right:8px">←</button><h1>Card wallet</h1></div>
+        <div class="pad">
+          <div class="sp-wallet-bal"><span>Available from card payments</span><b>${rs(bal)}</b><small>Food total is added here when a customer pays by card. Delivery fee goes to the rider.</small></div>
+          ${list.map((o) => `<div class="sp-tx">
+            <div class="grow"><b>${esc(oid(o.id))}</b><div class="sub">${esc(o.customerName || 'Customer')} · ${esc(o.paymentMethod || 'Card')}</div></div>
+            <div class="amt">+ ${rs(shopShare(o))}</div>
+          </div>`).join('') || '<div class="pad muted">No card payments yet. When a user pays by card, that food total lands here.</div>'}
+        </div>
       </div>${nav()}`;
     }
     function editShopView() {
@@ -674,6 +700,7 @@
       }
       if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
       if (state.screen === 'order') root.innerHTML = orderDetailsView();
+      else if (state.screen === 'wallet') root.innerHTML = walletView();
       else if (state.screen === 'item') root.innerHTML = itemEditView();
       else if (state.screen === 'edit-shop') root.innerHTML = editShopView();
       else if (state.screen === 'store') root.innerHTML = storeView();
@@ -921,6 +948,8 @@
         render();
       });
       root.querySelectorAll('[data-view-store]').forEach((b) => b.onclick = () => { state.screen = 'store'; render(); });
+      root.querySelectorAll('[data-open-wallet]').forEach((b) => b.onclick = () => { state.screen = 'wallet'; render(); });
+      root.querySelectorAll('[data-close-wallet]').forEach((b) => b.onclick = () => { state.screen = ''; state.tab = 'account'; render(); });
       root.querySelectorAll('[data-close-shop]').forEach((b) => b.onclick = () => { state.screen = ''; state.shopDraft = null; state.tab = 'account'; render(); });
       const pickShop = root.querySelector('[data-pick-shop-photo]');
       const shopFile = document.getElementById('shopFile');

@@ -502,6 +502,7 @@ class _ShopHomeState extends State<ShopHome> {
         final sales = mine.fold<double>(0, (n, o) => n + o.totalAmount);
         final ordersN = mine.length;
         final revenue = sales;
+        final cardWallet = mine.fold<double>(0, (n, o) => n + o.shopShare);
         final rating = shop.rating == 0 ? 4.8 : shop.rating;
         final hero = (shop.image != null && shop.image!.isNotEmpty) ? _url(shop.image!) : _url('/img/shop-bakery.jpg');
         return ListView(
@@ -569,7 +570,7 @@ class _ShopHomeState extends State<ShopHome> {
                   const SizedBox(width: 8),
                   _pstat('Rs. ${revenue.toStringAsFixed(0)}', 'Total Revenue'),
                   const SizedBox(width: 8),
-                  _pstat(rating.toStringAsFixed(1), 'Rating'),
+                  _pstat('Rs. ${cardWallet.toStringAsFixed(0)}', 'Card wallet'),
                 ],
               ),
             ),

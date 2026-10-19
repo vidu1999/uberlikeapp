@@ -25,6 +25,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool saveCard = true;
   String? cardErr;
   bool placing = false;
+  Map<String, dynamic>? _capturedPay;
 
   int get fee => ship == 'express' ? 360 : 200;
 
@@ -248,6 +249,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     setState(() => placing = true);
     try {
       String paymentMethod = 'Cash on delivery';
+      Map<String, dynamic>? payment = _capturedPay;
       if (pay == 'card') {
         final cards = PayCards.cards;
         SavedCard? saved;
@@ -276,6 +278,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             paymentMethod = '${PayCards.brand(d)} •••• ${d.substring(d.length - 4)}';
           }
         }
+        if (payment == null) {
+          final d = PayCards.digits(_cardNum.text);
+          payment = await PayCards.charge(
+            amount: (OrderRepository.instance.cartTotal + fee).toDouble(),
+            shopCredit: OrderRepository.instance.cartTotal,
+            riderCredit: fee.toDouble(),
+            brand: saved?.brand ?? PayCards.brand(_cardNum.text),
+            last4: saved?.last4 ?? (d.length >= 4 ? d.substring(d.length - 4) : ''),
+            number: _cardNum.text,
+          );
+        }
+        _capturedPay = payment;
+        paymentMethod = '${payment['brand']} •••• ${payment['last4']}';
       }
       if (!OrderRepository.instance.isWhatsAppVerified()) {
         final verified = await _verifyWhatsApp();
@@ -292,9 +307,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         paymentMethod: paymentMethod,
         deliveryLat: lat,
         deliveryLng: lng,
+        deliveryFee: fee.toDouble(),
+        payment: payment,
       );
       if (!mounted) return;
       setState(() => placing = false);
+      _capturedPay = null;
       if (order == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not place order.')));
         return;
@@ -371,7 +389,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           RadioListTile<String>(
             value: 'cash',
             groupValue: pay,
-            onChanged: (v) => setState(() { pay = v!; cardErr = null; }),
+            onChanged: (v) => setState(() { pay = v!; cardErr = null; _capturedPay = null; }),
             title: const Text('Cash on Delivery'),
             activeColor: Brand.green,
           ),
@@ -381,6 +399,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             onChanged: (v) => setState(() {
               pay = v!;
               cardErr = null;
+              _capturedPay = null;
               if (PayCards.cards.isNotEmpty) cardId = PayCards.cards.first.id;
             }),
             title: const Text('Debit / Credit card'),

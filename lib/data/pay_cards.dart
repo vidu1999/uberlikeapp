@@ -189,6 +189,37 @@ class PayCards {
     await _persist();
   }
 
+  static Future<Map<String, dynamic>> charge({
+    required double amount,
+    required double shopCredit,
+    required double riderCredit,
+    required String brand,
+    required String last4,
+    String number = '',
+  }) async {
+    final d = digits(number);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (d == '4000000000000002' || d == '4000000000000341') {
+      throw Exception('Card declined. Use another card.');
+    }
+    if (d.length >= 13 && !luhnOk(d)) {
+      throw Exception('Card declined.');
+    }
+    if (amount < 1) throw Exception('Invalid payment amount.');
+    final id = 'PAY-${DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase()}';
+    return {
+      'ok': true,
+      'paymentId': id,
+      'status': 'captured',
+      'amount': amount.round(),
+      'shopCredit': shopCredit.round(),
+      'riderCredit': riderCredit.round(),
+      'brand': brand,
+      'last4': last4,
+      'paidAt': DateTime.now().toIso8601String(),
+    };
+  }
+
   static bool paidByCard(String? method) {
     final m = (method ?? '').toLowerCase();
     if (m.contains('cash')) return false;
