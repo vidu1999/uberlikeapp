@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19s" />
-  <link rel="stylesheet" href="/css/ui.css?v=19s" />
-  <link rel="stylesheet" href="/css/track.css?v=19s" />
+  <link rel="stylesheet" href="/css/app.css?v=19t" />
+  <link rel="stylesheet" href="/css/ui.css?v=19t" />
+  <link rel="stylesheet" href="/css/track.css?v=19t" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19s"></script>
-  <script src="/js/api.js?v=19s"></script>
-  <script src="/js/maps.js?v=19s"></script>
-  <script src="/js/track-ui.js?v=19s"></script>
-  <script src="/js/otp-login.js?v=19s"></script>
+  <script src="/js/live.js?v=19t"></script>
+  <script src="/js/api.js?v=19t"></script>
+  <script src="/js/maps.js?v=19t"></script>
+  <script src="/js/track-ui.js?v=19t"></script>
+  <script src="/js/otp-login.js?v=19t"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -690,9 +690,12 @@
         return;
       }
       killRegMap();
-      if (API.user && API._shopCatalogReady && API.isShopRegistered && !API.isShopRegistered()) {
-        goShopRegister();
-        return;
+      if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
+        const fakePhone = API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone);
+        if (fakePhone || API._shopCatalogReady) {
+          goShopRegister();
+          return;
+        }
       }
       if (state.screen === 'chat' && state.orderId) {
         const o = API.orders.find((x) => x.id === state.orderId);
@@ -901,6 +904,11 @@
           await API.signInGoogle(profile);
           state.loginId = '';
           state.reg.phone = '';
+          if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+          if (API.isShopRegistered && !API.isShopRegistered()) {
+            goShopRegister();
+            return;
+          }
           render();
         } catch (ex) {
           if (err) err.textContent = ex.message || 'Google sign-in failed';
@@ -940,6 +948,11 @@
               API.setPendingShop(null);
               state.fromReg = false;
               await API.signInPassword(id, pw, 'shop');
+              if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+              if (API.isShopRegistered && !API.isShopRegistered()) {
+                goShopRegister();
+                return;
+              }
               render();
               return;
             }
@@ -953,7 +966,17 @@
             state.auth = 'otp';
             render();
           } catch (e) {
-            if (err) err.textContent = e.message;
+            const msg = (e && e.message) || 'Could not sign in';
+            if (e && (e.code === 'NO_ACCOUNT' || /not .* credentials/i.test(msg))) {
+              if (id.includes('@')) state.reg.email = id;
+              state.auth = 'register';
+              state.fromReg = true;
+              render();
+              const rerr = document.querySelector('[data-err]');
+              if (rerr) rerr.textContent = msg;
+              return;
+            }
+            if (err) err.textContent = msg;
             b.disabled = false;
             b.textContent = label;
           }

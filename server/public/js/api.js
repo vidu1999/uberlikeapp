@@ -1278,6 +1278,15 @@
           sessionKeys(API.roleHint).forEach(storeDel);
           cookieClear(API.roleHint);
         } catch (_) {}
+        return;
+      }
+      if (API.user && sameRole(API.user.role, 'customer') && isPasswordOnlyUnverified(API.user)) {
+        API.user = null;
+        API.token = null;
+        try {
+          sessionKeys(API.roleHint).forEach(storeDel);
+          cookieClear(API.roleHint);
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -1854,6 +1863,12 @@
     if (!match) throw new Error('That code does not match this phone number.');
     API._otp = null;
     const want = role || 'customer';
+    if (want === 'customer' && API._pendingPassword) {
+      const row = API._pendingPassword;
+      API._pendingPassword = null;
+      enterMapped(row);
+      return API.attachWhatsApp(phone);
+    }
     if (want === 'customer' && API.user && sameRole(API.user.role, 'customer')) {
       return API.attachWhatsApp(phone);
     }
@@ -2039,6 +2054,14 @@
     return API.user;
   }
 
+  function isPasswordOnlyUnverified(row) {
+    if (!row) return false;
+    if (API.isWhatsAppVerified(row)) return false;
+    const secret = pinSecret(row.pin);
+    if (!secret || secret === 'google' || secret === 'otp' || secret === 'wa') return false;
+    return true;
+  }
+
   API.signInPassword = async function (id, password, role) {
     const want = roleTag(role || API.roleHint || 'customer');
     const email = String(id || '').trim().toLowerCase();
@@ -2053,13 +2076,21 @@
       row = await lookupPhone(phone, want);
     }
     const who = want === 'shop' ? 'Shop' : want === 'rider' ? 'Rider' : 'User';
-    if (!row) throw new Error('No ' + who + ' account for this login. Sign up, use Google, or sign in with WhatsApp.');
+    if (!row) {
+      const err = new Error('These are not ' + who + ' credentials. Sign up to create an account.');
+      err.code = 'NO_ACCOUNT';
+      throw err;
+    }
     const secret = pinSecret(row.pin);
     if (secret === 'google') throw new Error('This account uses Google. Tap Continue with Google.');
     if (secret === 'otp' || secret === 'wa' || !secret) {
       throw new Error('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
     if (secret !== password) throw new Error('Wrong email, phone, or password.');
+    if (want === 'customer' && !API.isWhatsAppVerified(row)) {
+      API._pendingPassword = row;
+      return { next: 'whatsapp', email: row.email || '', name: row.name || '' };
+    }
     return enterMapped(row);
   };
 
@@ -2081,8 +2112,8 @@
       role: 'customer',
       address: 'Sri Lanka',
     });
-    enterMapped(row);
-    return { ok: true, next: 'app', user: API.user };
+    API._pendingPassword = row;
+    return { ok: true, next: 'whatsapp', email: email, name: name };
   };
 
   API.attachWhatsApp = async function (phone) {

@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19s" />
-  <link rel="stylesheet" href="/css/ui.css?v=19s" />
-  <link rel="stylesheet" href="/css/track.css?v=19s" />
-  <link rel="stylesheet" href="/css/qb.css?v=19s" />
+  <link rel="stylesheet" href="/css/app.css?v=19t" />
+  <link rel="stylesheet" href="/css/ui.css?v=19t" />
+  <link rel="stylesheet" href="/css/track.css?v=19t" />
+  <link rel="stylesheet" href="/css/qb.css?v=19t" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19s"></script>
-  <script src="/js/api.js?v=19s"></script>
-  <script src="/js/maps.js?v=19s"></script>
-  <script src="/js/track-ui.js?v=19s"></script>
+  <script src="/js/live.js?v=19t"></script>
+  <script src="/js/api.js?v=19t"></script>
+  <script src="/js/maps.js?v=19t"></script>
+  <script src="/js/track-ui.js?v=19t"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -569,7 +569,7 @@
           <div class="qb-tag">Good Food, Fast Delivery</div>
         </div>
         <h1>Welcome Back 👋</h1>
-        <p class="sub">Google, WhatsApp, or email &amp; password to enter. WhatsApp once before Place Order if this account has not verified yet.</p>
+        <p class="sub">Sign in with an existing User account. Unknown email &amp; password go to Sign Up. Unverified accounts must confirm WhatsApp before the feed.</p>
         <div class="qb-field"><span class="ico">${SVG.mail}</span><input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" /></div>
         <div class="qb-field"><span class="ico">${SVG.lock}</span><input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
         <button class="qb-forgot" type="button">Forgot Password?</button>
@@ -585,7 +585,7 @@
       const r = state.regRole;
       return `<div class="qb-reg">
         <h1>Create Account</h1>
-        <p class="sub">Join QuickBite. Same number can be User, Shop, and Rider — not two accounts in the same role.</p>
+        <p class="sub">${state.reg._note ? esc(state.reg._note) : 'Join QuickBite. Same number can be User, Shop, and Rider — not two accounts in the same role.'}</p>
         <div class="role-tabs">
           <button class="${r==='customer'?'on':''}" data-regrole="customer">Customer</button>
           <button class="${r==='shop'?'on':''}" data-regrole="shop">Shop Owner</button>
@@ -1249,8 +1249,20 @@
         signin.disabled = true;
         try {
           if (String(id).includes('@')) {
+            if (!String(pw || '').trim()) {
+              if (err) err.textContent = 'Enter your password.';
+              signin.disabled = false;
+              return;
+            }
             signin.textContent = 'Signing in…';
-            await API.signInPassword(id, pw);
+            const out = await API.signInPassword(id, pw);
+            if (out && out.next === 'whatsapp') {
+              state.wa = { open: true, step: 'phone', phone: '', err: '', mode: 'login' };
+              signin.disabled = false;
+              signin.textContent = 'Sign In';
+              render();
+              return;
+            }
             state.gate = 'app';
             state.tab = 'home';
             state.screen = 'home';
@@ -1260,7 +1272,16 @@
           signin.textContent = 'Sending code…';
           await startOtp(id);
         } catch (e) {
-          if (err) err.textContent = e.message;
+          const msg = (e && e.message) || 'Could not sign in';
+          if (e && (e.code === 'NO_ACCOUNT' || /not .* credentials/i.test(msg))) {
+            state.reg.email = String(id).includes('@') ? String(id).trim() : state.reg.email;
+            state.reg.password = pw;
+            state.reg._note = msg;
+            state.gate = 'register';
+            render();
+            return;
+          }
+          if (err) err.textContent = msg;
           signin.disabled = false;
           signin.textContent = 'Sign In';
         }
@@ -1310,6 +1331,13 @@
           if (out.app === 'shop' || out.app === 'rider') {
             state.downloadRole = out.app;
             state.gate = 'download';
+            render();
+            return;
+          }
+          if (out.next === 'whatsapp') {
+            state.reg._note = '';
+            state.gate = 'login';
+            state.wa = { open: true, step: 'phone', phone: state.reg.phone || '', err: '', mode: 'login' };
             render();
             return;
           }

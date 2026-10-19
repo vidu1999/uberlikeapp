@@ -265,6 +265,17 @@ class _LoginScreenState extends State<LoginScreen> {
         if (id.contains('@') || pw.trim().isNotEmpty) {
           await OrderRepository.instance.signInPassword(id, pw, role: 'shop');
           if (!mounted) return;
+          if (!OrderRepository.instance.isShopRegistered) {
+            await OrderRepository.instance.parkForRegister('shop');
+            if (!mounted) return;
+            setState(() {
+              busy = false;
+              register = true;
+              fromRegister = true;
+              error = 'Register your shop to continue.';
+            });
+            return;
+          }
           setState(() => busy = false);
           return;
         }
@@ -272,8 +283,15 @@ class _LoginScreenState extends State<LoginScreen> {
       if (widget.role == UserRole.customer && !register) {
         final id = _phone.text.trim();
         if (id.contains('@')) {
-          await OrderRepository.instance.signInPassword(id, _pw.text);
+          final next = await OrderRepository.instance.signInPassword(id, _pw.text);
           if (!mounted) return;
+          if (next == 'whatsapp') {
+            setState(() {
+              busy = false;
+              error = 'This account is not WhatsApp-verified. Continue with WhatsApp to enter.';
+            });
+            return;
+          }
           setState(() => busy = false);
           return;
         }
@@ -287,7 +305,11 @@ class _LoginScreenState extends State<LoginScreen> {
             password: _pw.text.trim(),
           );
           if (!mounted) return;
-          setState(() => busy = false);
+          setState(() {
+            busy = false;
+            register = false;
+            error = 'Account created. Continue with WhatsApp to enter.';
+          });
           return;
         }
       }
@@ -302,9 +324,18 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      final noCreds = msg.contains('not User credentials') || msg.contains('not Shop credentials');
       setState(() {
         busy = false;
-        error = e.toString().replaceFirst('Exception: ', '');
+        error = msg;
+        if (noCreds) {
+          register = true;
+          fromRegister = true;
+          if (widget.role == UserRole.customer && _phone.text.contains('@')) {
+            _email.text = _phone.text.trim();
+          }
+        }
       });
     }
   }

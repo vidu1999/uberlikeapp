@@ -921,6 +921,13 @@ class OrderRepository {
       } catch (_) {}
     }
     if (!match) return false;
+    if (role == 'customer' && _pendingPassword != null) {
+      final row = _pendingPassword!;
+      _pendingPassword = null;
+      await _enterRow(row);
+      await attachWhatsApp(phone);
+      return true;
+    }
     if (role == 'customer' && user != null && _sameRole(user!.role, 'customer')) {
       await attachWhatsApp(phone);
       return true;
@@ -1118,7 +1125,23 @@ class OrderRepository {
     await refresh();
   }
 
-  Future<void> signInPassword(String id, String password, {String role = 'customer'}) async {
+  Map<String, dynamic>? _pendingPassword;
+
+  bool _isPasswordOnlyUnverified(Map<String, dynamic>? row, [SessionUser? u]) {
+    if (row != null) {
+      if (isWhatsAppVerified(SessionUser.fromJson(row))) return false;
+      final secret = _pinSecret('${row['pin'] ?? ''}');
+      if (secret.isEmpty || secret == 'google' || secret == 'otp' || secret == 'wa') return false;
+      return true;
+    }
+    if (u == null) return false;
+    if (isWhatsAppVerified(u)) return false;
+    final secret = _pinSecret(u.pin);
+    if (secret.isEmpty || secret == 'google' || secret == 'otp' || secret == 'wa') return false;
+    return true;
+  }
+
+  Future<String> signInPassword(String id, String password, {String role = 'customer'}) async {
     await _loadSupabaseConfig();
     role = _roleTag(role);
     password = password.trim();
@@ -1135,26 +1158,23 @@ class OrderRepository {
           }
         }
       } catch (_) {}
-      if (row == null) {
-        for (final m in await _allAccounts()) {
-          if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
-            row = m;
-            break;
-          }
-        }
-      }
     } else {
       row = await _lookupPhone(id, role);
     }
     final who = role == 'shop' ? 'Shop' : role == 'rider' ? 'Rider' : 'User';
-    if (row == null) throw Exception('No $who account for this login. Sign up, use Google, or sign in with WhatsApp.');
+    if (row == null) throw Exception('These are not $who credentials. Sign up to create an account.');
     final secret = _pinSecret('${row['pin'] ?? ''}');
     if (secret == 'google') throw Exception('This account uses Google. Tap Continue with Google.');
     if (secret == 'otp' || secret == 'wa' || secret.isEmpty) {
       throw Exception('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
     if (secret != password) throw Exception('Wrong email, phone, or password.');
+    if (role == 'customer' && _isPasswordOnlyUnverified(row)) {
+      _pendingPassword = row;
+      return 'whatsapp';
+    }
     await _enterRow(row);
+    return 'app';
   }
 
   Future<void> signUpPassword({required String name, required String email, required String password}) async {
@@ -1190,11 +1210,15 @@ class OrderRepository {
     } catch (_) {
       final hit = await _lookupPhone(phone, 'customer');
       if (hit != null) {
+        if (_isPasswordOnlyUnverified(hit)) {
+          _pendingPassword = hit;
+          return;
+        }
         await _enterRow(hit);
         return;
       }
     }
-    await _enterRow(row);
+    _pendingPassword = row;
   }
 
   Future<void> attachWhatsApp(String phone) async {
@@ -1769,9 +1793,19 @@ class OrderRepository {
     if (u == null || u.id.isEmpty) return;
     try {
       final rows = await _sbGet('accounts?id=eq.${Uri.encodeComponent(u.id)}&select=*');
-      if (rows.isEmpty) return;
+      if (rows.isEmpty) {
+        userNotifier.value = null;
+        token = null;
+        await _persist();
+        return;
+      }
       final m = Map<String, dynamic>.from(rows.first as Map);
-      if (_isDemoAccountMap(m)) return;
+      if (_isDemoAccountMap(m)) {
+        userNotifier.value = null;
+        token = null;
+        await _persist();
+        return;
+      }
       var next = SessionUser.fromJson(m);
       if (next.role == 'shop') {
         final accName = (next.shopName ?? '').trim();
@@ -1795,6 +1829,12 @@ class OrderRepository {
           pin: next.pin,
           photo: next.photo ?? u.photo,
         ));
+      }
+      if ((next.role == 'customer' || next.role == 'user') && _isPasswordOnlyUnverified(null, next)) {
+        userNotifier.value = null;
+        token = null;
+        await _persist();
+        return;
       }
       userNotifier.value = next;
       await _persist();
