@@ -356,6 +356,10 @@
   const DEMO_SHOP_IDS = ['SHOP_1','SHOP_2','SHOP_3','SHOP_4','SHOP_5','SHOP_6','SHOP_7','SHOP_8','SHOP_9','SHOP_10','SHOP_11'];
   const DEMO_ACCOUNT_IDS = ['USER_1','USER_2','SHOP_STAFF','RIDER_77'];
   const DEMO_PHONES = ['0771234567','0771112222','0772223333','0775556666'];
+  const DEMO_ORDER_IDS = ['ORD-1001','ORD-1002','ORD-1003','ORD-1004','ORD-NONE'];
+  const DEMO_ITEM_IDS = [];
+  for (let i = 1; i <= 33; i++) DEMO_ITEM_IDS.push('I' + i);
+  const DEMO_SHOP_NAMES = ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop'];
 
   function isDemoShop(id) {
     return DEMO_SHOP_IDS.indexOf(String(id || '')) >= 0;
@@ -723,6 +727,19 @@
             storeSet(k, JSON.stringify(p));
           }
         } catch (_) {}
+        return;
+      }
+      if (/^(sd_|qb_)/.test(k)) {
+        try {
+          const raw = storeGet(k);
+          if (!raw) return;
+          const data = JSON.parse(raw);
+          const u = data && data.user ? data.user : data;
+          if (u && typeof u === 'object' && isDemoShopName(u.shopName)) {
+            u.shopName = '';
+            storeSet(k, JSON.stringify(data && data.user ? data : u));
+          }
+        } catch (_) {}
       }
     });
     if (API.user && isDemoShopName(API.user.shopName)) API.user.shopName = '';
@@ -982,26 +999,33 @@
   }
 
   async function wipeDemo() {
-    if (API._wipedDemo || !sbConfigured()) return;
-    API._wipedDemo = true;
     purgeLocalDemoStores();
+    if (!sbConfigured()) return;
+    if ((API._demoWipeTries || 0) > 2) return;
+    API._demoWipeTries = (API._demoWipeTries || 0) + 1;
     const shopsIn = DEMO_SHOP_IDS.map((id) => '"' + id + '"').join(',');
+    const itemsIn = DEMO_ITEM_IDS.map((id) => '"' + id + '"').join(',');
+    const accIn = DEMO_ACCOUNT_IDS.map((id) => '"' + id + '"').join(',');
+    const phonesIn = DEMO_PHONES.map((p) => '"' + p + '"').join(',');
+    const ordersIn = DEMO_ORDER_IDS.map((id) => '"' + id + '"').join(',');
     const paths = [
-      'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
-      'orders?id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'messages?order_id=in.(' + ordersIn + ')',
+      'orders?id=in.(' + ordersIn + ')',
       'orders?shop_id=in.(' + shopsIn + ')',
       'orders?user_id=in.("USER_1","USER_2")',
+      'orders?customer_phone=in.(' + phonesIn + ')',
       'menu_items?shop_id=in.(' + shopsIn + ')',
+      'menu_items?id=in.(' + itemsIn + ')',
       'shops?id=in.(' + shopsIn + ')',
-      'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
-      'accounts?phone=in.("0771234567","0771112222","0772223333","0775556666")',
+      'accounts?id=in.(' + accIn + ')',
+      'accounts?phone=in.(' + phonesIn + ')',
+      'otp_codes?phone=in.(' + phonesIn + ')',
     ];
     for (let i = 0; i < paths.length; i++) {
       try { await sbSend(paths[i], 'DELETE'); } catch (_) {}
     }
-    const demoTitles = ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop'];
-    for (let i = 0; i < demoTitles.length; i++) {
-      try { await sbSend('orders?shop_name=eq.' + encodeURIComponent(demoTitles[i]), 'PATCH', { shop_name: '' }); } catch (_) {}
+    for (let i = 0; i < DEMO_SHOP_NAMES.length; i++) {
+      try { await sbSend('orders?shop_name=eq.' + encodeURIComponent(DEMO_SHOP_NAMES[i]), 'PATCH', { shop_name: '' }); } catch (_) {}
     }
     clearAccCache();
   }
@@ -2671,8 +2695,11 @@
     return msg;
   };
 
-  API.reset = function () {
-    return getJSON('/api/reset', { method: 'POST' }).then(() => API.refresh());
+  API.reset = async function () {
+    API._demoWipeTries = 0;
+    await wipeDemo();
+    try { await getJSON('/api/reset', { method: 'POST' }); } catch (_) {}
+    return API.refresh();
   };
 
   API.shopOf = shopOf;

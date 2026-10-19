@@ -51,10 +51,10 @@ for (const [orderId, list] of Object.entries(snap.messages)) {
   }
 }
 
-const sql = `-- QuickBite / SwiftDrop — Supabase schema + DEMO DATA
+const sql = `-- QuickBite / SwiftDrop — Supabase schema (real accounts only)
 -- Paste into SQL Editor and Run:
 -- https://supabase.com/dashboard/project/_/sql
--- Safe to re-run: fills an empty database, does not wipe live orders.
+-- Safe to re-run: wipes demo catalog/accounts/tickets, keeps live shops and orders.
 
 create table if not exists app_state (
   id text primary key,
@@ -180,7 +180,7 @@ create policy "messages update" on messages for update using (true);
 
 grant all on table app_state, shops, menu_items, accounts, orders, messages to anon, authenticated, service_role;
 
--- Demo snapshot (shops, items, accounts, orders). Only fills empty app_state.
+-- Empty snapshot. No demo catalog.
 insert into app_state (id, payload, updated_at)
 values ('main', ${jsonLit(snap)}, now())
 on conflict (id) do update

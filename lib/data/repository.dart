@@ -1429,22 +1429,27 @@ class OrderRepository {
     }).timeout(const Duration(seconds: 8));
   }
 
-  bool _wipedDemo = false;
+  int _demoWipeTries = 0;
   Future<void> _wipeDemo() async {
-    if (_wipedDemo) return;
-    _wipedDemo = true;
     await _purgeDemoPrefs();
+    if (_demoWipeTries > 2) return;
+    _demoWipeTries++;
     const shopsIn =
         '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
-    const paths = [
+    final itemsIn = List.generate(33, (i) => '"I${i + 1}"').join(',');
+    const phonesIn = '"0771234567","0771112222","0772223333","0775556666"';
+    final paths = [
       'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
       'orders?id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
       'orders?shop_id=in.($shopsIn)',
       'orders?user_id=in.("USER_1","USER_2")',
+      'orders?customer_phone=in.($phonesIn)',
       'menu_items?shop_id=in.($shopsIn)',
+      'menu_items?id=in.($itemsIn)',
       'shops?id=in.($shopsIn)',
       'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
-      'accounts?phone=in.("0771234567","0771112222","0772223333","0775556666")',
+      'accounts?phone=in.($phonesIn)',
+      'otp_codes?phone=in.($phonesIn)',
     ];
     for (final p in paths) {
       try {

@@ -11,6 +11,8 @@ const DEMO_SHOP_IDS = [
 const DEMO_ACCOUNT_IDS = ['USER_1', 'USER_2', 'SHOP_STAFF', 'RIDER_77'];
 const DEMO_PHONES = ['0771234567', '0771112222', '0772223333', '0775556666'];
 const DEMO_ORDER_IDS = ['ORD-1001', 'ORD-1002', 'ORD-1003', 'ORD-1004', 'ORD-NONE'];
+const DEMO_ITEM_IDS = Array.from({ length: 33 }, (_, i) => 'I' + (i + 1));
+const DEMO_SHOP_NAMES = ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop'];
 
 function demoOrders() {
   return [];
@@ -91,4 +93,6 @@ module.exports = {
   DEMO_ACCOUNT_IDS,
   DEMO_PHONES,
   DEMO_ORDER_IDS,
+  DEMO_ITEM_IDS,
+  DEMO_SHOP_NAMES,
 };

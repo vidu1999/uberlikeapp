@@ -364,6 +364,50 @@ async function countRows(table) {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
+function demoWipePaths() {
+  const shopsIn = seed.DEMO_SHOP_IDS.map((id) => '"' + id + '"').join(',');
+  const itemsIn = seed.DEMO_ITEM_IDS.map((id) => '"' + id + '"').join(',');
+  const accIn = seed.DEMO_ACCOUNT_IDS.map((id) => '"' + id + '"').join(',');
+  const phonesIn = seed.DEMO_PHONES.map((p) => '"' + p + '"').join(',');
+  const ordersIn = seed.DEMO_ORDER_IDS.map((id) => '"' + id + '"').join(',');
+  return [
+    'messages?order_id=in.(' + ordersIn + ')',
+    'orders?id=in.(' + ordersIn + ')',
+    'orders?shop_id=in.(' + shopsIn + ')',
+    'orders?user_id=in.("USER_1","USER_2")',
+    'orders?customer_phone=in.(' + phonesIn + ')',
+    'menu_items?shop_id=in.(' + shopsIn + ')',
+    'menu_items?id=in.(' + itemsIn + ')',
+    'shops?id=in.(' + shopsIn + ')',
+    'accounts?id=in.(' + accIn + ')',
+    'accounts?phone=in.(' + phonesIn + ')',
+    'otp_codes?phone=in.(' + phonesIn + ')',
+  ];
+}
+
+async function wipeDemo() {
+  if (name() !== 'supabase') return { ok: false, skipped: true };
+  const report = [];
+  for (const p of demoWipePaths()) {
+    try {
+      await rest(p, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      report.push({ path: p, ok: true });
+    } catch (err) {
+      report.push({ path: p, ok: false, error: String((err && err.message) || err).slice(0, 120) });
+    }
+  }
+  for (const title of seed.DEMO_SHOP_NAMES) {
+    try {
+      await rest('orders?shop_name=eq.' + encodeURIComponent(title), {
+        method: 'PATCH',
+        headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop_name: '' }),
+      });
+    } catch (_) {}
+  }
+  return { ok: true, report };
+}
+
 async function wipeAll() {
   if (name() !== 'supabase') throw new Error('Supabase is not configured');
   const steps = [
@@ -403,6 +447,7 @@ module.exports = {
   save,
   info,
   ensureSeed,
+  wipeDemo,
   wipeAll,
   supabaseUrl,
   anonKey,

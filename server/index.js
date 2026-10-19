@@ -428,16 +428,16 @@ async function handleApi(req, res, url) {
   }
 
   if (pathname === '/api/reset' && req.method === 'POST') {
-    shops = seed.shops.map((s) => ({ ...s }));
-    items = seed.items.map((i) => ({ ...i }));
-    accounts = seed.accounts.map((a) => ({ ...a }));
+    shops = [];
+    items = [];
+    accounts = [];
     orders = [];
     messages = {};
     seq = 1000;
-    seedDemoIfEmpty();
+    try { await db.wipeDemo(); } catch (_) {}
     await persist();
     broadcast();
-    json(res, 200, { ok: true });
+    json(res, 200, { ok: true, demo: false });
     return;
   }
 
@@ -752,12 +752,12 @@ async function boot() {
   load();
   dbReady.db = db.name();
   try {
-    const ok = await hydrateFromCloud({ force: true, seedIfEmpty: true });
+    try { await db.wipeDemo(); } catch (_) {}
+    const ok = await hydrateFromCloud({ force: true, seedIfEmpty: false });
     if (ok) {
       console.log('Database: supabase tables (' + shops.length + ' shops, ' + items.length + ' items, ' + orders.length + ' orders)');
     } else if (dbReady.db !== 'local') {
-      console.log('Database: ' + dbReady.db + ' configured but empty — pushing demo seed');
-      await persist();
+      console.log('Database: ' + dbReady.db + ' configured — live rows only, no demo seed');
     } else {
       console.log('Database: local JSON (set SUPABASE_URL + SUPABASE_KEY in .env)');
     }

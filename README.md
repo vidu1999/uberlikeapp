@@ -71,8 +71,7 @@ cp .env.example .env
 ```
 
 1. Create a free project at [supabase.com](https://supabase.com)
-2. SQL Editor → paste `server/schema.sql` → Run  
-   Creates tables **and demo rows**: 11 shops, 33 dishes, 4 accounts, orders `ORD-1001`–`ORD-1004`.
+2. SQL Editor → paste `server/schema.sql` → Run. Creates tables only (no demo catalog).
 3. Settings → API → copy **Project URL** + **anon key** into `.env`:
 
 ```
@@ -81,8 +80,7 @@ SUPABASE_KEY=eyJ...anon or service_role
 SUPABASE_ANON_KEY=eyJ...anon
 ```
 
-4. Optional: `node server/push-seed.js` to upsert demo rows without re-running SQL.
-5. Restart the server. `/api/health` must show `"db":"supabase"` and `"cloud":true`. `/api/config` exposes the URL so the three apps query `/rest/v1/shops` directly.
+4. Restart the server. `/api/health` must show `"db":"supabase"` and `"cloud":true`. `/api/config` exposes the URL so the three apps query `/rest/v1/shops` directly.
 
 Also add `SUPABASE_URL` and `SUPABASE_KEY` as GitHub Actions secrets (and on Render) so deploys keep using the same database.
 

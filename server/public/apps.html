@@ -17,8 +17,7 @@
         <p>Three live apps on one backend — User, Shop, and Rider. Browse shops, run the kitchen, and deliver on a live map until the order is complete.</p>
       </div>
       <div>
-        <button class="btn" id="reset">Reset demo</button>
-        <a class="btn green" href="/" style="text-decoration:none;display:inline-block;margin-left:8px">Website</a>
+        <a class="btn green" href="/" style="text-decoration:none;display:inline-block">Website</a>
         <a class="btn" href="https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-left:8px">Get APKs</a>
       </div>
     </div>
@@ -57,15 +56,14 @@
       <div class="feed" id="feed"><div>Waiting for orders…</div></div>
     </div>
   </div>
-  <script src="/js/live.js?v=19h"></script>
-  <script src="/js/api.js?v=19h"></script>
+  <script src="/js/live.js?v=19i"></script>
+  <script src="/js/api.js?v=19i"></script>
   <script>
     document.getElementById('apiUrl').textContent = location.origin;
     document.getElementById('copy').onclick = async () => {
       try { await navigator.clipboard.writeText(location.origin); document.getElementById('copy').textContent = 'Copied'; }
       catch (_) { prompt('Copy', location.origin); }
     };
-    document.getElementById('reset').onclick = () => API.reset();
     fetch('/api/health').then((r) => r.json()).then((h) => {
       const el = document.getElementById('dbStatus');
       if (!el) return;
