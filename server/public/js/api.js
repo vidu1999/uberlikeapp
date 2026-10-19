@@ -815,6 +815,7 @@
   API.isShopRegistered = function () {
     const u = API.user;
     if (!u || !sameRole(u.role, 'shop')) return false;
+    if (isPlaceholderPhone(u.phone)) return false;
     const sid = u.shopId || u.shop_id || (u.phone && shopIdFor(u.phone)) || '';
     if (!sid || isDemoShop(sid)) return false;
     const shop = (API.shops || []).find((s) => s.id === sid);
@@ -829,7 +830,7 @@
 
   API.parkForRegister = function (role) {
     const u = API.user;
-    const phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone(role)) || '';
+    const phone = (u && u.phone && !isPlaceholderPhone(u.phone)) ? u.phone : '';
     API.user = null;
     API.token = null;
     try {
@@ -1047,6 +1048,7 @@
       if (!a || !a.id || isDemoAccount(a)) return;
       if (phoneKey(a.phone) !== key && a.id !== id) return;
       if (!sameRole(a.role, want)) return;
+      if (/^07\d{8}$/.test(n) && isPlaceholderPhone(a.phone) && a.id !== id) return;
       byId[a.id] = a;
     }
     if (sbConfigured()) {
@@ -1063,8 +1065,13 @@
     const list = Object.keys(byId).map(function (k) { return byId[k]; });
     if (!list.length) return null;
     const keep = byId[id] || list[0];
+    const keepEmail = String(keep.email || '').trim().toLowerCase();
     for (let i = 0; i < list.length; i++) {
       if (list[i].id === keep.id) continue;
+      const extraEmail = String(list[i].email || '').trim().toLowerCase();
+      if (keepEmail && extraEmail && keepEmail !== extraEmail) continue;
+      if (isPlaceholderPhone(keep.phone) || isPlaceholderPhone(list[i].phone)) continue;
+      if (String(list[i].id).indexOf('_e_') >= 0 && extraEmail && extraEmail !== keepEmail) continue;
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(list[i].id), 'DELETE'); } catch (_) {}
     }
     if (list.length > 1) clearAccCache();
@@ -1412,6 +1419,14 @@
     const taken = await lookupPhone(phone, role);
     let row = taken || null;
     if (row && row.shopId && !row.shop_id) row.shop_id = row.shopId;
+    if (row && role === 'shop') {
+      const p0 = pendingShop() || {};
+      if (p0.shopName || p0.ownerName) {
+        const pe = String(p0.email || '').trim().toLowerCase();
+        const ee = String(row.email || '').trim().toLowerCase();
+        if (!(pe && ee && pe === ee)) throw alreadyThisRoleError('shop');
+      }
+    }
     if (!row) {
       try {
         const byId = await sbGet('accounts?id=eq.' + encodeURIComponent(accountIdFor(phone, role)) + '&select=*');
@@ -1427,6 +1442,7 @@
         throw new Error('Register your shop first.');
       }
       const shopId = shopIdFor(phone);
+      const pendEmail = String(p.email || rec.email || '').trim().toLowerCase();
       const lat = finiteNum(p.lat != null ? p.lat : rec.lat);
       const lng = finiteNum(p.lng != null ? p.lng : rec.lng);
       const address = String(p.address || rec.address || '').trim();
@@ -1437,37 +1453,55 @@
         const existing = await sbGet('shops?id=eq.' + encodeURIComponent(shopId) + '&select=*');
         if (existing && existing[0]) shop = existing[0];
       } catch (_) {}
+      if (shop) {
+        let allowed = false;
+        try {
+          const owners = asRows(await sbGet('accounts?shop_id=eq.' + encodeURIComponent(shopId) + '&select=*'));
+          const shops = owners.filter(function (a) { return a && sameRole(a.role, 'shop') && !isDemoAccount(a); });
+          if (!shops.length) allowed = false;
+          else {
+            allowed = shops.some(function (a) {
+              const e = String(a.email || '').trim().toLowerCase();
+              if (pendEmail && e && e === pendEmail) return true;
+              if (normalizePhone(a.phone) === phone) return true;
+              return false;
+            });
+          }
+        } catch (_) { allowed = false; }
+        if (!allowed) throw alreadyThisRoleError('shop');
+      }
       const typed = String(p.shopName || '').trim();
       const existingName = String((shop && shop.name) || '').trim();
       let shopTitle = typed;
-      if (!shopTitle || isDemoShopName(shopTitle) || isPlaceholderShopName(shopTitle)) {
-        if (existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) shopTitle = existingName;
+      if (shop && existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) {
+        shopTitle = existingName;
       }
       if (!shopTitle || isDemoShopName(shopTitle) || isPlaceholderShopName(shopTitle)) {
         throw new Error('Enter your shop name.');
       }
-      shop = Object.assign({}, shop || {}, {
-        id: shopId,
-        name: shopTitle,
-        category: (shop && shop.category) || 'Bakery',
-        rating: (shop && shop.rating) || 5,
-        reviews: (shop && shop.reviews) || 0,
-        is_open: true,
-        lat: lat,
-        lng: lng,
-        km: 0,
-        eta: '20–35 min',
-        fee: 200,
-        hours: (shop && shop.hours) || '08:00 AM – 10:00 PM',
-        address: address,
-        image: (shop && shop.image) || '/img/shop-bakery.jpg',
-        promo: (shop && (shop.promo || shop.about)) || 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
-      });
-      try { await sbUpsert('shops', [shop]); } catch (_) {
-        try { await sbPutRow('shops', shop); } catch (_) {}
+      if (!shop) {
+        shop = {
+          id: shopId,
+          name: shopTitle,
+          category: 'Bakery',
+          rating: 5,
+          reviews: 0,
+          is_open: true,
+          lat: lat,
+          lng: lng,
+          km: 0,
+          eta: '20–35 min',
+          fee: 200,
+          hours: '08:00 AM – 10:00 PM',
+          address: address,
+          image: '/img/shop-bakery.jpg',
+          promo: 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
+        };
+        try { await sbUpsert('shops', [shop]); } catch (_) {
+          try { await sbPutRow('shops', shop); } catch (_) {}
+        }
       }
       let googleRow = null;
-      const pendEmail = String(p.email || rec.email || '').trim().toLowerCase();
       if (pendEmail && pendEmail.indexOf('@') >= 0) {
         try { googleRow = await lookupEmail(pendEmail, 'shop'); } catch (_) {}
         if (googleRow && !isPlaceholderPhone(googleRow.phone) && normalizePhone(googleRow.phone) !== phone) {
@@ -1670,13 +1704,33 @@
     }
     if (want === 'shop' || want === 'rider') {
       const existing = await lookupPhone(phone, want);
+      const pShop = pendingShop() || {};
+      const pRide = pendingRider() || {};
+      const registeringShop = want === 'shop' && !!(pShop.shopName || pShop.ownerName);
+      const registeringRider = want === 'rider' && !isPlaceholderName(pRide.name);
       if (existing) {
+        if (registeringShop) {
+          const pe = String(pShop.email || '').trim().toLowerCase();
+          const ee = String(existing.email || '').trim().toLowerCase();
+          if (pe && ee && pe === ee) {
+            persistVerified({ role: want, phone: phone });
+            return enterAccount(want, phone);
+          }
+          throw alreadyThisRoleError(want);
+        }
+        if (registeringRider) {
+          const pe = String(pRide.email || '').trim().toLowerCase();
+          const ee = String(existing.email || '').trim().toLowerCase();
+          if (pe && ee && pe === ee) return enterAccount(want, phone);
+          throw alreadyThisRoleError(want);
+        }
         API.setPendingShop(null);
         API.setPendingRider(null);
         clearVerified(want);
         return enterAccount(want, phone);
       }
       persistVerified({ role: want, phone: phone });
+      if (registeringShop || registeringRider) return enterAccount(want, phone);
       return { needsRegister: true, phone: phone, role: want };
     }
     return enterAccount(want, phone);

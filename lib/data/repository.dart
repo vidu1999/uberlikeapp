@@ -524,6 +524,7 @@ class OrderRepository {
       if (_isDemoAccountMap(m) || '${m['id']}'.isEmpty) return;
       if (_phoneKey('${m['phone'] ?? ''}') != key && '${m['id']}' != id) return;
       if (!_sameRole('${m['role']}', role)) return;
+      if (RegExp(r'^07\d{8}$').hasMatch(n) && _isPlaceholderPhone('${m['phone'] ?? ''}') && '${m['id']}' != id) return;
       byId['${m['id']}'] = m;
     }
     try {
@@ -544,8 +545,13 @@ class OrderRepository {
     }
     if (byId.isEmpty) return null;
     final keep = byId[id] ?? byId.values.first;
+    final keepEmail = '${keep['email'] ?? ''}'.trim().toLowerCase();
     for (final extra in byId.values) {
       if ('${extra['id']}' == '${keep['id']}') continue;
+      final extraEmail = '${extra['email'] ?? ''}'.trim().toLowerCase();
+      if (keepEmail.isNotEmpty && extraEmail.isNotEmpty && keepEmail != extraEmail) continue;
+      if (_isPlaceholderPhone('${keep['phone'] ?? ''}') || _isPlaceholderPhone('${extra['phone'] ?? ''}')) continue;
+      if ('${extra['id']}'.contains('_e_') && extraEmail.isNotEmpty && extraEmail != keepEmail) continue;
       try {
         await _sbDelete('accounts?id=eq.${extra['id']}');
       } catch (_) {}
@@ -582,6 +588,16 @@ class OrderRepository {
           if (!_isDemoAccountMap(acc) && _sameRole('${acc['role']}', role)) user = acc;
         }
       } catch (_) {}
+    }
+    if (user != null && role == 'shop') {
+      final p0 = pendingShop;
+      if (p0 != null && ((p0['shopName'] ?? '').isNotEmpty || (p0['ownerName'] ?? '').isNotEmpty)) {
+        final pe = (p0['email'] ?? '').trim().toLowerCase();
+        final ee = '${user['email'] ?? ''}'.trim().toLowerCase();
+        if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+          throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
+        }
+      }
     }
     var createdShop = false;
     if (user == null && role == 'shop') {
@@ -624,20 +640,36 @@ class OrderRepository {
       try {
         final existing = await _sbGet('shops?id=eq.$shopId&select=*');
         if (existing.isNotEmpty) {
-          final ex = Map<String, dynamic>.from(existing.first as Map);
-          final exName = '${ex['name'] ?? ''}'.trim();
-          shop = {...ex, ...shop};
-          final owner = (p['ownerName'] ?? '').trim().toLowerCase();
-          if (exName.isNotEmpty &&
-              exName.toLowerCase() != owner &&
-              !_isPlaceholderShopName(exName) &&
-              !_isDemoShopName(exName)) {
-            shop['name'] = exName;
+          final pendEmail = (p['email'] ?? '').trim().toLowerCase();
+          var allowed = false;
+          try {
+            final owners = await _sbGet('accounts?shop_id=eq.$shopId&select=*');
+            for (final raw in owners) {
+              final m = Map<String, dynamic>.from(raw as Map);
+              if (!_sameRole('${m['role']}', 'shop') || _isDemoAccountMap(m)) continue;
+              final e = '${m['email'] ?? ''}'.trim().toLowerCase();
+              if (pendEmail.isNotEmpty && e == pendEmail) {
+                allowed = true;
+                break;
+              }
+              if (_normPhone('${m['phone'] ?? ''}') == phone) {
+                allowed = true;
+                break;
+              }
+            }
+          } catch (_) {}
+          if (!allowed) {
+            throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
           }
+          final ex = Map<String, dynamic>.from(existing.first as Map);
+          shop = {...shop, ...ex};
+        } else {
+          await _sbUpsert('shops', [shop]);
+          await _lockShopTitle(phone, '${shop['name']}');
         }
-        await _sbUpsert('shops', [shop]);
-        await _lockShopTitle(phone, '${shop['name']}');
-      } catch (_) {}
+      } catch (e) {
+        if (e is Exception && e.toString().contains('already has a Shop')) rethrow;
+      }
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
       final pendEmail = (p['email'] ?? '').trim().toLowerCase();
       Map<String, dynamic>? googleRow;
@@ -895,12 +927,30 @@ class OrderRepository {
     }
     if (role == 'shop' || role == 'rider') {
       final existing = await _lookupPhone(phone, role);
+      final registeringShop = role == 'shop' &&
+          pendingShop != null &&
+          ((pendingShop!['shopName'] ?? '').isNotEmpty || (pendingShop!['ownerName'] ?? '').isNotEmpty);
+      final registeringRider = role == 'rider' && !_isPlaceholderName(pendingRider?['name']);
       if (existing != null) {
-        needsShopRegister = false;
-        needsRiderRegister = false;
-        verifiedPhone = null;
-        pendingShop = null;
-        await _clearVerified();
+        if (registeringShop) {
+          final pe = (pendingShop!['email'] ?? '').trim().toLowerCase();
+          final ee = '${existing['email'] ?? ''}'.trim().toLowerCase();
+          if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+            throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
+          }
+        } else if (registeringRider) {
+          final pe = (pendingRider?['email'] ?? '').trim().toLowerCase();
+          final ee = '${existing['email'] ?? ''}'.trim().toLowerCase();
+          if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+            throw Exception('This number already has a Rider account. Login instead — you cannot create another Rider with the same number. You can still use this number for the other apps.');
+          }
+        } else {
+          needsShopRegister = false;
+          needsRiderRegister = false;
+          verifiedPhone = null;
+          pendingShop = null;
+          await _clearVerified();
+        }
         await _enterAccount(role, phone);
         return true;
       }
@@ -1224,6 +1274,7 @@ class OrderRepository {
   bool get isShopRegistered {
     final u = user;
     if (u == null || u.role != 'shop') return false;
+    if (_isPlaceholderPhone(u.phone)) return false;
     final sid = (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null') ? u.shopId! : (u.phone.isNotEmpty ? _shopIdFor(u.phone) : '');
     if (sid.isEmpty || _isDemoShop(sid)) return false;
     for (final s in Catalog.shops) {

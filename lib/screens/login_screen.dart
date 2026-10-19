@@ -170,7 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'lng': '$_shopLng',
         };
         final vp = OrderRepository.instance.verifiedPhone ?? '';
-        if (!_isFakePhone(vp)) {
+        if (_email.text.trim().isEmpty && !_isFakePhone(vp) && !_isFakePhone(_phone.text)) {
           await OrderRepository.instance.completeShopRegister();
           if (!mounted) return;
           setState(() => busy = false);
@@ -233,6 +233,21 @@ class _LoginScreenState extends State<LoginScreen> {
             error = 'Enter the shop address.';
           });
           return;
+        }
+        final taken = await OrderRepository.instance.findAccount('shop', _phone.text.trim());
+        if (!mounted) return;
+        if (taken != null) {
+          final te = '${taken['email'] ?? ''}'.trim().toLowerCase();
+          final pe = _email.text.trim().toLowerCase();
+          final tp = '${taken['phone'] ?? ''}';
+          final fake = _isFakePhone(tp);
+          if (!fake && (pe.isEmpty || te.isEmpty || te != pe)) {
+            setState(() {
+              busy = false;
+              error = 'This number already has a Shop account. Login instead — you cannot create another Shop with the same number.';
+            });
+            return;
+          }
         }
         OrderRepository.instance.pendingShop = {
           'shopName': _shopName.text.trim(),

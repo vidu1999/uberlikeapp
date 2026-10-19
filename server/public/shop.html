@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19l" />
-  <link rel="stylesheet" href="/css/ui.css?v=19l" />
-  <link rel="stylesheet" href="/css/track.css?v=19l" />
+  <link rel="stylesheet" href="/css/app.css?v=19m" />
+  <link rel="stylesheet" href="/css/ui.css?v=19m" />
+  <link rel="stylesheet" href="/css/track.css?v=19m" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19l"></script>
-  <script src="/js/api.js?v=19l"></script>
-  <script src="/js/maps.js?v=19l"></script>
-  <script src="/js/track-ui.js?v=19l"></script>
-  <script src="/js/otp-login.js?v=19l"></script>
+  <script src="/js/live.js?v=19m"></script>
+  <script src="/js/api.js?v=19m"></script>
+  <script src="/js/maps.js?v=19m"></script>
+  <script src="/js/track-ui.js?v=19m"></script>
+  <script src="/js/otp-login.js?v=19m"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -765,9 +765,12 @@
       if (gName && !state.reg.ownerName) state.reg.ownerName = gName;
       if (gEmail) state.reg.email = gEmail;
       if (gPhoto) state.reg.photo = gPhoto;
-      let phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || state.reg.phone || state.loginId || '';
-      if (API.normalizePhone) phone = API.normalizePhone(phone);
-      if (!isRealWaPhone(phone)) phone = '';
+      let phone = '';
+      if (!gEmail) {
+        phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || '';
+        if (API.normalizePhone) phone = API.normalizePhone(phone);
+        if (!isRealWaPhone(phone)) phone = '';
+      }
       const rec = (phone && API.recallShopProfile) ? API.recallShopProfile(phone) : null;
       if (rec) {
         if (!state.reg.shopName) state.reg.shopName = rec.shopName || '';
@@ -892,6 +895,8 @@
         try {
           const profile = await API.googleSignIn();
           await API.signInGoogle(profile);
+          state.loginId = '';
+          state.reg.phone = '';
           render();
         } catch (ex) {
           if (err) err.textContent = ex.message || 'Google sign-in failed';
@@ -953,6 +958,24 @@
           if (err) err.textContent = 'Enter a valid WhatsApp number (07X XXX XXXX).';
           return;
         }
+        if (API.findAccount) {
+          try {
+            const taken = await API.findAccount('shop', phone);
+            if (taken && !(API.isPlaceholderPhone && API.isPlaceholderPhone(taken.phone))) {
+              const te = String(taken.email || '').toLowerCase();
+              const pe = String(state.reg.email || '').toLowerCase();
+              if (!pe || !te || te !== pe) {
+                if (err) err.textContent = 'This number already has a Shop account. Login instead — you cannot create another Shop with the same number.';
+                return;
+              }
+            }
+          } catch (ex) {
+            if (ex && /already has a/i.test(String(ex.message || ''))) {
+              if (err) err.textContent = ex.message;
+              return;
+            }
+          }
+        }
         state.loginId = phone;
         API.setPendingShop({
           shopName: state.reg.shopName.trim(),
@@ -975,7 +998,7 @@
           });
         }
         state.fromReg = true;
-        const verified = API.verifiedPhone && API.verifiedPhone('shop') === phone;
+        const verified = !state.reg.email && API.verifiedPhone && API.verifiedPhone('shop') === phone;
         regBtn.disabled = true;
         regBtn.textContent = verified ? 'Saving…' : 'Sending WhatsApp…';
         try {
