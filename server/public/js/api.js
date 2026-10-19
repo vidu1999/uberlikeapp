@@ -1091,7 +1091,7 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
-    const GEN = '19r';
+    const GEN = '19s';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;

@@ -1585,7 +1585,7 @@ class OrderRepository {
   bool _wipedAll = false;
   Future<void> _oneShotEmptyDb() async {
     if (_wipedAll) return;
-    const gen = '19r';
+    const gen = '19s';
     try {
       for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);

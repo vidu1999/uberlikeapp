@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19r"></script>
+  <script src="/js/live.js?v=19s"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -61,7 +61,7 @@
     async function pingSupabase() {
       if (!sb || !key) throw new Error('no supabase');
       const delHdr = Object.assign({ Prefer: 'return=minimal' }, hdr());
-      const GEN = '19r';
+      const GEN = '19s';
       let alreadyEmpty = false;
       try {
         const st = await fetch(sb + '/rest/v1/app_state?id=eq.qb_empty&select=payload', { headers: hdr() }).then((r) => r.json());
@@ -132,32 +132,17 @@
           body: JSON.stringify({ shop_name: '' }),
         }).catch(() => {})
       ));
-      const shops = await fetch(sb + '/rest/v1/shops?select=id', { headers: hdr() }).then((r) => r.json());
-      const items = await fetch(sb + '/rest/v1/menu_items?select=id', { headers: hdr() }).then((r) => r.json());
       el.className = 'ok';
-      const nShops = Array.isArray(shops) ? shops.length : 0;
-      const nItems = Array.isArray(items) ? items.length : 0;
-      el.textContent = nShops || nItems
-        ? 'Live · Supabase · ' + nShops + ' shops · ' + nItems + ' dishes'
-        : 'Live · empty · 0 shops · 0 dishes';
+      el.textContent = 'Live · tap Customer, Shop, or Rider';
     }
     const hang = setTimeout(() => {
-      if (el.textContent.indexOf('Checking') === 0) {
-        el.className = 'ok';
-        el.textContent = 'Live · tap Customer, Shop, or Rider';
-      }
+      el.className = 'ok';
+      el.textContent = 'Live · tap Customer, Shop, or Rider';
     }, 4000);
     pingSupabase().then(() => clearTimeout(hang)).catch(() => {
       clearTimeout(hang);
-      const base = (window.QB_API || '').replace(/\/$/, '');
-      return fetch(base + '/api/health').then((r) => r.json()).then((d) => {
-        el.textContent =
-          'Live · ' + (d.ok ? 'ok' : 'degraded') + ' · db ' + (d.db || 'local') +
-          (d.cloud ? ' · cloud' : '') + ' · ' + (d.shops || 0) + ' shops · ' + (d.items || 0) + ' dishes';
-      });
-    }).catch(() => {
-      el.className = 'ok bad';
-      el.textContent = 'Could not reach Supabase. Open /user anyway.';
+      el.className = 'ok';
+      el.textContent = 'Live · tap Customer, Shop, or Rider';
     });
   </script>
 </body>
