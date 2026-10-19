@@ -33,6 +33,8 @@ class OrderRepository {
   Set<String> get favs => favsNotifier.value;
 
   String _favKey() {
+    final email = (user?.email ?? '').trim().toLowerCase();
+    if (email.isNotEmpty) return 'qb_favs_e_$email';
     final id = user?.id ?? '';
     if (id.isNotEmpty) return 'qb_favs_$id';
     final d = (user?.phone ?? '').replaceAll(RegExp(r'\D'), '');
@@ -262,6 +264,7 @@ class OrderRepository {
       shopName: u.shopName,
       email: u.email,
       pin: u.pin,
+      photo: u.photo,
     );
   }
 
@@ -699,11 +702,12 @@ class OrderRepository {
     return true;
   }
 
-  String _googlePhone(String sub) {
+  String _googlePhone(String sub, [String email = '']) {
+    final seed = '$sub|${email.toLowerCase()}';
     var d = sub.replaceAll(RegExp(r'\D'), '');
     if (d.isEmpty) {
       var n = 0;
-      for (final u in sub.codeUnits) {
+      for (final u in seed.codeUnits) {
         n = (n * 31 + u) & 0x7fffffff;
       }
       d = n.toString();
@@ -716,10 +720,22 @@ class OrderRepository {
     return '99$d';
   }
 
-  Future<void> signInWithGoogle({required String email, required String name, required String sub}) async {
+  String _emailKey(String email) {
+    final s = email.trim().toLowerCase();
+    var n = 0;
+    for (final u in s.codeUnits) {
+      n = (n * 31 + u) & 0x7fffffff;
+    }
+    return n.toRadixString(36);
+  }
+
+  String _accountIdForEmail(String email, String role) => 'ACC_${_roleTag(role)}_e_${_emailKey(email)}';
+
+  Future<void> signInWithGoogle({required String email, required String name, required String sub, String? photo}) async {
     await _loadSupabaseConfig();
     email = email.trim().toLowerCase();
     name = name.trim();
+    photo = (photo ?? '').trim();
     if (!email.contains('@')) throw Exception('Google did not share an email for this account.');
     const role = 'customer';
     Map<String, dynamic>? row;
@@ -742,25 +758,38 @@ class OrderRepository {
       }
     }
     if (row == null && sub.isNotEmpty) {
-      row = await _lookupPhone(_googlePhone(sub), role);
+      final byPhone = await _lookupPhone(_googlePhone(sub, email), role);
+      if (byPhone != null && '${byPhone['email'] ?? ''}'.toLowerCase() == email) row = byPhone;
     }
     if (row == null) {
-      final phone = _googlePhone(sub.isNotEmpty ? sub : email);
       row = {
-        'id': _accountIdFor(phone, role),
+        'id': _accountIdForEmail(email, role),
         'name': name.isEmpty ? email.split('@').first : name,
-        'phone': phone,
+        'phone': _googlePhone(sub, email),
         'email': email,
         'pin': 'google',
         'role': role,
         'address': 'Sri Lanka',
+        if (photo.isNotEmpty) 'vehicle': photo,
+        if (photo.isNotEmpty) 'photo': photo,
       };
       try {
         await _sbWrite('accounts', 'POST', [row]);
       } catch (_) {
-        row = await _lookupPhone(phone, role) ?? row;
+        row = await _lookupPhone(_googlePhone(sub, email), role) ?? row;
       }
+    } else {
+      final patch = <String, dynamic>{'email': email};
+      if (name.isNotEmpty) patch['name'] = name;
+      if (photo.isNotEmpty) patch['vehicle'] = photo;
+      try {
+        await _sbWrite('accounts?id=eq.${row['id']}', 'PATCH', patch);
+      } catch (_) {}
+      row.addAll(patch);
     }
+    if (photo.isNotEmpty) row['photo'] = photo;
+    if (name.isNotEmpty) row['name'] = name;
+    row['email'] = email;
     await _enterRow(row);
   }
 
@@ -871,7 +900,7 @@ class OrderRepository {
     if (existing != null) throw Exception('This email already has a User account. Sign in instead.');
     final phone = _passwordPhone(email);
     final row = <String, dynamic>{
-      'id': _accountIdFor(phone, 'customer'),
+      'id': _accountIdForEmail(email, 'customer'),
       'name': name.isEmpty ? email.split('@').first : name,
       'phone': phone,
       'email': email,
@@ -935,6 +964,7 @@ class OrderRepository {
       shopName: u.shopName,
       email: u.email,
       pin: nextPin,
+      photo: u.photo,
     );
     await _persist();
   }
@@ -1253,13 +1283,26 @@ class OrderRepository {
     return list;
   }
 
+  bool _isPlaceholderPhone(String phone) {
+    final p = _normPhone(phone);
+    if (p.isEmpty) return true;
+    if (RegExp(r'^07\d{8}$').hasMatch(p)) return false;
+    return RegExp(r'^99\d{8}$').hasMatch(p) || RegExp(r'^98\d{8}$').hasMatch(p);
+  }
+
   bool _orderMine(Order o, SessionUser? u) {
     if (u == null) return false;
     if (u.role == 'customer' || u.role == 'user') {
+      final email = (u.email ?? '').trim().toLowerCase();
+      final oEmail = (o.customerEmail ?? '').trim().toLowerCase();
+      if (!isWhatsAppVerified(u)) {
+        if (email.isNotEmpty && oEmail.isNotEmpty && email == oEmail) return true;
+        return o.userId == u.id;
+      }
       if (o.userId == u.id) return true;
       final p = _normPhone(o.customerPhone ?? '');
       final mine = _normPhone(u.phone);
-      return p.isNotEmpty && mine.isNotEmpty && (p == mine || _phoneKey(p) == _phoneKey(mine));
+      return p.isNotEmpty && mine.isNotEmpty && !_isPlaceholderPhone(mine) && (p == mine || _phoneKey(p) == _phoneKey(mine));
     }
     if (u.role == 'shop') {
       final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
@@ -1348,9 +1391,29 @@ class OrderRepository {
     if (u == null) return <dynamic>[];
     try {
       if (u.role == 'customer' || u.role == 'user') {
+        if (!isWhatsAppVerified(u)) {
+          final seen = <String>{};
+          final out = <dynamic>[];
+          Future<void> add(String q) async {
+            try {
+              for (final raw in await _sbGet(q)) {
+                final m = Map<String, dynamic>.from(raw as Map);
+                final id = '${m['id'] ?? ''}';
+                if (id.isEmpty || !seen.add(id)) continue;
+                out.add(m);
+              }
+            } catch (_) {}
+          }
+          await add('orders?user_id=eq.${Uri.encodeComponent(u.id)}&select=*');
+          final email = (u.email ?? '').trim().toLowerCase();
+          if (email.isNotEmpty) {
+            await add('orders?data->>customerEmail=eq.${Uri.encodeComponent(email)}&select=*');
+          }
+          return out;
+        }
         final parts = <String>['user_id.eq.${u.id}'];
         final p = _normPhone(u.phone);
-        if (p.isNotEmpty) parts.add('customer_phone.eq.$p');
+        if (p.isNotEmpty && !_isPlaceholderPhone(p)) parts.add('customer_phone.eq.$p');
         return await _sbGet('orders?or=(${parts.join(',')})&select=*');
       }
       if (u.role == 'shop') {
@@ -1531,6 +1594,7 @@ class OrderRepository {
       'userId': u?.id ?? '',
       'customerName': u?.name ?? 'Guest',
       'customerPhone': u?.phone ?? '',
+      'customerEmail': u?.email ?? '',
       'address': address,
       'note': note,
       'paymentMethod': paymentMethod,

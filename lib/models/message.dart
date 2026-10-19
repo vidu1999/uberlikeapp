@@ -52,6 +52,7 @@ class SessionUser {
   final String? shopName;
   final String? email;
   final String? pin;
+  final String? photo;
   const SessionUser({
     required this.id,
     required this.name,
@@ -63,9 +64,14 @@ class SessionUser {
     this.shopName,
     this.email,
     this.pin,
+    this.photo,
   });
 
-  factory SessionUser.fromJson(Map<String, dynamic> j) => SessionUser(
+  factory SessionUser.fromJson(Map<String, dynamic> j) {
+    String photo = '${j['photo'] ?? j['picture'] ?? ''}';
+    final veh = '${j['vehicle'] ?? ''}';
+    if (photo.isEmpty && (veh.startsWith('http://') || veh.startsWith('https://'))) photo = veh;
+    return SessionUser(
         id: '${j['id']}',
         name: '${j['name']}',
         phone: '${j['phone'] ?? ''}',
@@ -76,7 +82,9 @@ class SessionUser {
         shopName: (j['shopName'] ?? j['shop_name'])?.toString(),
         email: j['email']?.toString(),
         pin: j['pin']?.toString(),
+        photo: photo.isEmpty ? null : photo,
       );
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -91,5 +99,6 @@ class SessionUser {
         'shop_name': shopName,
         'email': email,
         'pin': pin,
+        'photo': photo,
       };
 }

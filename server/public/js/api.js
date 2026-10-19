@@ -276,12 +276,26 @@
     }
   }
 
+  function isHttpUrl(v) {
+    return /^https?:\/\//i.test(String(v || ''));
+  }
+  function accountPhoto(r) {
+    if (!r) return '';
+    const cands = [r.photo, r.picture, r.image, r.avatar];
+    if (isHttpUrl(r.vehicle) && sameRole(r.role, 'customer')) cands.push(r.vehicle);
+    for (let i = 0; i < cands.length; i++) {
+      if (isHttpUrl(cands[i])) return String(cands[i]);
+    }
+    return '';
+  }
   function mapAccount(r) {
     const a = { id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role, address: r.address };
     if (r.pin != null) a.pin = r.pin;
     if (r.shop_id || r.shopId) a.shopId = r.shop_id || r.shopId;
     if (r.shopName || r.shop_name) a.shopName = r.shopName || r.shop_name;
-    if (r.vehicle) a.vehicle = r.vehicle;
+    const photo = accountPhoto(r);
+    if (photo) a.photo = photo;
+    if (r.vehicle && !isHttpUrl(r.vehicle)) a.vehicle = r.vehicle;
     if (r.rating != null) a.rating = Number(r.rating);
     return a;
   }
@@ -316,6 +330,7 @@
     o.shopName = d.shopName || r.shop_name || r.shopName || '';
     o.customerName = d.customerName || r.customer_name || r.customerName || '';
     o.customerPhone = d.customerPhone || r.customer_phone || r.customerPhone || '';
+    o.customerEmail = String(d.customerEmail || d.email || r.customer_email || '').trim().toLowerCase();
     o.address = d.address || r.address || '';
     o.status = mergeStatus(r.status, d.status);
     o.items = d.items || o.items || [];
@@ -401,14 +416,29 @@
     API._accsAt = Date.now();
     return API._accs;
   }
+  function isPlaceholderPhone(phone) {
+    const p = normalizePhone(phone);
+    if (!p) return true;
+    if (/^07\d{8}$/.test(p)) return false;
+    return /^99\d{8}$/.test(p) || /^98\d{8}$/.test(p);
+  }
   function mineOrder(o, me) {
     if (!o || !me) return false;
     if (sameRole(me.role, 'customer')) {
+      const email = String(me.email || '').trim().toLowerCase();
+      const oEmail = String(o.customerEmail || o.customer_email || '').trim().toLowerCase();
+      const wa = typeof API.isWhatsAppVerified === 'function' ? API.isWhatsAppVerified(me) : /^07\d{8}$/.test(normalizePhone(me.phone));
+      if (!wa) {
+        if (email && oEmail && email === oEmail) return true;
+        if (o.userId && me.id && String(o.userId) === String(me.id)) return true;
+        if (o.user_id && me.id && String(o.user_id) === String(me.id)) return true;
+        return false;
+      }
       if (o.userId && me.id && String(o.userId) === String(me.id)) return true;
       if (o.user_id && me.id && String(o.user_id) === String(me.id)) return true;
       const p = normalizePhone(o.customerPhone || o.customer_phone || '');
       const mine = normalizePhone(me.phone);
-      if (p && mine && (p === mine || phoneKey(p) === phoneKey(mine))) return true;
+      if (p && mine && !isPlaceholderPhone(mine) && (p === mine || phoneKey(p) === phoneKey(mine))) return true;
       return false;
     }
     if (sameRole(me.role, 'shop')) {
@@ -460,9 +490,11 @@
   }
   const keptOrders = [];
   function keptStorageKey() {
-    const id = (API.user && API.user.id) || '';
-    if (id) return 'qb_kept_orders_' + id;
-    return 'qb_kept_orders_' + phoneKey((API.user && API.user.phone) || '');
+    const u = API.user || {};
+    const email = String(u.email || '').trim().toLowerCase();
+    if (email) return 'qb_kept_orders_e_' + email;
+    if (u.id) return 'qb_kept_orders_' + u.id;
+    return 'qb_kept_orders_' + phoneKey(u.phone || '');
   }
   function resetKept() {
     keptOrders.length = 0;
@@ -903,7 +935,13 @@
       const rows = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(u.id) + '&select=*'));
       if (rows[0] && !isDemoAccount(rows[0])) {
         const mapped = mapAccount(rows[0]);
+        const photo = mapped.photo || u.photo || '';
+        const name = mapped.name || u.name || '';
+        const email = mapped.email || u.email || '';
         API.user = Object.assign({}, u, mapped);
+        if (photo) API.user.photo = photo;
+        if (name) API.user.name = name;
+        if (email) API.user.email = email;
         if (sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
       }
     } catch (_) {}
@@ -914,10 +952,19 @@
     if (!me) return [];
     const tries = [];
     if (sameRole(me.role, 'customer')) {
-      const parts = [];
-      if (me.id) parts.push('user_id.eq.' + me.id);
-      phoneVariants(me.phone).forEach(function (p) { parts.push('customer_phone.eq.' + p); });
-      if (parts.length) tries.push('orders?or=(' + parts.join(',') + ')&select=*');
+      const wa = API.isWhatsAppVerified(me);
+      if (me.id) tries.push('orders?user_id=eq.' + encodeURIComponent(me.id) + '&select=*');
+      if (!wa && me.email) {
+        tries.push('orders?data->>customerEmail=eq.' + encodeURIComponent(String(me.email).toLowerCase()) + '&select=*');
+      }
+      if (wa) {
+        const parts = [];
+        if (me.id) parts.push('user_id.eq.' + me.id);
+        phoneVariants(me.phone).forEach(function (p) {
+          if (!isPlaceholderPhone(p)) parts.push('customer_phone.eq.' + p);
+        });
+        if (parts.length) tries.push('orders?or=(' + parts.join(',') + ')&select=*');
+      }
     } else if (sameRole(me.role, 'shop')) {
       const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
       if (sid) tries.push('orders?shop_id=eq.' + encodeURIComponent(sid) + '&select=*');
@@ -933,11 +980,18 @@
       });
       tries.push('orders?or=(' + parts.join(',') + ')&select=*');
     }
+    const seen = {};
+    const out = [];
+    let ok = false;
     for (let i = 0; i < tries.length; i++) {
       try {
-        return asRows(await sbGet(tries[i]));
+        asRows(await sbGet(tries[i])).forEach(function (r) {
+          if (r && r.id && !seen[r.id]) { seen[r.id] = 1; out.push(r); }
+        });
+        ok = true;
       } catch (_) {}
     }
+    if (ok) return out;
     try { return asRows(await sbGet('orders?select=*')); } catch (_) { return []; }
   }
 
@@ -1407,16 +1461,33 @@
     return enterAccount(want, phone);
   };
 
-  function googlePhone(sub) {
+  function emailKey(email) {
+    const s = String(email || '').trim().toLowerCase();
+    let n = 0;
+    for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+    return n.toString(36);
+  }
+  function accountIdForEmail(email, role) {
+    return 'ACC_' + roleTag(role) + '_e_' + emailKey(email);
+  }
+  function googlePhone(sub, email) {
+    const seed = String(sub || '') + '|' + String(email || '').toLowerCase();
     let d = String(sub || '').replace(/\D/g, '');
     if (!d) {
       let n = 0;
-      const s = String(sub || '');
-      for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+      for (let i = 0; i < seed.length; i++) n = (n * 31 + seed.charCodeAt(i)) >>> 0;
       d = String(n);
     }
     d = (d + '00000000').slice(-8);
     return '99' + d;
+  }
+  function googleProfile(raw) {
+    raw = raw || {};
+    const email = String(raw.email || raw.emailAddress || '').trim().toLowerCase();
+    const name = String(raw.name || [raw.given_name, raw.family_name].filter(Boolean).join(' ') || raw.given_name || '').trim();
+    const sub = String(raw.sub || raw.id || raw.user_id || '').trim();
+    const photo = String(raw.picture || raw.photo || raw.photoURL || raw.avatar || '').trim();
+    return { email: email, name: name, sub: sub, photo: isHttpUrl(photo) ? photo : '' };
   }
 
   async function lookupEmail(email, role) {
@@ -1453,33 +1524,38 @@
   API.parseGoogleJwt = parseJwt;
 
   API.signInGoogle = async function (profile) {
-    const email = String((profile && profile.email) || '').trim().toLowerCase();
-    const name = String((profile && (profile.name || profile.given_name)) || '').trim() || (email.split('@')[0] || 'Google user');
-    const sub = String((profile && profile.sub) || '');
+    const g = googleProfile(profile);
+    const email = g.email;
+    const name = g.name || (email.split('@')[0] || 'Google user');
     if (!email.includes('@')) throw new Error('Google did not share an email for this account.');
     const role = 'customer';
     let row = await lookupEmail(email, role);
-    if (!row && sub) row = await lookupPhone(googlePhone(sub), role);
+    if (!row && g.sub) {
+      const byPhone = await lookupPhone(googlePhone(g.sub, email), role);
+      if (byPhone && String(byPhone.email || '').toLowerCase() === email) row = byPhone;
+    }
+    const photo = g.photo || (row && row.photo) || '';
     if (!row) {
-      const phone = googlePhone(sub || email);
       row = await saveAccount({
-        id: accountIdFor(phone, role),
+        id: accountIdForEmail(email, role),
         name: name,
-        phone: phone,
+        phone: googlePhone(g.sub, email),
         email: email,
         pin: 'google',
         role: role,
         address: 'Sri Lanka',
+        vehicle: photo || null,
       });
     } else {
-      const patch = {};
-      if (name && (!row.name || row.name === 'Guest')) patch.name = name;
-      if (email && String(row.email || '').toLowerCase() !== email) patch.email = email;
-      if (Object.keys(patch).length) {
-        try { await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch); } catch (_) {}
-        Object.assign(row, patch);
-      }
+      const patch = { email: email };
+      if (name) patch.name = name;
+      if (photo) patch.vehicle = photo;
+      try { await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch); } catch (_) {}
+      Object.assign(row, patch);
     }
+    row.photo = photo || row.photo;
+    row.name = name || row.name;
+    row.email = email;
     return enterMapped(row);
   };
 
@@ -1518,6 +1594,9 @@
   function enterMapped(row) {
     const next = mapAccount(row);
     if (row && row.pin != null) next.pin = row.pin;
+    if (row && row.photo) next.photo = row.photo;
+    if (row && row.email) next.email = row.email;
+    if (row && row.name) next.name = row.name;
     if (!API.user || API.user.id !== next.id) {
       resetKept();
       API.orders = [];
@@ -1556,7 +1635,7 @@
     if (existing) throw new Error('This email already has a User account. Sign in instead.');
     const phone = passwordPhone(email);
     const row = await saveAccount({
-      id: accountIdFor(phone, 'customer'),
+      id: accountIdForEmail(email, 'customer'),
       name: name,
       phone: phone,
       email: email,
@@ -1609,7 +1688,8 @@
         return;
       }
       function done(profile) {
-        if (profile && profile.email) resolve(profile);
+        const g = googleProfile(profile);
+        if (g.email) resolve(Object.assign({}, profile, g));
         else reject(new Error('Google did not share an email for this account.'));
       }
       function fromAccessToken(accessToken) {
@@ -1733,7 +1813,7 @@
   function cookieWrite(role, user) {
     try {
       const body = encodeURIComponent(JSON.stringify({
-        id: user.id, phone: user.phone, role: user.role, shopId: user.shopId || '', name: user.name || '', email: user.email || '', token: API.token || '',
+        id: user.id, phone: user.phone, role: user.role, shopId: user.shopId || '', name: user.name || '', email: user.email || '', photo: user.photo || '', token: API.token || '',
       }));
       document.cookie = cookieName(role) + '=' + body + ';path=/;max-age=31536000;SameSite=Lax';
     } catch (_) {}
@@ -1839,7 +1919,14 @@
       err.code = 'WHATSAPP_REQUIRED';
       throw err;
     }
-    if (API.user && API.user.phone) payload = Object.assign({}, payload, { customerPhone: API.user.phone });
+    if (API.user) {
+      payload = Object.assign({}, payload, {
+        customerPhone: API.user.phone || payload.customerPhone,
+        customerEmail: API.user.email || payload.customerEmail || '',
+        customerName: API.user.name || payload.customerName,
+        userId: API.user.id || payload.userId,
+      });
+    }
     let order = null;
     try {
       order = await getJSON('/api/orders', {
@@ -1866,6 +1953,7 @@
         shopEmoji: shop.emoji,
         customerName: payload.customerName || (API.user && API.user.name) || 'Guest',
         customerPhone: payload.customerPhone || (API.user && API.user.phone) || '',
+        customerEmail: payload.customerEmail || (API.user && API.user.email) || '',
         address: payload.address,
         note: payload.note || '',
         paymentMethod: payload.paymentMethod || 'Cash on delivery',

@@ -39,8 +39,13 @@ class _CustomerHomeState extends State<CustomerHome> {
   }
 
   String get _name {
-    final n = (OrderRepository.instance.user?.name ?? '').trim();
-    if (n.isEmpty || n.toLowerCase() == 'guest') return 'there';
+    final u = OrderRepository.instance.user;
+    final n = (u?.name ?? '').trim();
+    if (n.isEmpty || n.toLowerCase() == 'guest' || n.toLowerCase() == 'user') {
+      final email = (u?.email ?? '');
+      if (email.contains('@')) return email.split('@').first;
+      return 'there';
+    }
     return n.split(' ').first;
   }
 
@@ -50,6 +55,12 @@ class _CustomerHomeState extends State<CustomerHome> {
     if (base.isEmpty) return null;
     if (path.startsWith('http')) return path;
     return '$base$path';
+  }
+
+  String? _userPhotoUrl() {
+    final p = OrderRepository.instance.user?.photo;
+    if (p != null && p.startsWith('http')) return p;
+    return _url('/img/avatar-user.jpg');
   }
 
   List<Shop> get _shops {
@@ -179,7 +190,7 @@ class _CustomerHomeState extends State<CustomerHome> {
                     radius: 18,
                     backgroundColor: Brand.search,
                     backgroundImage: () {
-                      final u = _url('/img/avatar-user.jpg');
+                      final u = _userPhotoUrl();
                       return u == null ? null : NetworkImage(u);
                     }(),
                   ),
@@ -361,7 +372,7 @@ class _CustomerHomeState extends State<CustomerHome> {
           CircleAvatar(
             radius: 36,
             backgroundImage: () {
-              final url = _url('/img/avatar-user.jpg');
+              final url = _userPhotoUrl();
               return url == null ? null : NetworkImage(url);
             }(),
           ),

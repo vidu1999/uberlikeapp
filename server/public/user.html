@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18t" />
-  <link rel="stylesheet" href="/css/ui.css?v=18t" />
-  <link rel="stylesheet" href="/css/track.css?v=18t" />
-  <link rel="stylesheet" href="/css/qb.css?v=18t" />
+  <link rel="stylesheet" href="/css/app.css?v=18u" />
+  <link rel="stylesheet" href="/css/ui.css?v=18u" />
+  <link rel="stylesheet" href="/css/track.css?v=18u" />
+  <link rel="stylesheet" href="/css/qb.css?v=18u" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18t"></script>
-  <script src="/js/api.js?v=18t"></script>
-  <script src="/js/maps.js?v=18t"></script>
-  <script src="/js/track-ui.js?v=18t"></script>
+  <script src="/js/live.js?v=18u"></script>
+  <script src="/js/api.js?v=18u"></script>
+  <script src="/js/maps.js?v=18u"></script>
+  <script src="/js/track-ui.js?v=18u"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -92,7 +92,10 @@
     }
 
     function accountKey() {
-      return (API.user && API.user.id) || 'guest';
+      const email = API.user && String(API.user.email || '').trim().toLowerCase();
+      if (email) return 'e_' + email;
+      if (API.user && API.user.id) return API.user.id;
+      return 'guest';
     }
     function cartKey() { return 'sd_cart_' + accountKey(); }
     function saveCart() { sessionStorage.setItem(cartKey(), JSON.stringify(state.cart)); }
@@ -227,8 +230,17 @@
     function itemImg(it) { return it.image || shopImg(API.shopOf(it.shopId)); }
     function firstName() {
       const n = String((API.user && API.user.name) || '').trim();
-      if (!n || /^guest$/i.test(n)) return 'there';
+      if (!n || /^guest$/i.test(n) || /^user$/i.test(n)) {
+        const email = String((API.user && API.user.email) || '');
+        if (email.includes('@')) return email.split('@')[0];
+        return 'there';
+      }
       return n.split(/\s+/)[0];
+    }
+    function userPhoto() {
+      const p = API.user && (API.user.photo || API.user.picture);
+      if (p && /^https?:\/\//i.test(String(p))) return String(p);
+      return '/img/avatar-user.jpg';
     }
     function hello() {
       const h = new Date().getHours();
@@ -469,7 +481,7 @@
           <button type="button" class="u-city" data-open-loc><span>${SVG.pin} ${esc(city)} ▾</span>${state.loc.acc != null ? `<small>${esc(gpsText())}</small>` : ''}</button>
           <div class="u-icons">
             <button class="u-bell" data-tab="orders">${SVG.bell}</button>
-            <button class="u-ava" data-tab="account"><img src="/img/avatar-user.jpg" alt="" /></button>
+            <button class="u-ava" data-tab="account"><img src="${esc(userPhoto())}" alt="" referrerpolicy="no-referrer" /></button>
           </div>
         </div>
       </div>`;
@@ -739,9 +751,9 @@
       const u = API.user || {};
       return `<div class="scroll">
         <div class="prof-head">
-          <img src="/img/avatar-user.jpg" alt="" />
+          <img src="${esc(userPhoto())}" alt="" referrerpolicy="no-referrer" />
           <div class="grow">
-            <b>${esc(u.name || 'User')}</b>
+            <b>${esc(u.name || (u.email && String(u.email).split('@')[0]) || 'User')}</b>
             <div class="muted">${esc(u.email || u.phone || '')}</div>
           </div>
           <button class="edit-pill">Edit Profile</button>

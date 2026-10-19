@@ -326,6 +326,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: acc.email,
         name: acc.displayName ?? acc.email,
         sub: acc.id,
+        photo: acc.photoUrl,
       );
       if (!mounted) return;
       setState(() => busy = false);

@@ -144,6 +144,7 @@ class Order {
   final String shopName;
   final String customerName;
   final String? customerPhone;
+  final String? customerEmail;
   final String? riderName;
   final String? riderPhone;
   final String address;
@@ -167,6 +168,7 @@ class Order {
     required this.shopName,
     required this.customerName,
     this.customerPhone,
+    this.customerEmail,
     this.riderName,
     this.riderPhone,
     this.address = '',
@@ -199,6 +201,7 @@ class Order {
       shopName: shopName,
       customerName: customerName,
       customerPhone: customerPhone,
+      customerEmail: customerEmail,
       riderName: riderName ?? this.riderName,
       riderPhone: riderPhone ?? this.riderPhone,
       address: address,
@@ -224,6 +227,7 @@ class Order {
         'shopName': shopName,
         'customerName': customerName,
         'customerPhone': customerPhone,
+        'customerEmail': customerEmail,
         'riderName': riderName,
         'riderPhone': riderPhone,
         'address': address,
@@ -264,6 +268,7 @@ class Order {
       shopName: '${j['shopName'] ?? j['shop_name'] ?? ''}',
       customerName: '${j['customerName'] ?? j['customer_name'] ?? ''}',
       customerPhone: (j['customerPhone'] ?? j['customer_phone'])?.toString(),
+      customerEmail: (j['customerEmail'] ?? j['customer_email'] ?? j['email'])?.toString(),
       riderName: j['riderName']?.toString(),
       riderPhone: j['riderPhone']?.toString(),
       address: '${j['address'] ?? ''}',
