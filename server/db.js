@@ -441,6 +441,42 @@ async function wipeAll() {
   return report;
 }
 
+async function wipeShops() {
+  if (name() !== 'supabase') throw new Error('Supabase is not configured');
+  const steps = [
+    ['messages', 'order_id=not.is.null'],
+    ['orders', 'id=not.is.null'],
+    ['menu_items', 'id=not.is.null'],
+    ['shops', 'id=not.is.null'],
+    ['accounts', 'role=eq.shop'],
+    ['otp_codes', 'role=eq.shop'],
+  ];
+  const report = [];
+  for (const [table, filter] of steps) {
+    try {
+      await rest(table + '?' + filter, {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
+      });
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      if (/ 404 |does not exist|PGRST205|Could not find/i.test(msg)) {
+        report.push({ table, remaining: 0, skipped: true });
+        continue;
+      }
+      throw err;
+    }
+    let left = 0;
+    try {
+      const rows = await rest(table + '?' + filter + '&select=id&limit=5', { method: 'GET' });
+      left = Array.isArray(rows) ? rows.length : 0;
+    } catch (_) {}
+    report.push({ table, remaining: left });
+    if (left > 0) throw new Error('Wipe incomplete: ' + table + ' still has rows');
+  }
+  return report;
+}
+
 module.exports = {
   name,
   load,
@@ -449,6 +485,7 @@ module.exports = {
   ensureSeed,
   wipeDemo,
   wipeAll,
+  wipeShops,
   supabaseUrl,
   anonKey,
   shopFrom,

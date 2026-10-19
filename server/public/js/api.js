@@ -952,6 +952,59 @@
     clearAccCache();
   }
 
+  function clearShopLocal() {
+    API.shops = [];
+    API.items = [];
+    API.orders = [];
+    API.messages = {};
+    try { if (typeof keptOrders !== 'undefined') keptOrders.length = 0; } catch (_) {}
+    try { sessionKeys('shop').forEach(storeDel); } catch (_) {}
+    try { cookieClear('shop'); } catch (_) {}
+    try { storeDel(verifiedKey('shop')); } catch (_) {}
+    try { storeDel('sd_pending_shop'); } catch (_) {}
+    try {
+      const dump = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (/^(sd_|qb_).*shop/i.test(k) || k.indexOf('sd_shop_') === 0 || k.indexOf('qb_shop_') === 0 || k.indexOf('sd_pending_shop') === 0)) dump.push(k);
+      }
+      dump.forEach(function (k) {
+        try { localStorage.removeItem(k); } catch (_) {}
+        try { sessionStorage.removeItem(k); } catch (_) {}
+      });
+    } catch (_) {}
+    if (API.user && sameRole(API.user.role, 'shop')) {
+      API.user = null;
+      API.token = null;
+    }
+    clearAccCache();
+  }
+
+  async function wipeShopData() {
+    if (API._wipedShops) return true;
+    let failed = 0;
+    if (sbConfigured()) {
+      const paths = [
+        'messages?order_id=not.is.null',
+        'orders?id=not.is.null',
+        'menu_items?id=not.is.null',
+        'shops?id=not.is.null',
+        'accounts?role=eq.shop',
+        'otp_codes?role=eq.shop',
+      ];
+      for (let i = 0; i < paths.length; i++) {
+        try { await sbSend(paths[i], 'DELETE'); } catch (_) { failed++; }
+      }
+    } else {
+      failed = 1;
+    }
+    if (failed) return false;
+    API._wipedShops = true;
+    clearShopLocal();
+    notify(true);
+    return true;
+  }
+
   async function wipeAllData() {
     if (API._wipedAll) return true;
     let failed = 0;
@@ -983,6 +1036,21 @@
     try { force = new URLSearchParams(location.search || '').get('wipe') || ''; } catch (_) {}
     if (!force) return;
     const f = String(force).trim().toLowerCase();
+    if (f === 'shops' || f === 'shop') {
+      const ok = await wipeShopData();
+      try {
+        alert(ok
+          ? 'All Shop data was deleted. User and Rider accounts were kept. Register a shop again.'
+          : 'Could not fully wipe shop data. Refresh this wipe link.');
+        if (ok) {
+          API._phoneWiped = true;
+          const u = new URL(location.href);
+          u.searchParams.delete('wipe');
+          history.replaceState({}, '', u.pathname + (u.search || '') + u.hash);
+        }
+      } catch (_) {}
+      return;
+    }
     if (f === 'all' || f === '*' || f === 'reset') {
       const ok = await wipeAllData();
       try {
