@@ -184,6 +184,8 @@ class OrderRepository {
   Map<String, String>? pendingRider;
   bool openShopProfile = false;
   static const _shopProfKey = 'qb_shop_profile_';
+  static const _shopTitleKey = 'qb_shop_title_';
+  String _lockedShopTitle = '';
 
   Future<void> _rememberShop(String phone, Map<String, String> p) async {
     try {
@@ -260,6 +262,24 @@ class OrderRepository {
     return name!.trim().toLowerCase() == u.name.trim().toLowerCase();
   }
 
+  Future<void> _loadShopTitle(String phone) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final n = (p.getString('$_shopTitleKey${_normPhone(phone)}') ?? '').trim();
+      if (n.isNotEmpty && !_isOwnerLikeShopName(n, user)) _lockedShopTitle = n;
+    } catch (_) {}
+  }
+
+  Future<void> _lockShopTitle(String phone, String name) async {
+    final n = name.trim();
+    if (n.isEmpty || _isPlaceholderShopName(n) || _isOwnerLikeShopName(n, user)) return;
+    _lockedShopTitle = n;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('$_shopTitleKey${_normPhone(phone)}', n);
+    } catch (_) {}
+  }
+
   String publicShopName(Shop? shop) {
     final u = user;
     final sid = (shop?.id.isNotEmpty == true) ? shop!.id : (u?.shopId ?? '');
@@ -270,6 +290,7 @@ class OrderRepository {
       if (!cands.contains(t)) cands.add(t);
     }
 
+    add(_lockedShopTitle);
     add(shop?.name);
     add(u?.shopName);
     for (final o in orders) {
@@ -303,8 +324,13 @@ class OrderRepository {
     final i = Catalog.shops.indexWhere((s) => s.id == sid);
     if (i < 0) return;
     final shop = Catalog.shops[i];
-    final next = publicShopName(shop);
-    if (next.isEmpty || next == 'My Shop') return;
+    await _loadShopTitle(u.phone);
+    if (!_isOwnerLikeShopName(shop.name, u) && shop.name.trim().isNotEmpty) {
+      await _lockShopTitle(u.phone, shop.name);
+    }
+    final next = _lockedShopTitle.isNotEmpty ? _lockedShopTitle : publicShopName(shop);
+    if (next.isEmpty || next == 'My Shop' || _isOwnerLikeShopName(next, u)) return;
+    await _lockShopTitle(u.phone, next);
     if (shop.name != next) {
       final shops = [...Catalog.shops];
       shops[i] = _shopWithName(shop, next);
@@ -370,9 +396,26 @@ class OrderRepository {
     final pinLat = double.tryParse(p?['lat'] ?? rec?['lat'] ?? '');
     final pinLng = double.tryParse(p?['lng'] ?? rec?['lng'] ?? '');
     final pinAddr = (p?['address'] ?? rec?['address'] ?? '').trim();
-    final existing = await _sbGet('shops?id=eq.$sid&select=*');
+    await _loadShopTitle(u.phone);
+    String cand(String? n) {
+      final t = (n ?? '').trim();
+      if (t.isEmpty || _isOwnerLikeShopName(t, u)) return '';
+      return t;
+    }
+    final want = cand(_lockedShopTitle).isNotEmpty
+        ? _lockedShopTitle
+        : (cand(p?['shopName']).isNotEmpty
+            ? p!['shopName']!.trim()
+            : (cand(rec?['shopName']).isNotEmpty ? rec!['shopName']!.trim() : cand(u.shopName)));
+    if (want.isNotEmpty) await _lockShopTitle(u.phone, want);
+    List<dynamic> existing;
+    try {
+      existing = await _sbGet('shops?id=eq.$sid&select=*');
+    } catch (_) {
+      return sid;
+    }
     if (existing.isEmpty) {
-      final name = (p?['shopName'] ?? rec?['shopName'] ?? '').trim();
+      final name = want;
       if (name.isEmpty) throw Exception('Register your shop first.');
       await _sbUpsert('shops', [
         {
@@ -392,21 +435,18 @@ class OrderRepository {
       ]);
     } else {
       final row = Map<String, dynamic>.from(existing.first as Map);
-      var dirty = false;
-      if (row['lat'] == null && pinLat != null) {
-        row['lat'] = pinLat;
-        dirty = true;
-      }
-      if (row['lng'] == null && pinLng != null) {
-        row['lng'] = pinLng;
-        dirty = true;
-      }
+      final patch = <String, dynamic>{};
+      if (row['lat'] == null && pinLat != null) patch['lat'] = pinLat;
+      if (row['lng'] == null && pinLng != null) patch['lng'] = pinLng;
       final haveAddr = '${row['address'] ?? ''}'.trim().isNotEmpty;
-      if (!haveAddr && pinAddr.isNotEmpty) {
-        row['address'] = pinAddr;
-        dirty = true;
+      if (!haveAddr && pinAddr.isNotEmpty) patch['address'] = pinAddr;
+      final keep = want.isNotEmpty ? want : cand('${row['name']}');
+      if (keep.isNotEmpty && '${row['name']}' != keep) patch['name'] = keep;
+      if (patch.isNotEmpty) {
+        try {
+          await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', patch);
+        } catch (_) {}
       }
-      if (dirty) await _sbUpsert('shops', [row]);
       pendingShop = null;
     }
     return sid;
@@ -542,9 +582,16 @@ class OrderRepository {
       try {
         final existing = await _sbGet('shops?id=eq.$shopId&select=*');
         if (existing.isNotEmpty) {
-          shop = {...Map<String, dynamic>.from(existing.first as Map), ...shop};
+          final ex = Map<String, dynamic>.from(existing.first as Map);
+          final exName = '${ex['name'] ?? ''}'.trim();
+          shop = {...ex, ...shop};
+          final owner = (p['ownerName'] ?? '').trim().toLowerCase();
+          if (exName.isNotEmpty && exName.toLowerCase() != owner && !_isPlaceholderShopName(exName)) {
+            shop['name'] = exName;
+          }
         }
         await _sbUpsert('shops', [shop]);
+        await _lockShopTitle(phone, '${shop['name']}');
       } catch (_) {}
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
       user = {
@@ -1577,8 +1624,19 @@ class OrderRepository {
       final shopRows = await _sbGet(shopQ);
       final itemRows = await _sbGet(itemQ);
       final orderRows = await _fetchMyOrderRows();
-      final shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
+      var shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
       final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
+      final uShop = user;
+      if (uShop != null && uShop.role == 'shop') {
+        await _loadShopTitle(uShop.phone);
+        final sid = (uShop.shopId != null && uShop.shopId!.isNotEmpty) ? uShop.shopId! : _shopIdFor(uShop.phone);
+        shops = shops.map((s) {
+          if (s.id != sid) return s;
+          if (!_isOwnerLikeShopName(s.name, uShop) && s.name.trim().isNotEmpty) return s;
+          if (_lockedShopTitle.isNotEmpty) return _shopWithName(s, _lockedShopTitle);
+          return s;
+        }).toList();
+      }
       Catalog.set(shops, items);
       ordersNotifier.value = _retainStatus(
         _scopeOrders(
@@ -1918,10 +1976,16 @@ class OrderRepository {
     for (final s in Catalog.shops) {
       if (s.id == sid) prev = s;
     }
+    var nextName = name.trim();
+    final u = user;
+    if (u != null && _isOwnerLikeShopName(nextName, u)) {
+      nextName = _lockedShopTitle.isNotEmpty ? _lockedShopTitle : (prev?.name ?? nextName);
+    }
+    if (u != null && nextName.isNotEmpty) await _lockShopTitle(u.phone, nextName);
     await _sbUpsert('shops', [
       {
         'id': sid,
-        'name': name,
+        'name': nextName.isEmpty ? (prev?.name ?? name) : nextName,
         'category': category,
         'rating': prev?.rating ?? 5,
         'reviews': prev?.reviews ?? 0,
