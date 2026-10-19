@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19e" />
-  <link rel="stylesheet" href="/css/ui.css?v=19e" />
-  <link rel="stylesheet" href="/css/track.css?v=19e" />
-  <link rel="stylesheet" href="/css/qb.css?v=19e" />
+  <link rel="stylesheet" href="/css/app.css?v=19f" />
+  <link rel="stylesheet" href="/css/ui.css?v=19f" />
+  <link rel="stylesheet" href="/css/track.css?v=19f" />
+  <link rel="stylesheet" href="/css/qb.css?v=19f" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19e"></script>
-  <script src="/js/api.js?v=19e"></script>
-  <script src="/js/maps.js?v=19e"></script>
-  <script src="/js/track-ui.js?v=19e"></script>
+  <script src="/js/live.js?v=19f"></script>
+  <script src="/js/api.js?v=19f"></script>
+  <script src="/js/maps.js?v=19f"></script>
+  <script src="/js/track-ui.js?v=19f"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -519,7 +519,7 @@
       return `<div class="${cls}" data-shop="${s.id}">
         <img class="thumb" src="${shopImg(s)}" alt="" />
         <div class="grow">
-          <div class="name-row"><div class="name">${esc(s.name)}</div>${heartBtn(s.id)}</div>
+          <div class="name-row"><div class="name">${esc((API.shopTitle && API.shopTitle(s)) || s.name)}</div>${heartBtn(s.id)}</div>
           <div class="meta">${esc(s.category || 'Shop')}</div>
           <div class="rate"><span class="star">★</span> ${Number(s.rating || 0).toFixed(1)} <em>(${rev})</em> · ${km} km</div>
         </div>
@@ -531,7 +531,7 @@
         <img class="thumb" src="${itemImg(it)}" alt="" />
         <div class="grow">
           <div class="name">${esc(it.name)}</div>
-          <div class="meta">${esc(shop.name || 'Shop')}</div>
+          <div class="meta">${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || 'Shop')}</div>
           <div class="price">${rs(it.price)}</div>
         </div>
         ${it.isAvailable === false ? `<span class="muted">Sold out</span>` : `<button class="add" data-add="${esc(it.id)}">Add</button>`}
@@ -719,7 +719,7 @@
           <img src="${shopImg(shop)}" alt="" />
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
           <div class="overlay">
-            <div class="name-row"><h1>${esc(shop.name)}</h1>${heartBtn(shop.id)}</div>
+            <div class="name-row"><h1>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name)}</h1>${heartBtn(shop.id)}</div>
             <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${distKm(shop)} km</div>
             <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
             ${shop.address ? `<div>${esc(shop.address)}</div>` : ''}

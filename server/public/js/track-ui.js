@@ -153,7 +153,7 @@
     }
     if (viewer !== 'rider' && !riderOnJob(order)) {
       const shop = shopOf(order) || {};
-      const name = shop.name || order.shopName || 'Shop';
+      const name = (window.API && API.shopTitle && API.shopTitle(shop)) || shop.name || order.shopName || 'Shop';
       const bits = [shop.category, shop.address].filter(Boolean);
       return {
         name,

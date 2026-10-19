@@ -185,7 +185,10 @@ class OrderRepository {
   bool openShopProfile = false;
   static const _shopProfKey = 'qb_shop_profile_';
   static const _shopTitleKey = 'qb_shop_title_';
+  static const _shopNamesKey = 'qb_shop_public_names';
   String _lockedShopTitle = '';
+  Map<String, String> _shopOwners = {};
+  Map<String, String> _publicNames = {};
 
   Future<void> _rememberShop(String phone, Map<String, String> p) async {
     try {
@@ -291,6 +294,7 @@ class OrderRepository {
     }
 
     add(_lockedShopTitle);
+    if (sid.isNotEmpty) add(_publicNames[sid]);
     add(shop?.name);
     add(u?.shopName);
     for (final o in orders) {
@@ -354,6 +358,88 @@ class OrderRepository {
         photo: u.photo,
       );
       await _persist();
+    }
+  }
+
+  Future<void> _loadPublicNames() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString(_shopNamesKey);
+      if (raw == null || raw.isEmpty) return;
+      final m = jsonDecode(raw);
+      if (m is Map) {
+        _publicNames = m.map((k, v) => MapEntry('$k', '$v'));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _savePublicNames() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_shopNamesKey, jsonEncode(_publicNames));
+    } catch (_) {}
+  }
+
+  bool _leakedShopName(String name, String shopId) {
+    if (_isPlaceholderShopName(name)) return true;
+    final o = (_shopOwners[shopId] ?? '').trim().toLowerCase();
+    return o.isNotEmpty && name.trim().toLowerCase() == o;
+  }
+
+  Future<void> _syncPublicShopNames() async {
+    await _loadPublicNames();
+    _shopOwners = {};
+    try {
+      for (final raw in await _sbGet('accounts?role=eq.shop&select=name,phone,shop_id')) {
+        final a = Map<String, dynamic>.from(raw as Map);
+        if (_isDemoAccountMap(a)) continue;
+        var sid = '${a['shop_id'] ?? ''}';
+        if (sid.isEmpty) sid = _shopIdFor('${a['phone'] ?? ''}');
+        if (sid.isNotEmpty && !_isDemoShop(sid)) {
+          _shopOwners[sid] = '${a['name'] ?? ''}'.trim();
+        }
+      }
+    } catch (_) {}
+    void take(String sid, String name) {
+      final n = name.trim();
+      if (sid.isEmpty || _isDemoShop(sid) || _isPlaceholderShopName(n) || _leakedShopName(n, sid)) return;
+      _publicNames[sid] = n;
+    }
+
+    for (final s in Catalog.shops) {
+      take(s.id, s.name);
+    }
+    for (final o in orders) {
+      take(o.shopId, o.shopName);
+    }
+    try {
+      for (final raw in await _sbGet('orders?select=shop_id,shop_name&limit=400')) {
+        final r = Map<String, dynamic>.from(raw as Map);
+        take('${r['shop_id'] ?? ''}', '${r['shop_name'] ?? ''}');
+      }
+    } catch (_) {}
+    await _savePublicNames();
+    final patches = <Shop>[];
+    final shops = Catalog.shops.map((s) {
+      if (_isDemoShop(s.id)) return s;
+      if (!_leakedShopName(s.name, s.id) && s.name.trim().isNotEmpty) {
+        take(s.id, s.name);
+        return s;
+      }
+      final want = (_publicNames[s.id] ?? '').trim();
+      if (want.isNotEmpty && want != s.name) {
+        final next = _shopWithName(s, want);
+        patches.add(next);
+        return next;
+      }
+      return s;
+    }).toList();
+    Catalog.set(shops, Catalog.items);
+    await _savePublicNames();
+    for (final s in patches) {
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(s.id)}', 'PATCH', {'name': s.name});
+      } catch (_) {}
     }
   }
 
@@ -1643,6 +1729,9 @@ class OrderRepository {
           orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
         ),
       );
+      try {
+        await _syncPublicShopNames();
+      } catch (_) {}
       if (user?.role == 'shop') {
         try {
           await _repairShopPublicName();
