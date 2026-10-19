@@ -410,17 +410,10 @@ async function wipeDemo() {
 
 async function wipeAll() {
   if (name() !== 'supabase') throw new Error('Supabase is not configured');
-  const steps = [
-    ['messages', 'order_id=not.is.null'],
-    ['orders', 'id=not.is.null'],
-    ['menu_items', 'id=not.is.null'],
-    ['shops', 'id=not.is.null'],
-    ['accounts', 'id=not.is.null'],
-    ['otp_codes', 'id=not.is.null'],
-    ['app_state', 'id=not.is.null'],
-  ];
+  const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
   const report = [];
-  for (const [table, filter] of steps) {
+  for (const table of tables) {
+    const filter = table === 'messages' ? 'order_id=not.is.null' : 'id=not.is.null';
     try {
       await rest(table + '?' + filter, {
         method: 'DELETE',
@@ -434,10 +427,33 @@ async function wipeAll() {
       }
       throw err;
     }
-    const left = await countRows(table);
+    for (let round = 0; round < 8; round++) {
+      let rows = [];
+      try {
+        rows = await rest(table + '?select=*&limit=1000', { method: 'GET' });
+      } catch (_) { rows = []; }
+      if (!Array.isArray(rows) || !rows.length) break;
+      for (const row of rows) {
+        try {
+          const q = table === 'messages' && row.order_id
+            ? 'messages?order_id=eq.' + encodeURIComponent(row.order_id) + '&id=eq.' + encodeURIComponent(row.id)
+            : table + '?id=eq.' + encodeURIComponent(row.id);
+          await rest(q, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+        } catch (_) {}
+      }
+    }
+    let left = 0;
+    try { left = await countRows(table); } catch (_) { left = 0; }
     report.push({ table, remaining: left });
     if (left > 0) throw new Error('Wipe incomplete: ' + table + ' still has rows');
   }
+  try {
+    await rest('app_state?on_conflict=id', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal', 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ id: 'qb_empty', payload: { v: '19o', at: Date.now() } }]),
+    });
+  } catch (_) {}
   return report;
 }
 

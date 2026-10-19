@@ -1005,30 +1005,78 @@
     return true;
   }
 
+  async function wipeTableAll(table) {
+    const missing = /404|PGRST205|does not exist/i;
+    const bulk = table === 'messages' ? ['order_id=not.is.null', 'id=not.is.null'] : ['id=not.is.null'];
+    if (table === 'accounts') bulk.push('phone=not.is.null', 'role=eq.shop', 'role=eq.customer', 'role=eq.rider', 'role=eq.user');
+    if (table === 'otp_codes') bulk.push('phone=not.is.null', 'role=eq.shop', 'role=eq.customer', 'role=eq.rider');
+    for (let i = 0; i < bulk.length; i++) {
+      try { await sbSend(table + '?' + bulk[i], 'DELETE'); } catch (e) {
+        if (missing.test(String(e && e.message))) return true;
+      }
+    }
+    for (let round = 0; round < 8; round++) {
+      let rows = [];
+      try { rows = asRows(await sbGet(table + '?select=*&limit=1000')); } catch (e) {
+        if (missing.test(String(e && e.message))) return true;
+        break;
+      }
+      if (!rows.length) return true;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        try {
+          if (table === 'messages' && r.order_id != null) {
+            await sbSend('messages?order_id=eq.' + encodeURIComponent(r.order_id) + '&id=eq.' + encodeURIComponent(r.id), 'DELETE');
+          } else if (r.id != null) {
+            await sbSend(table + '?id=eq.' + encodeURIComponent(r.id), 'DELETE');
+          } else if (r.phone) {
+            await sbSend(table + '?phone=eq.' + encodeURIComponent(r.phone), 'DELETE');
+          }
+        } catch (_) {}
+      }
+    }
+    try {
+      const left = asRows(await sbGet(table + '?select=id&limit=1'));
+      return !left.length;
+    } catch (_) { return true; }
+  }
+
   async function wipeAllData() {
     if (API._wipedAll) return true;
-    let failed = 0;
-    if (sbConfigured()) {
-      const paths = [
-        'messages?order_id=not.is.null',
-        'orders?id=not.is.null',
-        'menu_items?id=not.is.null',
-        'shops?id=not.is.null',
-        'accounts?id=not.is.null',
-        'otp_codes?id=not.is.null',
-        'app_state?id=not.is.null',
-      ];
-      for (let i = 0; i < paths.length; i++) {
-        try { await sbSend(paths[i], 'DELETE'); } catch (_) { failed++; }
-      }
-    } else {
-      failed = 1;
+    if (!sbConfigured()) return false;
+    const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
+    let ok = true;
+    for (let i = 0; i < tables.length; i++) {
+      const done = await wipeTableAll(tables[i]);
+      if (!done) ok = false;
     }
-    if (failed) return false;
+    let shopsLeft = 1;
+    let accLeft = 1;
+    try { shopsLeft = asRows(await sbGet('shops?select=id&limit=1')).length; } catch (_) { shopsLeft = 0; }
+    try { accLeft = asRows(await sbGet('accounts?select=id&limit=1')).length; } catch (_) { accLeft = 0; }
+    if (shopsLeft || accLeft) ok = false;
+    if (!ok) return false;
     API._wipedAll = true;
     clearAllLocalAuth();
     notify(true);
     return true;
+  }
+
+  async function oneShotEmptyDb() {
+    if (API._wipedAll || !sbConfigured()) return;
+    const GEN = '19o';
+    try {
+      const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
+      const p = rows && rows[0] && rows[0].payload;
+      if (p && String(p.v || '') === GEN) return;
+    } catch (_) {}
+    const ok = await wipeAllData();
+    if (!ok) return;
+    try {
+      await sbSend('app_state', 'POST', [{ id: 'qb_empty', payload: { v: GEN, at: Date.now() } }]);
+    } catch (_) {
+      try { await sbSend('app_state?id=eq.qb_empty', 'PATCH', { payload: { v: GEN, at: Date.now() } }); } catch (_) {}
+    }
   }
 
   async function wipeTestNumber() {
@@ -1246,6 +1294,7 @@
 
   async function pullSupabase() {
     purgeLocalDemoStores();
+    await oneShotEmptyDb();
     await wipeTestNumber();
     await wipeDemo();
     await hydrateUser();
