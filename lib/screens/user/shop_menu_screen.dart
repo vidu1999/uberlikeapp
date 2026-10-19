@@ -60,26 +60,25 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
                     ),
                   ),
                   Positioned(
-                    top: MediaQuery.of(context).padding.top + 8,
-                    right: 12,
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: IconButton(
-                        icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
-                        onPressed: () => OrderRepository.instance.toggleFav(widget.shop.id),
-                      ),
-                    ),
-                  ),
-                  Positioned(
                     left: 16,
                     bottom: 16,
                     right: 16,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.shop.name,
-                          style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                widget.shop.name,
+                                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => OrderRepository.instance.toggleFav(widget.shop.id),
+                              child: Icon(liked ? Icons.favorite : Icons.favorite_border, size: 24, color: liked ? const Color(0xFFEF4444) : Colors.white),
+                            ),
+                          ],
                         ),
                         Text(
                           '★ ${widget.shop.rating} · ${UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, widget.shop.lat, widget.shop.lng, widget.shop.km)} km',

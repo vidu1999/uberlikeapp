@@ -167,6 +167,10 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 .shop-row .thumb, .shop-card .thumb, .item-card .thumb {
   width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: #eee; flex: none;
 }
+.shop-row .name-row, .shop-card .name-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.shop-row .name-row .name, .shop-card .name-row .name { flex: 1; min-width: 0; }
 .shop-row .name, .shop-card .name, .item-card .name { font-weight: 800; font-size: 15px; color: var(--ink); }
 .shop-row .rate, .shop-card .rate { display: flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 12px; font-weight: 700; flex-wrap: wrap; }
 .shop-row .rate .star, .shop-card .rate .star { color: var(--star); }
@@ -195,15 +199,16 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 }
 .s-chip.on { background: var(--g); color: #fff; }
 .heart {
-  margin-left: auto; margin-top: -2px; width: 36px; height: 36px; border: 0; background: transparent;
+  margin: 0; width: 28px; height: 28px; border: 0; background: transparent;
   color: #F9A8A8; cursor: pointer; display: grid; place-items: center; flex: none;
 }
+.heart svg { width: 20px; height: 20px; }
 .heart.on { color: #EF4444; }
-.menu-hero .heart {
-  position: absolute; top: 12px; right: 12px; z-index: 2;
-  width: 40px; height: 40px; border-radius: 50%; background: #fff;
-  box-shadow: 0 2px 8px rgba(0,0,0,.16); margin: 0;
+.menu-hero .overlay .name-row {
+  display: flex; align-items: center; gap: 10px;
 }
+.menu-hero .overlay .name-row h1 { flex: 1; min-width: 0; margin: 0; }
+.menu-hero .overlay .heart { color: #fff; }
 
 .live-pill {
   margin: 8px 16px;

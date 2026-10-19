@@ -144,7 +144,17 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    Row(
+                      children: [
+                        Expanded(child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+                        GestureDetector(
+                          onTap: () => OrderRepository.instance.toggleFav(s.id).then((_) {
+                            if (mounted) setState(() {});
+                          }),
+                          child: Icon(liked ? Icons.favorite : Icons.favorite_border, size: 22, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                        ),
+                      ],
+                    ),
                     Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
                     Row(children: [
                       const Icon(Icons.star_rounded, color: Brand.star, size: 16),
@@ -153,12 +163,6 @@ class _SearchScreenState extends State<SearchScreen> {
                     ]),
                   ],
                 ),
-              ),
-              IconButton(
-                icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
-                onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
-                  if (mounted) setState(() {});
-                }),
               ),
             ],
           ),

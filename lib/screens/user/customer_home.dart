@@ -336,7 +336,17 @@ class _CustomerHomeState extends State<CustomerHome> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          Row(
+                            children: [
+                              Expanded(child: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w800))),
+                              GestureDetector(
+                                onTap: () => OrderRepository.instance.toggleFav(s.id).then((_) {
+                                  if (mounted) setState(() {});
+                                }),
+                                child: Icon(liked ? Icons.favorite : Icons.favorite_border, size: 22, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
+                              ),
+                            ],
+                          ),
                           Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
                           Row(children: [
                             const Icon(Icons.star_rounded, color: Brand.star, size: 16),
@@ -345,12 +355,6 @@ class _CustomerHomeState extends State<CustomerHome> {
                           ]),
                         ],
                       ),
-                    ),
-                    IconButton(
-                      icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? const Color(0xFFEF4444) : const Color(0xFFF9A8A8)),
-                      onPressed: () => OrderRepository.instance.toggleFav(s.id).then((_) {
-                        if (mounted) setState(() {});
-                      }),
                     ),
                   ],
                 ),
@@ -393,11 +397,11 @@ class _CustomerHomeState extends State<CustomerHome> {
             ),
           ),
           const SizedBox(height: 16),
-          ListTile(leading: const Icon(Icons.receipt_long_outlined), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
-          const ListTile(leading: Icon(Icons.location_on_outlined), title: Text('Addresses')),
-          const ListTile(leading: Icon(Icons.credit_card_outlined), title: Text('Payment Methods')),
-          const ListTile(leading: Icon(Icons.notifications_outlined), title: Text('Notifications')),
-          const ListTile(leading: Icon(Icons.help_outline), title: Text('Help & Support')),
+          ListTile(leading: const Icon(Icons.receipt_long_outlined, size: 22), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
+          const ListTile(leading: Icon(Icons.location_on_outlined, size: 22), title: Text('Addresses')),
+          const ListTile(leading: Icon(Icons.credit_card_outlined, size: 22), title: Text('Payment Methods')),
+          const ListTile(leading: Icon(Icons.notifications_outlined, size: 22), title: Text('Notifications')),
+          const ListTile(leading: Icon(Icons.help_outline, size: 22), title: Text('Help & Support')),
           ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), trailing: const SettingsButton()),
           const SizedBox(height: 12),
           OutlinedButton(
