@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18y" />
-  <link rel="stylesheet" href="/css/ui.css?v=18y" />
-  <link rel="stylesheet" href="/css/track.css?v=18y" />
-  <link rel="stylesheet" href="/css/qb.css?v=18y" />
+  <link rel="stylesheet" href="/css/app.css?v=18z" />
+  <link rel="stylesheet" href="/css/ui.css?v=18z" />
+  <link rel="stylesheet" href="/css/track.css?v=18z" />
+  <link rel="stylesheet" href="/css/qb.css?v=18z" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18y"></script>
-  <script src="/js/api.js?v=18y"></script>
-  <script src="/js/maps.js?v=18y"></script>
-  <script src="/js/track-ui.js?v=18y"></script>
+  <script src="/js/live.js?v=18z"></script>
+  <script src="/js/api.js?v=18z"></script>
+  <script src="/js/maps.js?v=18z"></script>
+  <script src="/js/track-ui.js?v=18z"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -72,6 +72,11 @@
       locHandle: null,
       locFrom: 'home',
       payment: 'Cash on delivery',
+      payKind: 'cash',
+      cardId: 'new',
+      cards: [],
+      cardDraft: { number: '', name: '', exp: '', save: true },
+      cardErr: '',
       deliveryType: 'standard',
       mapHandle: null,
       lockTrack: false,
@@ -117,6 +122,162 @@
     function saveFavs() {
       try { localStorage.setItem(favKey(), JSON.stringify(state.favs)); } catch (_) {}
     }
+    function cardsKey() { return 'qb_cards_' + accountKey(); }
+    function loadCards() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(cardsKey()) || '[]');
+        state.cards = Array.isArray(arr) ? arr.filter((c) => c && c.last4) : [];
+      } catch (_) { state.cards = []; }
+    }
+    function saveCards() {
+      try { localStorage.setItem(cardsKey(), JSON.stringify(state.cards)); } catch (_) {}
+    }
+    function cardDigits(v) { return String(v || '').replace(/\D/g, ''); }
+    function cardBrand(num) {
+      const d = cardDigits(num);
+      if (/^4/.test(d)) return 'Visa';
+      if (/^(5[1-5]|2[2-7])/.test(d)) return 'Mastercard';
+      if (/^3[47]/.test(d)) return 'Amex';
+      if (/^35/.test(d)) return 'JCB';
+      if (/^62/.test(d)) return 'UnionPay';
+      if (/^(6011|65)/.test(d)) return 'Discover';
+      return 'Card';
+    }
+    function luhnOk(num) {
+      const d = cardDigits(num);
+      if (d.length < 13 || d.length > 19) return false;
+      let s = 0, alt = false;
+      for (let i = d.length - 1; i >= 0; i--) {
+        let n = d.charCodeAt(i) - 48;
+        if (n < 0 || n > 9) return false;
+        if (alt) { n *= 2; if (n > 9) n -= 9; }
+        s += n; alt = !alt;
+      }
+      return s % 10 === 0;
+    }
+    function formatCard(v) {
+      const d = cardDigits(v).slice(0, 19);
+      return d.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+    }
+    function formatExp(v) {
+      const d = cardDigits(v).slice(0, 4);
+      return d.length <= 2 ? d : d.slice(0, 2) + '/' + d.slice(2);
+    }
+    function expOk(exp) {
+      const m = String(exp || '').trim().match(/^(\d{1,2})\s*\/\s*(\d{2})$/);
+      if (!m) return false;
+      const mo = Number(m[1]), yr = 2000 + Number(m[2]);
+      if (mo < 1 || mo > 12) return false;
+      return new Date(yr, mo, 0, 23, 59, 59) >= new Date();
+    }
+    function cardLabel(c) { return (c.brand || 'Card') + ' •••• ' + c.last4; }
+    function isCardPaid(method) {
+      const m = String(method || '').toLowerCase();
+      if (m.indexOf('cash') !== -1) return false;
+      return /visa|master|amex|unionpay|jcb|discover|card|••••/.test(m);
+    }
+    function pullCardDraft() {
+      const num = document.getElementById('cardNum');
+      const name = document.getElementById('cardName');
+      const exp = document.getElementById('cardExp');
+      const save = document.getElementById('cardSave');
+      if (!state.cardDraft) state.cardDraft = { number: '', name: '', exp: '', save: true };
+      if (num) state.cardDraft.number = num.value;
+      if (name) state.cardDraft.name = name.value;
+      if (exp) state.cardDraft.exp = exp.value;
+      if (save) state.cardDraft.save = !!save.checked;
+    }
+    function rememberCard(rec) {
+      const row = {
+        id: 'c' + Date.now(),
+        brand: rec.brand,
+        last4: rec.last4,
+        exp: rec.exp,
+        name: rec.name || '',
+      };
+      state.cards = [row].concat((state.cards || []).filter((c) => !(c.last4 === row.last4 && c.brand === row.brand)));
+      saveCards();
+      return row;
+    }
+    function validateCard(opts) {
+      opts = opts || {};
+      const saved = opts.saved;
+      const number = ((document.getElementById('cardNum') || {}).value || (state.cardDraft && state.cardDraft.number) || '');
+      const name = ((document.getElementById('cardName') || {}).value || (state.cardDraft && state.cardDraft.name) || '').trim();
+      const exp = ((document.getElementById('cardExp') || {}).value || (state.cardDraft && state.cardDraft.exp) || '').trim();
+      const cvc = ((document.getElementById('cardCvc') || {}).value || '').replace(/\D/g, '');
+      const brand = saved ? saved.brand : cardBrand(number);
+      const amex = brand === 'Amex';
+      if (!saved) {
+        if (!luhnOk(number)) return { ok: false, err: 'Enter a valid card number.' };
+        if (name.length < 2) return { ok: false, err: 'Enter the name on the card.' };
+        if (!expOk(exp)) return { ok: false, err: 'Enter a valid expiry (MM/YY).' };
+      }
+      if (cvc.length !== (amex ? 4 : 3)) return { ok: false, err: amex ? 'Enter the 4-digit CVC.' : 'Enter the 3-digit CVC.' };
+      const d = cardDigits(number);
+      return {
+        ok: true,
+        brand: brand,
+        last4: saved ? saved.last4 : d.slice(-4),
+        exp: saved ? saved.exp : formatExp(exp),
+        name: saved ? saved.name : name,
+        save: !saved && !!(document.getElementById('cardSave') || { checked: true }).checked,
+      };
+    }
+    function cardFormHtml(saved) {
+      const d = state.cardDraft || {};
+      const brand = cardBrand(d.number || '');
+      if (saved) {
+        return `<div class="card-form">
+          <p class="card-using">Pay with <b>${esc(cardLabel(saved))}</b></p>
+          <div class="card-field"><label>CVC</label><input id="cardCvc" inputmode="numeric" autocomplete="cc-csc" placeholder="${saved.brand==='Amex'?'1234':'123'}" maxlength="4" /></div>
+          <p class="err" data-card-err>${esc(state.cardErr || '')}</p>
+        </div>`;
+      }
+      return `<div class="card-form">
+        <div class="card-field">
+          <label>Card number</label>
+          <div class="card-num">
+            <input id="cardNum" inputmode="numeric" autocomplete="cc-number" placeholder="ACCT-000015" maxlength="23" value="${esc(formatCard(d.number || ''))}" />
+            <span class="card-brand">${esc(brand === 'Card' ? '' : brand)}</span>
+          </div>
+        </div>
+        <div class="card-field">
+          <label>Name on card</label>
+          <input id="cardName" autocomplete="cc-name" placeholder="Name on card" value="${esc(d.name || '')}" />
+        </div>
+        <div class="card-row">
+          <div class="card-field">
+            <label>Expiry</label>
+            <input id="cardExp" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5" value="${esc(d.exp || '')}" />
+          </div>
+          <div class="card-field">
+            <label>CVC</label>
+            <input id="cardCvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4" />
+          </div>
+        </div>
+        <label class="card-save"><input type="checkbox" id="cardSave" ${d.save === false ? '' : 'checked'} /> Save this card for next orders</label>
+        <p class="err" data-card-err>${esc(state.cardErr || '')}</p>
+        <p class="muted card-hint">Full card number and CVC are never stored.</p>
+      </div>`;
+    }
+    function payBlock() {
+      const cashOn = state.payKind !== 'card';
+      const cards = state.cards || [];
+      let selected = state.cardId || (cards[0] && cards[0].id) || 'new';
+      if (selected !== 'new' && !cards.some((c) => c.id === selected)) selected = cards.length ? cards[0].id : 'new';
+      state.cardId = selected;
+      let html = `<h3>Payment Method</h3>
+        <label class="pay-opt"><input type="radio" name="pay" value="cash" ${cashOn ? 'checked' : ''} /> Cash on Delivery</label>
+        <label class="pay-opt"><input type="radio" name="pay" value="card" ${cashOn ? '' : 'checked'} /> Debit / Credit card</label>`;
+      if (!cashOn) {
+        html += cards.map((c) => `<label class="pay-opt card-saved"><input type="radio" name="cardid" value="${esc(c.id)}" ${selected === c.id ? 'checked' : ''} /> <span class="card-ico">${esc(c.brand)}</span> ${esc(c.brand)} •••• ${esc(c.last4)} <em>exp ${esc(c.exp)}</em></label>`).join('');
+        html += `<label class="pay-opt"><input type="radio" name="cardid" value="new" ${selected === 'new' || !cards.length ? 'checked' : ''} /> Add a new card</label>`;
+        const saved = cards.find((c) => c.id === selected);
+        html += cardFormHtml(saved);
+      }
+      return html;
+    }
     let localUserId = '';
     function ensureUserLocal() {
       const id = accountKey();
@@ -124,6 +285,7 @@
       localUserId = id;
       loadCart();
       loadFavs();
+      loadCards();
     }
     ensureUserLocal();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
@@ -625,6 +787,21 @@
         </div>
       </div>`;
     }
+    function payMethodsView() {
+      const cards = state.cards || [];
+      return `<div class="scroll">
+        <div class="back-row"><button class="back-fab" data-tab="account">←</button><b>Payment Methods</b></div>
+        <div class="pad">
+          <p class="muted">Only the brand, last four digits and expiry stay on this device. Full card number and CVC are never stored.</p>
+          ${cards.map((c) => `<div class="saved-card">
+            <div class="grow"><b>${esc(cardLabel(c))}</b><div class="muted">Expires ${esc(c.exp)}${c.name ? ' · ' + esc(c.name) : ''}</div></div>
+            <button type="button" class="link" data-del-card="${esc(c.id)}">Remove</button>
+          </div>`).join('') || '<p class="muted">No cards yet. Add a debit or credit card.</p>'}
+          ${state._addCard ? cardFormHtml() + '<button class="btn-qb" type="button" data-save-card>Save card</button><button class="btn-ghost-qb" type="button" data-cancel-card>Cancel</button>'
+            : '<button class="btn-qb" type="button" data-add-card>Add debit / credit card</button>'}
+        </div>
+      </div>${nav()}`;
+    }
     function checkoutView() {
       const sub = cartTotal();
       const f = fee();
@@ -638,12 +815,10 @@
           <h3>Delivery Type</h3>
           <label class="ship-opt"><input type="radio" name="ship" value="standard" ${state.deliveryType==='standard'?'checked':''} /> Standard (30–45 min) <span class="grow"></span> ${rs(200)}</label>
           <label class="ship-opt"><input type="radio" name="ship" value="express" ${state.deliveryType==='express'?'checked':''} /> Express (15–25 min) <span class="grow"></span> ${rs(360)}</label>
-          <h3>Payment Method</h3>
-          <label class="pay-opt"><input type="radio" name="pay" value="Cash on delivery" checked /> Cash on Delivery</label>
-          <label class="pay-opt"><input type="radio" name="pay" value="Card on delivery" /> Card Payment</label>
-          <label class="pay-opt"><input type="radio" name="pay" value="wallet" disabled /> Online Wallet (Coming Soon)</label>
+          ${payBlock()}
+          <label class="pay-opt pay-disabled"><input type="radio" name="pay" value="wallet" disabled /> Online Wallet (Coming Soon)</label>
           <div class="totals"><div class="row tot"><span>Total</span><span>${rs(sub+f)}</span></div></div>
-          <button class="btn-qb" id="place">Place Order</button>
+          <button class="btn-qb" id="place">${state.payKind==='card' ? 'Pay ' + rs(sub+f) : 'Place Order'}</button>
         </div>
       </div>${state.wa.open ? waSheet() : ''}`;
     }
@@ -680,6 +855,7 @@
               <b>${esc(o.shopName)}</b>
               <div class="muted">${esc((o.items||[]).map((i)=>i.name+' ×'+i.qty).join(', '))}</div>
               <div class="price">${rs(o.totalAmount)}</div>
+              <div class="muted">${esc(o.paymentMethod || 'Cash on delivery')}</div>
             </div>
             <span class="badge ${o.status}">${API.statusLabel(o.status)}</span>
           </div>`).join('') || '<div class="pad muted">No orders yet.</div>'}
@@ -762,7 +938,7 @@
         <div class="prof-list">
           <button data-tab="orders">${SVG.orders} My Orders</button>
           <button>${SVG.pin} Addresses</button>
-          <button>${SVG.lock} Payment Methods</button>
+          <button data-go="paymethods">${SVG.lock} Payment Methods</button>
           <button>${SVG.bell} Notifications</button>
           <button>${SVG.mail} Help & Support</button>
           <button id="logout">Settings · Sign out</button>
@@ -923,6 +1099,7 @@
       }
       if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
+      if (state.screen === 'paymethods') { root.innerHTML = payMethodsView(); bindApp(); return; }
       if (state.screen === 'shop') { root.innerHTML = shopView(); bindApp(); return; }
       if (state.screen === 'search') { root.innerHTML = searchView(); bindApp(); return; }
       if (state.screen === 'done') { root.innerHTML = doneView(); bindApp(); return; }
@@ -1223,12 +1400,106 @@
         render();
       });
       root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render({ keepScroll: true }); });
+      root.querySelectorAll('input[name="pay"]').forEach((el) => el.onchange = () => {
+        pullCardDraft();
+        state.payKind = el.value === 'card' ? 'card' : 'cash';
+        state.cardAuth = null;
+        state.cardErr = '';
+        if (state.payKind === 'card' && (!state.cardId || state.cardId === 'cash')) {
+          state.cardId = ((state.cards || [])[0] && state.cards[0].id) || 'new';
+        }
+        render({ keepScroll: true });
+      });
+      root.querySelectorAll('input[name="cardid"]').forEach((el) => el.onchange = () => {
+        pullCardDraft();
+        state.cardId = el.value;
+        state.cardErr = '';
+        render({ keepScroll: true });
+      });
+      const num = document.getElementById('cardNum');
+      if (num) num.oninput = () => {
+        num.value = formatCard(num.value);
+        if (!state.cardDraft) state.cardDraft = { number: '', name: '', exp: '', save: true };
+        state.cardDraft.number = num.value;
+        const b = num.parentElement && num.parentElement.querySelector('.card-brand');
+        const brand = cardBrand(num.value);
+        if (b) b.textContent = brand === 'Card' ? '' : brand;
+      };
+      const exp = document.getElementById('cardExp');
+      if (exp) exp.oninput = () => {
+        exp.value = formatExp(exp.value);
+        if (!state.cardDraft) state.cardDraft = { number: '', name: '', exp: '', save: true };
+        state.cardDraft.exp = exp.value;
+      };
+      const cname = document.getElementById('cardName');
+      if (cname) cname.oninput = () => {
+        if (!state.cardDraft) state.cardDraft = { number: '', name: '', exp: '', save: true };
+        state.cardDraft.name = cname.value;
+      };
+      const csave = document.getElementById('cardSave');
+      if (csave) csave.onchange = () => {
+        if (!state.cardDraft) state.cardDraft = { number: '', name: '', exp: '', save: true };
+        state.cardDraft.save = !!csave.checked;
+      };
+      const addCard = root.querySelector('[data-add-card]');
+      if (addCard) addCard.onclick = () => {
+        state._addCard = true;
+        state.cardErr = '';
+        state.cardDraft = { number: '', name: '', exp: '', save: true };
+        render({ keepScroll: true });
+      };
+      const cancelCard = root.querySelector('[data-cancel-card]');
+      if (cancelCard) cancelCard.onclick = () => {
+        state._addCard = false;
+        state.cardErr = '';
+        render({ keepScroll: true });
+      };
+      const saveCardBtn = root.querySelector('[data-save-card]');
+      if (saveCardBtn) saveCardBtn.onclick = () => {
+        pullCardDraft();
+        const rec = validateCard();
+        if (!rec.ok) { state.cardErr = rec.err; render({ keepScroll: true }); return; }
+        rememberCard(rec);
+        state._addCard = false;
+        state.cardErr = '';
+        state.cardDraft = { number: '', name: '', exp: '', save: true };
+        render({ keepScroll: true });
+      };
+      root.querySelectorAll('[data-del-card]').forEach((b) => b.onclick = () => {
+        state.cards = (state.cards || []).filter((c) => c.id !== b.dataset.delCard);
+        saveCards();
+        render({ keepScroll: true });
+      });
       const place = document.getElementById('place');
       async function placeNow() {
         const addr = document.getElementById('addr');
         if (addr) state.address = addr.value;
-        const pay = document.querySelector('input[name="pay"]:checked');
-        if (pay) state.payment = pay.value;
+        const payEl = document.querySelector('input[name="pay"]:checked');
+        if (payEl && payEl.value === 'card') state.payKind = 'card';
+        else if (payEl && payEl.value !== 'wallet') state.payKind = 'cash';
+        if (state.payKind === 'card') {
+          if (state.cardAuth && state.cardAuth.last4) {
+            state.payment = state.cardAuth.brand + ' •••• ' + state.cardAuth.last4;
+          } else {
+            pullCardDraft();
+            const cid = ((document.querySelector('input[name="cardid"]:checked') || {}).value) || state.cardId || 'new';
+            state.cardId = cid;
+            const saved = (state.cards || []).find((c) => c.id === cid);
+            const rec = validateCard({ saved: saved });
+            if (!rec.ok) {
+              state.cardErr = rec.err;
+              render({ keepScroll: true });
+              return;
+            }
+            if (!saved && rec.save) rememberCard(rec);
+            state.cardAuth = { brand: rec.brand, last4: rec.last4 };
+            state.payment = rec.brand + ' •••• ' + rec.last4;
+            state.cardErr = '';
+          }
+        } else {
+          state.cardAuth = null;
+          state.payment = 'Cash on delivery';
+        }
         if (!state.cart.length) return;
         const pin = deliveryPoint();
         if (!state.loc.custom && state.loc.liveLat == null && !savedGps) {
@@ -1243,7 +1514,7 @@
           render({ keepScroll: true });
           return;
         }
-        if (place) { place.disabled = true; place.textContent = 'Placing…'; }
+        if (place) { place.disabled = true; place.textContent = state.payKind === 'card' ? 'Paying…' : 'Placing…'; }
         try {
           if (!state.loc.custom && !state.loc.frozen && pin.lat != null) {
             setPlace(pin.lat, pin.lng, state.loc.label, false);
@@ -1255,6 +1526,7 @@
             deliveryLat: pin.lat, deliveryLng: pin.lng, items: state.cart,
           });
           state.cart = []; saveCart();
+          state.cardAuth = null;
           state.loc.custom = true;
           state.loc.frozen = true;
           state.lastOrder = order;
@@ -1271,7 +1543,7 @@
             return;
           }
           alert(e.message);
-          if (place) { place.disabled = false; place.textContent = 'Place Order'; }
+          if (place) { place.disabled = false; place.textContent = state.payKind === 'card' ? 'Pay ' + rs(cartTotal() + fee()) : 'Place Order'; }
         }
       }
       if (place) place.onclick = placeNow;

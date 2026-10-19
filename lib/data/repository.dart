@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
+import 'pay_cards.dart';
 import 'place.dart';
 import '../models/message.dart';
 import '../models/order.dart';
@@ -163,6 +164,7 @@ class OrderRepository {
     }
     _started = true;
     loadFavs();
+    PayCards.load(email: user?.email, id: user?.id, phone: user?.phone);
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => refresh());
     refresh();
   }
@@ -563,6 +565,7 @@ class OrderRepository {
     }
     userNotifier.value = session;
     await loadFavs();
+    await PayCards.load(email: session.email, id: session.id, phone: session.phone);
     connectedNotifier.value = true;
     await _persist();
     if (role == 'shop') {
@@ -841,6 +844,7 @@ class OrderRepository {
     token = 'sb_$nextId';
     userNotifier.value = SessionUser.fromJson(row);
     await loadFavs();
+    await PayCards.load(email: user?.email, id: user?.id, phone: user?.phone);
     connectedNotifier.value = true;
     await _persist();
     await refresh();

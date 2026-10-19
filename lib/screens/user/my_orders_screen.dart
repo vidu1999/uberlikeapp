@@ -25,7 +25,7 @@ class MyOrdersScreen extends StatelessWidget {
                 child: ListTile(
                   title: Text(o.shopName, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(
-                    '${o.items.map((e) => e.name).join(', ')} • Rs. ${o.totalAmount.toStringAsFixed(0)}',
+                    '${o.items.map((e) => e.name).join(', ')} • Rs. ${o.totalAmount.toStringAsFixed(0)} • ${o.paymentMethod}',
                   ),
                   trailing: Chip(
                     label: Text(o.status.label),

@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18y" />
-  <link rel="stylesheet" href="/css/ui.css?v=18y" />
-  <link rel="stylesheet" href="/css/track.css?v=18y" />
+  <link rel="stylesheet" href="/css/app.css?v=18z" />
+  <link rel="stylesheet" href="/css/ui.css?v=18z" />
+  <link rel="stylesheet" href="/css/track.css?v=18z" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=18y"></script>
-  <script src="/js/api.js?v=18y"></script>
-  <script src="/js/maps.js?v=18y"></script>
-  <script src="/js/track-ui.js?v=18y"></script>
-  <script src="/js/otp-login.js?v=18y"></script>
+  <script src="/js/live.js?v=18z"></script>
+  <script src="/js/api.js?v=18z"></script>
+  <script src="/js/maps.js?v=18z"></script>
+  <script src="/js/track-ui.js?v=18z"></script>
+  <script src="/js/otp-login.js?v=18z"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -255,7 +255,7 @@
         <img src="${thumb(o)}" alt="" />
         <div class="grow">
           <div class="oid">${esc(oid(o.id))}</div>
-          <div class="sub">${esc(timeOf(o))} · ${esc(items)}</div>
+          <div class="sub">${esc(timeOf(o))} · ${!/cash/i.test(String(o.paymentMethod||'')) && /visa|master|amex|card|••••|unionpay|jcb/i.test(String(o.paymentMethod||'')) ? 'Card paid' : 'COD'} · ${esc(items)}</div>
           <div class="rs">${rs(o.totalAmount)}</div>
           <div class="sd-acts">
             ${o.status==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
@@ -398,6 +398,11 @@
             <h2>${esc(items)}</h2>
             <div class="rs">${rs(o.totalAmount)}</div>
           </div>
+        </div>
+        <div class="ol-pay">
+          <b>Payment</b>
+          <div>${esc(o.paymentMethod || 'Cash on delivery')}</div>
+          <small>${!/cash/i.test(String(o.paymentMethod||'')) && /visa|master|amex|card|••••|unionpay|jcb/i.test(String(o.paymentMethod||'')) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.'}</small>
         </div>
         <div class="ol-steps">
           ${steps.map((s, i) => {

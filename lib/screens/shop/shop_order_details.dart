@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../config.dart';
+import '../../data/pay_cards.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
 import '../../theme.dart';
@@ -76,6 +77,13 @@ class ShopOrderDetails extends StatelessWidget {
                             Text(items.isEmpty ? 'Order' : items, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
                             Text('Rs. ${order.totalAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 6),
+                            Text(
+                              PayCards.paidByCard(order.paymentMethod)
+                                  ? '${order.paymentMethod} · paid — do not collect cash'
+                                  : order.paymentMethod,
+                              style: const TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
                           ],
                         ),
                       ),

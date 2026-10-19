@@ -10,6 +10,7 @@ import 'cart_screen.dart';
 import 'location_picker.dart';
 import 'my_orders_screen.dart';
 import 'search_screen.dart';
+import 'payment_methods_screen.dart';
 import 'shop_menu_screen.dart';
 
 class CustomerHome extends StatefulWidget {
@@ -410,7 +411,11 @@ class _CustomerHomeState extends State<CustomerHome> {
           const SizedBox(height: 16),
           ListTile(leading: const Icon(Icons.receipt_long_outlined, size: 22), title: const Text('My Orders'), onTap: () => setState(() => tab = 1)),
           const ListTile(leading: Icon(Icons.location_on_outlined, size: 22), title: Text('Addresses')),
-          const ListTile(leading: Icon(Icons.credit_card_outlined, size: 22), title: Text('Payment Methods')),
+          ListTile(
+            leading: const Icon(Icons.credit_card_outlined, size: 22),
+            title: const Text('Payment Methods'),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PaymentMethodsScreen())),
+          ),
           const ListTile(leading: Icon(Icons.notifications_outlined, size: 22), title: Text('Notifications')),
           const ListTile(leading: Icon(Icons.help_outline, size: 22), title: Text('Help & Support')),
           ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), trailing: const SettingsButton()),

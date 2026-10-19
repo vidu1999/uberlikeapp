@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../data/pay_cards.dart';
 import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../theme.dart';
@@ -14,8 +15,15 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   late final _addr = TextEditingController(text: UserPlace.instance.label);
+  final _cardNum = TextEditingController();
+  final _cardName = TextEditingController();
+  final _cardExp = TextEditingController();
+  final _cardCvc = TextEditingController();
   String ship = 'standard';
-  String pay = 'Cash on delivery';
+  String pay = 'cash';
+  String cardId = 'new';
+  bool saveCard = true;
+  String? cardErr;
   bool placing = false;
 
   int get fee => ship == 'express' ? 360 : 200;
@@ -41,6 +49,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     UserPlace.instance.notifier.removeListener(_syncAddr);
     UserPlace.instance.liveNotifier.removeListener(_syncAddr);
     _addr.dispose();
+    _cardNum.dispose();
+    _cardName.dispose();
+    _cardExp.dispose();
+    _cardCvc.dispose();
     super.dispose();
   }
 
@@ -130,9 +142,141 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return ok == true && repo.isWhatsAppVerified();
   }
 
+  List<Widget> _cardFields() {
+    final cards = PayCards.cards;
+    final useSaved = cardId != 'new' && cards.any((c) => c.id == cardId);
+    return [
+      if (cards.isNotEmpty) ...[
+        ...cards.map(
+          (c) => RadioListTile<String>(
+            value: c.id,
+            groupValue: cardId,
+            onChanged: (v) => setState(() { cardId = v!; cardErr = null; }),
+            title: Text(c.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('Expires ${c.exp}', style: const TextStyle(fontSize: 12)),
+            activeColor: Brand.green,
+            dense: true,
+          ),
+        ),
+        RadioListTile<String>(
+          value: 'new',
+          groupValue: cardId,
+          onChanged: (v) => setState(() { cardId = v!; cardErr = null; }),
+          title: const Text('Add a new card'),
+          activeColor: Brand.green,
+          dense: true,
+        ),
+      ],
+      if (!useSaved) ...[
+        TextField(
+          controller: _cardNum,
+          keyboardType: TextInputType.number,
+          onChanged: (v) {
+            final f = PayCards.formatNumber(v);
+            if (f != v) _cardNum.value = TextEditingValue(text: f, selection: TextSelection.collapsed(offset: f.length));
+            setState(() {});
+          },
+          decoration: InputDecoration(
+            labelText: 'Card number',
+            hintText: 'ACCT-000015',
+            suffixText: PayCards.brand(_cardNum.text) == 'Card' ? null : PayCards.brand(_cardNum.text),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _cardName,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(
+            labelText: 'Name on card',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
+      Row(
+        children: [
+          if (!useSaved)
+            Expanded(
+              child: TextField(
+                controller: _cardExp,
+                keyboardType: TextInputType.number,
+                onChanged: (v) {
+                  final f = PayCards.formatExp(v);
+                  if (f != v) _cardExp.value = TextEditingValue(text: f, selection: TextSelection.collapsed(offset: f.length));
+                },
+                decoration: InputDecoration(
+                  labelText: 'Expiry',
+                  hintText: 'MM/YY',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          if (!useSaved) const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _cardCvc,
+              keyboardType: TextInputType.number,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'CVC',
+                hintText: '123',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+        ],
+      ),
+      if (!useSaved)
+        CheckboxListTile(
+          value: saveCard,
+          onChanged: (v) => setState(() => saveCard = v ?? true),
+          title: const Text('Save this card for next orders'),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          activeColor: Brand.green,
+        ),
+      if (cardErr != null) Text(cardErr!, style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600)),
+      const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: Text('Full card number and CVC are never stored.', style: TextStyle(color: Brand.muted, fontSize: 12)),
+      ),
+    ];
+  }
+
   Future<void> _place() async {
     setState(() => placing = true);
     try {
+      String paymentMethod = 'Cash on delivery';
+      if (pay == 'card') {
+        final cards = PayCards.cards;
+        SavedCard? saved;
+        for (final c in cards) {
+          if (c.id == cardId) saved = c;
+        }
+        final err = PayCards.validate(
+          number: _cardNum.text,
+          name: _cardName.text,
+          exp: _cardExp.text,
+          cvc: _cardCvc.text,
+          savedBrand: saved?.brand,
+        );
+        if (err != null) {
+          if (mounted) setState(() { placing = false; cardErr = err; });
+          return;
+        }
+        if (saved != null) {
+          paymentMethod = saved.label;
+        } else {
+          if (saveCard) {
+            final added = await PayCards.add(number: _cardNum.text, name: _cardName.text, exp: _cardExp.text);
+            paymentMethod = added.label;
+          } else {
+            final d = PayCards.digits(_cardNum.text);
+            paymentMethod = '${PayCards.brand(d)} •••• ${d.substring(d.length - 4)}';
+          }
+        }
+      }
       if (!OrderRepository.instance.isWhatsAppVerified()) {
         final verified = await _verifyWhatsApp();
         if (!verified) {
@@ -145,7 +289,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       final lng = (place.custom || place.frozen) ? place.lng : (place.liveLng ?? place.lng);
       final order = await OrderRepository.instance.checkout(
         address: _addr.text,
-        paymentMethod: pay,
+        paymentMethod: paymentMethod,
         deliveryLat: lat,
         deliveryLng: lng,
       );
@@ -225,19 +369,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 8),
           const Text('Payment Method', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
           RadioListTile<String>(
-            value: 'Cash on delivery',
+            value: 'cash',
             groupValue: pay,
-            onChanged: (v) => setState(() => pay = v!),
+            onChanged: (v) => setState(() { pay = v!; cardErr = null; }),
             title: const Text('Cash on Delivery'),
             activeColor: Brand.green,
           ),
           RadioListTile<String>(
-            value: 'Card on delivery',
+            value: 'card',
             groupValue: pay,
-            onChanged: (v) => setState(() => pay = v!),
-            title: const Text('Card Payment'),
+            onChanged: (v) => setState(() {
+              pay = v!;
+              cardErr = null;
+              if (PayCards.cards.isNotEmpty) cardId = PayCards.cards.first.id;
+            }),
+            title: const Text('Debit / Credit card'),
             activeColor: Brand.green,
           ),
+          if (pay == 'card') ..._cardFields(),
           RadioListTile<String>(
             value: 'wallet',
             groupValue: pay,
@@ -258,7 +407,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
               onPressed: placing ? null : _place,
-              child: Text(placing ? 'Placing…' : 'Place Order', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              child: Text(
+                placing ? (pay == 'card' ? 'Paying…' : 'Placing…') : (pay == 'card' ? 'Pay Rs. ${(sub + fee).toStringAsFixed(0)}' : 'Place Order'),
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
             ),
           ),
         ],

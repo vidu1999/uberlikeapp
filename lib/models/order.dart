@@ -151,6 +151,7 @@ class Order {
   final double? shopLat;
   final double? shopLng;
   final String? shopAddress;
+  final String paymentMethod;
 
   const Order({
     required this.id,
@@ -175,6 +176,7 @@ class Order {
     this.shopLat,
     this.shopLng,
     this.shopAddress,
+    this.paymentMethod = 'Cash on delivery',
   });
 
   Order copyWith({
@@ -208,6 +210,7 @@ class Order {
       shopLat: shopLat,
       shopLng: shopLng,
       shopAddress: shopAddress,
+      paymentMethod: paymentMethod,
     );
   }
 
@@ -234,6 +237,7 @@ class Order {
         'shopLat': shopLat,
         'shopLng': shopLng,
         'shopAddress': shopAddress,
+        'paymentMethod': paymentMethod,
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
@@ -275,6 +279,7 @@ class Order {
       shopLat: j['shopLat'] is num ? (j['shopLat'] as num).toDouble() : double.tryParse('${j['shopLat'] ?? ''}'),
       shopLng: j['shopLng'] is num ? (j['shopLng'] as num).toDouble() : double.tryParse('${j['shopLng'] ?? ''}'),
       shopAddress: j['shopAddress']?.toString(),
+      paymentMethod: '${j['paymentMethod'] ?? j['payment_method'] ?? 'Cash on delivery'}',
     );
   }
 }

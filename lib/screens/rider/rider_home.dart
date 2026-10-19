@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../app.dart';
 import '../../config.dart';
+import '../../data/pay_cards.dart';
 import '../../data/place.dart';
 import '../../data/repository.dart';
 import '../../models/order.dart';
@@ -664,6 +665,14 @@ class _RiderHomeState extends State<RiderHome> {
                 const Text('Delivery Address', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 6),
                 Text(o.address.isEmpty ? 'Customer pin on the map' : o.address, style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 12),
+                const Text('Payment', style: TextStyle(color: Brand.soft, fontSize: 13, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                Text(o.paymentMethod, style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text(
+                  PayCards.paidByCard(o.paymentMethod) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.',
+                  style: const TextStyle(color: Brand.soft, fontSize: 12),
+                ),
               ],
             ),
           ),
