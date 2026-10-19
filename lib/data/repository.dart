@@ -1582,6 +1582,69 @@ class OrderRepository {
     }
   }
 
+  bool _wipedAll = false;
+  Future<void> _oneShotEmptyDb() async {
+    if (_wipedAll) return;
+    const gen = '19r';
+    try {
+      for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final p = m['payload'];
+        if (p is Map && '${p['v']}' == gen) {
+          _wipedAll = true;
+          return;
+        }
+      }
+    } catch (_) {}
+    logout();
+    const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
+    for (var attempt = 0; attempt < 6; attempt++) {
+      for (final t in tables) {
+        try {
+          await _sbDelete('$t?id=not.is.null');
+        } catch (_) {}
+        if (t == 'messages') {
+          try { await _sbDelete('messages?order_id=not.is.null'); } catch (_) {}
+        }
+        if (t == 'accounts') {
+          for (final q in ['accounts?pin=eq.google', 'accounts?email=not.is.null', 'accounts?phone=not.is.null', 'accounts?role=eq.shop', 'accounts?role=eq.customer', 'accounts?role=eq.rider']) {
+            try { await _sbDelete(q); } catch (_) {}
+          }
+        }
+        try {
+          final rows = await _sbGet('$t?select=*&limit=1000');
+          for (final raw in rows) {
+            final row = Map<String, dynamic>.from(raw as Map);
+            final id = '${row['id'] ?? ''}';
+            if (id.isEmpty) continue;
+            try {
+              if (t == 'messages' && row['order_id'] != null) {
+                await _sbDelete('messages?order_id=eq.${Uri.encodeComponent('${row['order_id']}')}&id=eq.${Uri.encodeComponent(id)}');
+              } else {
+                await _sbDelete('$t?id=eq.${Uri.encodeComponent(id)}');
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      var shops = <dynamic>[];
+      var items = <dynamic>[];
+      var accs = <dynamic>[];
+      try { shops = await _sbGet('shops?select=id&limit=5'); } catch (_) {}
+      try { items = await _sbGet('menu_items?select=id&limit=5'); } catch (_) {}
+      try { accs = await _sbGet('accounts?select=id&limit=5'); } catch (_) {}
+      if (shops.isEmpty && items.isEmpty && accs.isEmpty) {
+        _wipedAll = true;
+        try {
+          await _sbWrite('app_state', 'POST', [
+            {'id': 'qb_empty', 'payload': {'v': gen, 'at': DateTime.now().millisecondsSinceEpoch}},
+          ]);
+        } catch (_) {}
+        return;
+      }
+    }
+  }
+
   List<Shop> _scopeShops(Iterable<Shop> shops) {
     var list = shops.where((s) => !_isDemoShop(s.id)).toList();
     final u = user;
@@ -1793,6 +1856,7 @@ class OrderRepository {
   Future<bool> _refreshFromSupabase() async {
     try {
       await _purgeDemoPrefs();
+      await _oneShotEmptyDb();
       await _wipeDemo();
       await _hydrateUser();
       if (user?.role == 'shop') {

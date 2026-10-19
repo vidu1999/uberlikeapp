@@ -1008,8 +1008,22 @@
   async function wipeTableAll(table) {
     const missing = /404|PGRST205|does not exist/i;
     const bulk = table === 'messages' ? ['order_id=not.is.null', 'id=not.is.null'] : ['id=not.is.null'];
-    if (table === 'accounts') bulk.push('phone=not.is.null', 'role=eq.shop', 'role=eq.customer', 'role=eq.rider', 'role=eq.user');
-    if (table === 'otp_codes') bulk.push('phone=not.is.null', 'role=eq.shop', 'role=eq.customer', 'role=eq.rider');
+    if (table === 'accounts') {
+      bulk.push(
+        'phone=not.is.null',
+        'email=not.is.null',
+        'pin=eq.google',
+        'pin=like.google*',
+        'pin=like.p:*',
+        'role=eq.shop',
+        'role=eq.customer',
+        'role=eq.rider',
+        'role=eq.user',
+      );
+    }
+    if (table === 'otp_codes') bulk.push('phone=not.is.null', 'role=eq.shop', 'role=eq.customer', 'role=eq.rider', 'role=eq.user');
+    if (table === 'shops') bulk.push('name=not.is.null');
+    if (table === 'menu_items') bulk.push('shop_id=not.is.null', 'name=not.is.null');
     for (let i = 0; i < bulk.length; i++) {
       try { await sbSend(table + '?' + bulk[i], 'DELETE'); } catch (e) {
         if (missing.test(String(e && e.message))) return true;
@@ -1029,8 +1043,16 @@
             await sbSend('messages?order_id=eq.' + encodeURIComponent(r.order_id) + '&id=eq.' + encodeURIComponent(r.id), 'DELETE');
           } else if (r.id != null) {
             await sbSend(table + '?id=eq.' + encodeURIComponent(r.id), 'DELETE');
+            if (r.email) {
+              try { await sbSend(table + '?email=eq.' + encodeURIComponent(r.email), 'DELETE'); } catch (_) {}
+            }
+            if (r.phone) {
+              try { await sbSend(table + '?phone=eq.' + encodeURIComponent(r.phone), 'DELETE'); } catch (_) {}
+            }
           } else if (r.phone) {
             await sbSend(table + '?phone=eq.' + encodeURIComponent(r.phone), 'DELETE');
+          } else if (r.email) {
+            await sbSend(table + '?email=eq.' + encodeURIComponent(r.email), 'DELETE');
           }
         } catch (_) {}
       }
@@ -1068,13 +1090,15 @@
   }
 
   async function oneShotEmptyDb() {
-    if (API._wipedAll || !sbConfigured()) return;
-    const GEN = '19p';
+    if (!sbConfigured()) return;
+    const GEN = '19r';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
       if (p && String(p.v || '') === GEN) return;
     } catch (_) {}
+    try { clearAllLocalAuth(); } catch (_) {}
+    API._wipedAll = false;
     const ok = await wipeAllData();
     if (!ok) return;
     try {
@@ -1105,6 +1129,8 @@
       return;
     }
     if (f === 'all' || f === '*' || f === 'reset') {
+      API._wipedAll = false;
+      try { clearAllLocalAuth(); } catch (_) {}
       const ok = await wipeAllData();
       try {
         alert(ok

@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19q"></script>
+  <script src="/js/live.js?v=19r"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -61,13 +61,14 @@
     async function pingSupabase() {
       if (!sb || !key) throw new Error('no supabase');
       const delHdr = Object.assign({ Prefer: 'return=minimal' }, hdr());
-      const GEN = '19p';
+      const GEN = '19r';
       let alreadyEmpty = false;
       try {
         const st = await fetch(sb + '/rest/v1/app_state?id=eq.qb_empty&select=payload', { headers: hdr() }).then((r) => r.json());
         alreadyEmpty = Array.isArray(st) && st[0] && st[0].payload && String(st[0].payload.v) === GEN;
       } catch (_) {}
       if (!alreadyEmpty) {
+        el.textContent = 'Clearing all User, Shop, and Rider data…';
         const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
         for (let round = 0; round < 6; round++) {
           await Promise.all(tables.map((t) => fetch(sb + '/rest/v1/' + t + (t === 'messages' ? '?order_id=not.is.null' : '?id=not.is.null'), { method: 'DELETE', headers: delHdr }).catch(() => {})));
