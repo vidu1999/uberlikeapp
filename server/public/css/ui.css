@@ -527,7 +527,40 @@ html[data-role="shop"] .add { background: var(--g); }
 .sp-auth .ghost {
   width: 100%; border: 1px solid #E5E7EB; background: #fff; border-radius: 28px;
   padding: 12px; font-weight: 700; margin-bottom: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
+.sp-auth .wa-btn, .rd-auth .wa-btn, .qb-wa, .wa-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.wa-logo { width: 22px; height: 22px; display: block; flex: 0 0 22px; }
+.qb-wa-mask {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 80;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.qb-wa-sheet {
+  width: 100%; max-width: 520px; background: #fff; color: #111;
+  border-radius: 22px 22px 0 0; padding: 20px 18px 28px;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.18);
+}
+.qb-wa-sheet b { display: block; font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+.qb-wa-sheet p { color: #6B7280; margin: 0 0 12px; line-height: 1.45; font-size: 14px; }
+.qb-wa-sheet input#waPhone {
+  width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 14px; font-size: 16px; margin-bottom: 8px;
+}
+.qb-wa-sheet .otp-boxes { margin: 8px 0 12px; display: flex; gap: 8px; justify-content: space-between; }
+.qb-wa-sheet .otp-boxes input {
+  width: 56px; height: 64px; text-align: center; font-size: 24px; font-weight: 800;
+  border: 1px solid #E5E7EB; border-radius: 12px;
+}
+.qb-wa-sheet .btn-qb, .qb-wa-sheet .btn-green {
+  width: 100%; background: #00C853; color: #fff; border: 0; border-radius: 28px;
+  padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer;
+}
+.qb-wa-sheet .btn-ghost-qb {
+  width: 100%; margin-top: 8px; border: 0; background: 0; color: #00C853; font-weight: 700; cursor: pointer; padding: 10px;
+}
+.qb-wa-sheet .qb-skip { width: 100%; margin-top: 4px; border: 0; background: 0; color: #6B7280; font-weight: 700; cursor: pointer; padding: 10px; }
+.qb-wa-sheet .err { color: #b91c1c; min-height: 18px; font-size: 13px; }
 .sp-auth .foot { text-align: center; margin-top: 18px; color: #6B7280; font-size: 14px; }
 .sp-auth .foot button { border: 0; background: 0; color: #00C853; font-weight: 800; cursor: pointer; }
 .sp-auth .err { color: #b91c1c; min-height: 18px; font-size: 13px; margin-top: 8px; }
@@ -943,6 +976,7 @@ html[data-role="rider"] .field input {
 .rd-auth .ghost {
   width: 100%; border: 1px solid #1F2937; background: #0e1c18; color: #fff;
   border-radius: 28px; padding: 12px; font-weight: 700; margin-bottom: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
 .rd-auth .foot { text-align: center; margin-top: 18px; color: #9CA3AF; font-size: 14px; }
 .rd-auth .foot button { border: 0; background: 0; color: #00C853; font-weight: 800; cursor: pointer; }

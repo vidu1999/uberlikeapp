@@ -56,11 +56,12 @@
   background: #07130f; color: #fff;
   padding: 36px 22px 28px; display: flex; flex-direction: column;
 }
-.qb-google {
+.qb-google, .qb-wa {
   background: #121c18 !important; color: #fff !important; border-color: #1f2e28 !important;
   margin-bottom: 8px; cursor: pointer; pointer-events: auto; position: relative; z-index: 3;
 }
-.qb-google:disabled { opacity: 0.7; cursor: wait; }
+.qb-google:disabled, .qb-wa:disabled { opacity: 0.7; cursor: wait; }
+.qb-wa .wa-logo, .wa-btn .wa-logo { width: 22px; height: 22px; display: block; flex: 0 0 22px; }
 .qb-wa-mask {
   position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 50;
   display: flex; align-items: flex-end; justify-content: center;

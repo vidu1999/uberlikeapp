@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19d" />
-  <link rel="stylesheet" href="/css/ui.css?v=19d" />
-  <link rel="stylesheet" href="/css/track.css?v=19d" />
-  <link rel="stylesheet" href="/css/qb.css?v=19d" />
+  <link rel="stylesheet" href="/css/app.css?v=19e" />
+  <link rel="stylesheet" href="/css/ui.css?v=19e" />
+  <link rel="stylesheet" href="/css/track.css?v=19e" />
+  <link rel="stylesheet" href="/css/qb.css?v=19e" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19d"></script>
-  <script src="/js/api.js?v=19d"></script>
-  <script src="/js/maps.js?v=19d"></script>
-  <script src="/js/track-ui.js?v=19d"></script>
+  <script src="/js/live.js?v=19e"></script>
+  <script src="/js/api.js?v=19e"></script>
+  <script src="/js/maps.js?v=19e"></script>
+  <script src="/js/track-ui.js?v=19e"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -86,7 +86,7 @@
       loginId: '',
       loginPw: '',
       reg: { name: '', phone: '', email: '', password: '' },
-      wa: { open: false, step: 'phone', phone: '', err: '' },
+      wa: { open: false, step: 'phone', phone: '', err: '', mode: 'order' },
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
@@ -440,6 +440,7 @@
       mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
       lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
       google: '<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7 12.9 19.6C14.7 15.2 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.3 5.3C39.3 36.1 44 30.7 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>',
+      whatsapp: '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>',
     };
 
     function nav() {
@@ -568,7 +569,7 @@
           <div class="qb-tag">Good Food, Fast Delivery</div>
         </div>
         <h1>Welcome Back 👋</h1>
-        <p class="sub">Google or email &amp; password to enter. WhatsApp once before Place Order if this account has not verified yet.</p>
+        <p class="sub">Google, WhatsApp, or email &amp; password to enter. WhatsApp once before Place Order if this account has not verified yet.</p>
         <div class="qb-field"><span class="ico">${SVG.mail}</span><input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" /></div>
         <div class="qb-field"><span class="ico">${SVG.lock}</span><input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
         <button class="qb-forgot" type="button">Forgot Password?</button>
@@ -576,9 +577,9 @@
         <button class="btn-qb" data-signin>Sign In</button>
         <div class="qb-or">or</div>
         <button class="btn-outline qb-google" type="button" data-google>${SVG.google} Continue with Google</button>
-        <button class="btn-outline" type="button" style="background:#121c18;color:#fff;border-color:#1f2e28" data-apple>Continue with Apple</button>
+        <button class="btn-outline qb-wa" type="button" data-whatsapp>${SVG.whatsapp} Continue with WhatsApp</button>
         <div class="qb-foot">Don't have an account? <button class="link" data-go-reg>Sign Up</button></div>
-      </div>`;
+      </div>${state.wa.open ? waSheet() : ''}`;
     }
     function registerView() {
       const r = state.regRole;
@@ -824,10 +825,13 @@
     }
     function waSheet() {
       const w = state.wa || {};
+      const login = w.mode === 'login';
       const codeStep = w.step === 'code';
       return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
-        + '<b>Verify WhatsApp to place this order</b>'
-        + '<p>Google and email logins must verify WhatsApp once. After that you can order anytime.</p>'
+        + '<b>' + (login ? 'Continue with WhatsApp' : 'Verify WhatsApp to place this order') + '</b>'
+        + '<p>' + (login
+          ? 'Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.'
+          : 'Google and email logins must verify WhatsApp once. After that you can order anytime.') + '</p>'
         + (codeStep
           ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
             + '<div class="otp-boxes">'
@@ -836,7 +840,7 @@
             + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
             + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
             + '</div><p class="err">' + esc(w.err || '') + '</p>'
-            + '<button class="btn-qb" type="button" data-wa-verify>Verify &amp; place order</button>'
+            + '<button class="btn-qb" type="button" data-wa-verify>' + (login ? 'Verify &amp; enter' : 'Verify &amp; place order') + '</button>'
             + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
           : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
             + '<p class="err">' + esc(w.err || '') + '</p>'
@@ -1018,6 +1022,78 @@
         };
       });
     }
+    function bindWaSheet(afterVerify) {
+      const sheet = document.querySelector('[data-wa-sheet]');
+      if (!sheet) return;
+      const close = sheet.querySelector('[data-wa-close]');
+      if (close) close.onclick = () => {
+        state.wa.open = false;
+        render({ keepScroll: true });
+      };
+      const send = sheet.querySelector('[data-wa-send]');
+      if (send) send.onclick = async () => {
+        const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
+        state.wa.phone = phone;
+        send.disabled = true;
+        send.textContent = 'Sending…';
+        try {
+          const out = await API.sendOtp('customer', phone);
+          state.wa.phone = out.phone || phone;
+          state.wa.step = 'code';
+          state.wa.err = '';
+          render({ keepScroll: true });
+        } catch (e) {
+          state.wa.err = e.message || 'Could not send WhatsApp code';
+          render({ keepScroll: true });
+        }
+      };
+      const resend = sheet.querySelector('[data-wa-resend]');
+      if (resend) resend.onclick = async () => {
+        try {
+          await API.sendOtp('customer', state.wa.phone);
+          state.wa.err = 'Code sent again.';
+          render({ keepScroll: true });
+        } catch (e) {
+          state.wa.err = e.message || 'Could not resend';
+          render({ keepScroll: true });
+        }
+      };
+      const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+      async function verifyWa() {
+        const code = codeValue();
+        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render({ keepScroll: true }); return; }
+        try {
+          await API.verifyOtp('customer', state.wa.phone, code);
+          const login = state.wa.mode === 'login';
+          state.wa.open = false;
+          state.wa.err = '';
+          if (login) {
+            state.gate = 'app';
+            state.tab = 'home';
+            state.screen = 'home';
+            render();
+            return;
+          }
+          if (afterVerify) await afterVerify();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not verify';
+          render({ keepScroll: true });
+        }
+      }
+      const verifyBtn = sheet.querySelector('[data-wa-verify]');
+      if (verifyBtn) verifyBtn.onclick = verifyWa;
+      sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
+        el.oninput = () => {
+          el.value = el.value.replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.dataset.wad);
+          if (el.value && i < 3) {
+            const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
+            if (next) next.focus();
+          }
+          if (codeValue().length === 4) verifyWa();
+        };
+      });
+    }
 
     function openTrack(id, lock) {
       state.trackId = id; state.screen = 'track'; state.lockTrack = lock !== false; render();
@@ -1035,7 +1111,7 @@
       if (!API.user && state.gate !== 'app') {
         if (state.gate === 'splash') { root.innerHTML = splash(); return; }
         if (state.gate === 'onboard') { root.innerHTML = onboard(); bindGate(); return; }
-        if (state.gate === 'login') { root.innerHTML = loginView(); bindGate(); consumeGoogleRedirect(); return; }
+        if (state.gate === 'login') { root.innerHTML = loginView(); bindGate(); bindWaSheet(); consumeGoogleRedirect(); return; }
         if (state.gate === 'register') { root.innerHTML = registerView(); bindGate(); return; }
         if (state.gate === 'otp') { root.innerHTML = otpView(); bindGate(); bindOtp(); return; }
         if (state.gate === 'download') { root.innerHTML = downloadView(); bindGate(); return; }
@@ -1213,10 +1289,11 @@
           googleBtn.innerHTML = html;
         }
       };
-      const apple = root.querySelector('[data-apple]');
-      if (apple) apple.onclick = () => {
-        const err = root.querySelector('[data-err]');
-        if (err) err.textContent = 'Use Google or WhatsApp to sign in.';
+      const waBtn = root.querySelector('[data-whatsapp]');
+      if (waBtn) waBtn.onclick = (e) => {
+        e.preventDefault();
+        state.wa = { open: true, step: 'phone', phone: '', err: '', mode: 'login' };
+        render();
       };
       const reg = root.querySelector('[data-register]');
       if (reg) reg.onclick = async () => {
@@ -1511,7 +1588,7 @@
           return;
         }
         if (!API.isWhatsAppVerified || !API.isWhatsAppVerified()) {
-          state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '' };
+          state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '', mode: 'order' };
           render({ keepScroll: true });
           return;
         }
@@ -1559,7 +1636,7 @@
         } catch (e) {
           state.paying = false;
           if (e && e.code === 'WHATSAPP_REQUIRED') {
-            state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '' };
+            state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '', mode: 'order' };
             render({ keepScroll: true });
             return;
           }
@@ -1569,70 +1646,7 @@
         }
       }
       if (place) place.onclick = placeNow;
-      (function bindWaSheet() {
-        const sheet = root.querySelector('[data-wa-sheet]');
-        if (!sheet) return;
-        const close = sheet.querySelector('[data-wa-close]');
-        if (close) close.onclick = () => {
-          state.wa.open = false;
-          render({ keepScroll: true });
-        };
-        const send = sheet.querySelector('[data-wa-send]');
-        if (send) send.onclick = async () => {
-          const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
-          state.wa.phone = phone;
-          send.disabled = true;
-          send.textContent = 'Sending…';
-          try {
-            const out = await API.sendOtp('customer', phone);
-            state.wa.phone = out.phone || phone;
-            state.wa.step = 'code';
-            state.wa.err = '';
-            render({ keepScroll: true });
-          } catch (e) {
-            state.wa.err = e.message || 'Could not send WhatsApp code';
-            render({ keepScroll: true });
-          }
-        };
-        const resend = sheet.querySelector('[data-wa-resend]');
-        if (resend) resend.onclick = async () => {
-          try {
-            await API.sendOtp('customer', state.wa.phone);
-            state.wa.err = 'Code sent again.';
-            render({ keepScroll: true });
-          } catch (e) {
-            state.wa.err = e.message || 'Could not resend';
-            render({ keepScroll: true });
-          }
-        };
-        const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
-        async function verifyWa() {
-          const code = codeValue();
-          if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render({ keepScroll: true }); return; }
-          try {
-            await API.verifyOtp('customer', state.wa.phone, code);
-            state.wa.open = false;
-            state.wa.err = '';
-            await placeNow();
-          } catch (e) {
-            state.wa.err = e.message || 'Could not verify';
-            render({ keepScroll: true });
-          }
-        }
-        const verifyBtn = sheet.querySelector('[data-wa-verify]');
-        if (verifyBtn) verifyBtn.onclick = verifyWa;
-        sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
-          el.oninput = () => {
-            el.value = el.value.replace(/\D/g, '').slice(0, 1);
-            const i = Number(el.dataset.wad);
-            if (el.value && i < 3) {
-              const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
-              if (next) next.focus();
-            }
-            if (codeValue().length === 4) verifyWa();
-          };
-        });
-      })();
+      bindWaSheet(placeNow);
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
         const o = API.orders.find((x) => x.id === b.dataset.chat);

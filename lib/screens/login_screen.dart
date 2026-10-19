@@ -387,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Text(
             shop || rider
                 ? 'We’ll send a 4-digit code on WhatsApp. Same number can be User, Shop, and Rider — not two accounts in the same role.'
-                : 'Google or email & password to enter. WhatsApp is required once before you place an order — skip if this account already verified.',
+                : 'Google, WhatsApp, or email & password to enter. WhatsApp is required once before you place an order — skip if this account already verified.',
             style: const TextStyle(color: Color(0xFF9CA3AF)),
           ),
           const SizedBox(height: 20),
@@ -411,7 +411,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 12),
           _ghost('Continue with Google', onPressed: _googleSignIn),
           const SizedBox(height: 8),
-          _ghost('Continue with Apple', onPressed: () => setState(() => error = 'Use Google or WhatsApp to sign in.')),
+          _ghost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           if (widget.role == UserRole.customer) ...[
             const SizedBox(height: 22),
             Center(
@@ -620,7 +620,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 10),
           _lightGhost('Continue with Google'),
           const SizedBox(height: 8),
-          _lightGhost('Continue with Apple'),
+          _lightGhost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           const SizedBox(height: 18),
           Center(
             child: TextButton(
@@ -752,7 +752,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 10),
           _ghost('Continue with Google'),
           const SizedBox(height: 8),
-          _ghost('Continue with Apple'),
+          _ghost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           const SizedBox(height: 18),
           Center(
             child: TextButton(
@@ -878,33 +878,211 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _lightGhost(String label) {
+  Widget _waMark() {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: const BoxDecoration(color: Color(0xFF25D366), shape: BoxShape.circle),
+      child: const Icon(Icons.chat, size: 13, color: Colors.white),
+    );
+  }
+
+  Widget _sheetChild(Widget child, {required VoidCallback? onPressed, bool light = false}) {
     return SizedBox(
       height: 48,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Brand.ink,
-          side: const BorderSide(color: Color(0xFFE5E7EB)),
+          foregroundColor: light ? Brand.ink : Colors.white,
+          side: BorderSide(color: light ? const Color(0xFFE5E7EB) : const Color(0xFF1F2E28)),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         ),
-        onPressed: busy ? null : _send,
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        onPressed: busy ? null : onPressed,
+        child: child,
       ),
     );
   }
 
-  Widget _ghost(String label, {VoidCallback? onPressed}) {
-    return SizedBox(
-      height: 48,
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.white,
-          side: const BorderSide(color: Color(0xFF1F2E28)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        ),
-        onPressed: busy ? null : (onPressed ?? _send),
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
+  Widget _lightGhost(String label, {VoidCallback? onPressed, Widget? icon}) {
+    final child = icon == null
+        ? Text(label, style: const TextStyle(fontWeight: FontWeight.w700))
+        : Row(mainAxisAlignment: MainAxisAlignment.center, children: [icon, const SizedBox(width: 10), Text(label, style: const TextStyle(fontWeight: FontWeight.w700))]);
+    return _sheetChild(child, onPressed: onPressed ?? _send, light: true);
+  }
+
+  Widget _ghost(String label, {VoidCallback? onPressed, Widget? icon}) {
+    final child = icon == null
+        ? Text(label, style: const TextStyle(fontWeight: FontWeight.w700))
+        : Row(mainAxisAlignment: MainAxisAlignment.center, children: [icon, const SizedBox(width: 10), Text(label, style: const TextStyle(fontWeight: FontWeight.w700))]);
+    return _sheetChild(child, onPressed: onPressed ?? _send);
+  }
+
+  Future<void> _openWhatsAppLogin() async {
+    final phoneCtrl = TextEditingController();
+    final digits = List.generate(4, (_) => TextEditingController());
+    final focus = List.generate(4, (_) => FocusNode());
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        var step = 'phone';
+        var err = '';
+        var sending = false;
+        var sent = '';
+        return Padding(
+          padding: EdgeInsets.only(left: 18, right: 18, top: 20, bottom: 18 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: StatefulBuilder(
+            builder: (ctx, setS) {
+              Future<void> send() async {
+                final raw = phoneCtrl.text.trim();
+                if (raw.isEmpty) {
+                  setS(() => err = 'Enter your WhatsApp number');
+                  return;
+                }
+                setS(() {
+                  sending = true;
+                  err = '';
+                });
+                try {
+                  final data = await OrderRepository.instance.sendOtp(_apiRole, raw);
+                  sent = data?['phone']?.toString() ?? raw;
+                  phoneSent = sent;
+                  setS(() {
+                    sending = false;
+                    step = 'code';
+                  });
+                } catch (e) {
+                  setS(() {
+                    sending = false;
+                    err = e.toString().replaceFirst('Exception: ', '');
+                  });
+                }
+              }
+
+              Future<void> verify() async {
+                final code = digits.map((c) => c.text).join();
+                if (code.length != 4) {
+                  setS(() => err = 'Enter the 4-digit code');
+                  return;
+                }
+                setS(() {
+                  sending = true;
+                  err = '';
+                });
+                try {
+                  final ok = await OrderRepository.instance.verifyOtp(_apiRole, sent, code);
+                  if (!ctx.mounted) return;
+                  if (!ok) {
+                    setS(() {
+                      sending = false;
+                      err = 'That code does not match this phone number.';
+                    });
+                    return;
+                  }
+                  Navigator.pop(ctx);
+                  if (!mounted) return;
+                  if (OrderRepository.instance.needsShopRegister || OrderRepository.instance.needsRiderRegister) {
+                    final p = OrderRepository.instance.verifiedPhone;
+                    if (p != null && p.isNotEmpty) _phone.text = p;
+                    setState(() {
+                      register = true;
+                      fromRegister = true;
+                      error = null;
+                    });
+                  }
+                } catch (e) {
+                  setS(() {
+                    sending = false;
+                    err = e.toString().replaceFirst('Exception: ', '');
+                  });
+                }
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Continue with WhatsApp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  Text(
+                    step == 'code'
+                        ? 'Code sent to $sent'
+                        : 'Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.',
+                    style: const TextStyle(color: Color(0xFF6B7280), height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  if (step == 'phone') ...[
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        hintText: '07X XXX XXXX',
+                        filled: true,
+                        fillColor: const Color(0xFFF9FAFB),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                      ),
+                    ),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: List.generate(4, (i) {
+                        return SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: TextField(
+                            controller: digits[i],
+                            focusNode: focus[i],
+                            textAlign: TextAlign.center,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+                            inputFormatters: [LengthLimitingTextInputFormatter(1), FilteringTextInputFormatter.digitsOnly],
+                            decoration: const InputDecoration(border: OutlineInputBorder()),
+                            onChanged: (v) {
+                              if (v.isNotEmpty && i < 3) focus[i + 1].requestFocus();
+                              if (digits.every((c) => c.text.isNotEmpty)) verify();
+                            },
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                  if (err.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(err, style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13)),
+                  ],
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28))),
+                      onPressed: sending ? null : (step == 'phone' ? send : verify),
+                      child: Text(
+                        sending ? (step == 'phone' ? 'Sending…' : 'Checking…') : (step == 'phone' ? 'Send WhatsApp code' : 'Verify & enter'),
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  if (step == 'code')
+                    TextButton(onPressed: sending ? null : send, child: const Text('Resend on WhatsApp')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
+    phoneCtrl.dispose();
+    for (final c in digits) {
+      c.dispose();
+    }
+    for (final f in focus) {
+      f.dispose();
+    }
   }
 }

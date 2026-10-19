@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19d" />
-  <link rel="stylesheet" href="/css/ui.css?v=19d" />
-  <link rel="stylesheet" href="/css/track.css?v=19d" />
+  <link rel="stylesheet" href="/css/app.css?v=19e" />
+  <link rel="stylesheet" href="/css/ui.css?v=19e" />
+  <link rel="stylesheet" href="/css/track.css?v=19e" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19d"></script>
-  <script src="/js/api.js?v=19d"></script>
-  <script src="/js/maps.js?v=19d"></script>
-  <script src="/js/track-ui.js?v=19d"></script>
-  <script src="/js/otp-login.js?v=19d"></script>
+  <script src="/js/live.js?v=19e"></script>
+  <script src="/js/api.js?v=19e"></script>
+  <script src="/js/maps.js?v=19e"></script>
+  <script src="/js/track-ui.js?v=19e"></script>
+  <script src="/js/otp-login.js?v=19e"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -29,7 +29,9 @@
       reg: { shopName: '', ownerName: '', phone: (API.verifiedPhone && API.verifiedPhone('shop')) || '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '',
+      wa: { open: false, step: 'phone', phone: '', err: '' },
     };
+    const WA_LOGO = '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>';
     const FOOD_IMGS = [
       '/img/shop-burger.jpg', '/img/shop-pizza.jpg', '/img/shop-bakery.jpg', '/img/cake-chocolate.jpg',
       '/img/cake-vanilla.jpg', '/img/iced-coffee.jpg', '/img/kottu.jpg', '/img/cookies.jpg',
@@ -149,9 +151,32 @@
         <button class="btn-green" type="button" data-shop-login>Login</button>
         <div class="or">or</div>
         <button class="ghost" type="button" data-shop-login>Continue with Google</button>
-        <button class="ghost" type="button" data-shop-login>Continue with Apple</button>
+        <button class="ghost wa-btn" type="button" data-wa-login>${WA_LOGO} Continue with WhatsApp</button>
         <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
-      </div>`;
+      </div>${waSheet()}`;
+    }
+    function waSheet() {
+      const w = state.wa || {};
+      if (!w.open) return '';
+      const codeStep = w.step === 'code';
+      return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
+        + '<b>Continue with WhatsApp</b>'
+        + '<p>Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.</p>'
+        + (codeStep
+          ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
+            + '<div class="otp-boxes">'
+            + '<input data-wad="0" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="1" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
+            + '</div><p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-verify>Verify &amp; enter</button>'
+            + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
+          : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
+            + '<p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-send>Send WhatsApp code</button>'))
+        + '<button class="qb-skip" type="button" data-wa-close>Cancel</button>'
+        + '</div></div>';
     }
     function killRegMap() {
       if (state.regMap) { try { state.regMap.destroy(); } catch (_) {} state.regMap = null; }
@@ -732,6 +757,76 @@
       state.fromReg = true;
       render();
     }
+    function bindWaSheet() {
+      const sheet = document.querySelector('[data-wa-sheet]');
+      if (!sheet) return;
+      const close = sheet.querySelector('[data-wa-close]');
+      if (close) close.onclick = () => { state.wa.open = false; render(); };
+      const send = sheet.querySelector('[data-wa-send]');
+      if (send) send.onclick = async () => {
+        const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
+        state.wa.phone = phone;
+        send.disabled = true;
+        send.textContent = 'Sending…';
+        try {
+          const out = await API.sendOtp('shop', phone);
+          state.wa.phone = out.phone || phone;
+          state.loginId = state.wa.phone;
+          state.wa.step = 'code';
+          state.wa.err = '';
+          render();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not send WhatsApp code';
+          render();
+        }
+      };
+      const resend = sheet.querySelector('[data-wa-resend]');
+      if (resend) resend.onclick = async () => {
+        try {
+          await API.sendOtp('shop', state.wa.phone);
+          state.wa.err = 'Code sent again.';
+          render();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not resend';
+          render();
+        }
+      };
+      const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+      async function verifyWa() {
+        const code = codeValue();
+        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render(); return; }
+        try {
+          const out = await API.verifyOtp('shop', state.wa.phone, code);
+          state.wa.open = false;
+          if (out && out.needsRegister) {
+            state.auth = 'register';
+            state.fromReg = true;
+            state.reg.phone = out.phone || state.wa.phone;
+            render();
+            return;
+          }
+          state.tab = 'dash';
+          state.auth = 'login';
+          render();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not verify';
+          render();
+        }
+      }
+      const verifyBtn = sheet.querySelector('[data-wa-verify]');
+      if (verifyBtn) verifyBtn.onclick = verifyWa;
+      sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
+        el.oninput = () => {
+          el.value = el.value.replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.dataset.wad);
+          if (el.value && i < 3) {
+            const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
+            if (next) next.focus();
+          }
+          if (codeValue().length === 4) verifyWa();
+        };
+      });
+    }
     function bindAuth() {
       const root = document.getElementById('root');
       const err = root.querySelector('[data-err]');
@@ -747,6 +842,12 @@
       if (ro) ro.oninput = () => { state.reg.ownerName = ro.value; };
       const rp = document.getElementById('regPhone');
       if (rp) rp.oninput = () => { state.reg.phone = rp.value; };
+      const waOpen = root.querySelector('[data-wa-login]');
+      if (waOpen) waOpen.onclick = () => {
+        state.wa = { open: true, step: 'phone', phone: '', err: '' };
+        render();
+      };
+      bindWaSheet();
       root.querySelectorAll('[data-shop-login]').forEach((b) => {
         b.onclick = async () => {
           const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
