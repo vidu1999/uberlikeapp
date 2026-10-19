@@ -676,6 +676,11 @@
     return !n || n === 'rider' || n === 'guest' || n === 'user' || n === 'shop owner' || n === 'delivery partner';
   }
 
+  function isPlaceholderShopName(name) {
+    const n = String(name || '').trim().toLowerCase();
+    return !n || n === 'shop' || n === 'my shop' || n === 'new shop' || n === 'shop owner';
+  }
+
   API.isShopRegistered = function () {
     const u = API.user;
     if (!u || !sameRole(u.role, 'shop')) return false;
@@ -755,12 +760,19 @@
         promo: rec.promo || '',
       };
       if (sbConfigured()) await sbUpsert('shops', [shop]);
-    } else if (pinLat != null && pinLng != null && (finiteNum(shop.lat) == null || pinAddr)) {
-      shop.lat = pinLat;
-      shop.lng = pinLng;
-      if (pinAddr) shop.address = pinAddr;
-      if (p.shopName) shop.name = p.shopName;
-      try { await sbUpsert('shops', [shop]); } catch (_) {}
+    } else {
+      let dirty = false;
+      if (finiteNum(shop.lat) == null && pinLat != null) { shop.lat = pinLat; dirty = true; }
+      if (finiteNum(shop.lng) == null && pinLng != null) { shop.lng = pinLng; dirty = true; }
+      if (!String(shop.address || '').trim() && pinAddr) { shop.address = pinAddr; dirty = true; }
+      if (isPlaceholderShopName(shop.name) && !isPlaceholderShopName(p.shopName)) {
+        shop.name = String(p.shopName).trim();
+        dirty = true;
+      }
+      if (dirty) {
+        try { await sbUpsert('shops', [shop]); } catch (_) {}
+      }
+      try { API.setPendingShop(null); } catch (_) {}
     }
     const mapped = mapShop(shop);
     const i = API.shops.findIndex((s) => s.id === sid);
@@ -1357,16 +1369,21 @@
     if (row.shopName) API.user.shopName = row.shopName;
     if (role === 'shop') {
       try { API.user = await ensureShopRow(API.user); } catch (_) { API.user = attachShopIdentity(API.user); }
+      try { API.setPendingShop(null); } catch (_) {}
     }
     if (API.user && API.user.shopId) {
       const s = API.shops.find((x) => x.id === API.user.shopId);
-      if (s && s.name) API.user.shopName = s.name;
+      if (s && s.name && !isPlaceholderShopName(s.name)) API.user.shopName = s.name;
     }
     if (role === 'shop' && API.user && API.user.shopId) {
+      const recKeep = API.recallShopProfile(phone) || {};
       API.rememberShopProfile(phone, {
         shopId: API.user.shopId,
-        shopName: API.user.shopName || '',
-        ownerName: API.user.name,
+        shopName: API.user.shopName || recKeep.shopName || '',
+        ownerName: API.user.name || recKeep.ownerName || '',
+        address: recKeep.address || '',
+        lat: recKeep.lat,
+        lng: recKeep.lng,
       });
     }
     API.token = 'sb_' + row.id;

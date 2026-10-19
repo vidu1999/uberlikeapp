@@ -308,12 +308,24 @@ class OrderRepository {
           'promo': '',
         }
       ]);
-    } else if (pinLat != null && pinLng != null) {
+    } else {
       final row = Map<String, dynamic>.from(existing.first as Map);
-      row['lat'] = pinLat;
-      row['lng'] = pinLng;
-      if (pinAddr.isNotEmpty) row['address'] = pinAddr;
-      await _sbUpsert('shops', [row]);
+      var dirty = false;
+      if (row['lat'] == null && pinLat != null) {
+        row['lat'] = pinLat;
+        dirty = true;
+      }
+      if (row['lng'] == null && pinLng != null) {
+        row['lng'] = pinLng;
+        dirty = true;
+      }
+      final haveAddr = '${row['address'] ?? ''}'.trim().isNotEmpty;
+      if (!haveAddr && pinAddr.isNotEmpty) {
+        row['address'] = pinAddr;
+        dirty = true;
+      }
+      if (dirty) await _sbUpsert('shops', [row]);
+      pendingShop = null;
     }
     return sid;
   }
