@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19w"></script>
+  <script src="/js/live.js?v=19x"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -61,7 +61,19 @@
     async function pingSupabase() {
       if (!sb || !key) throw new Error('no supabase');
       const delHdr = Object.assign({ Prefer: 'return=minimal' }, hdr());
-      const GEN = '19w';
+      const GEN = '19x';
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k !== 'qb_gen' && /^(sd_|qb_)/.test(k)) keys.push(k);
+        }
+        keys.forEach(function (k) {
+          try { localStorage.removeItem(k); } catch (_) {}
+          try { sessionStorage.removeItem(k); } catch (_) {}
+        });
+        localStorage.setItem('qb_gen', GEN);
+      } catch (_) {}
       let alreadyEmpty = false;
       try {
         const st = await fetch(sb + '/rest/v1/app_state?id=eq.qb_empty&select=payload', { headers: hdr() }).then((r) => r.json());

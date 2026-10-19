@@ -1007,7 +1007,7 @@
 
   async function wipeTableAll(table) {
     const missing = /404|PGRST205|does not exist/i;
-    const bulk = table === 'messages' ? ['order_id=not.is.null', 'id=not.is.null'] : ['id=not.is.null'];
+    const bulk = table === 'messages' ? ['order_id=not.is.null', 'id=not.is.null', 'id=neq._'] : ['id=not.is.null', 'id=neq._'];
     if (table === 'accounts') {
       bulk.push(
         'phone=not.is.null',
@@ -1091,7 +1091,7 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
-    const GEN = '19w';
+    const GEN = '19x';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
@@ -3017,10 +3017,11 @@
   } catch (_) {}
 
   (function bootCleanCache() {
-    const GEN = '19w';
+    const GEN = '19x';
     let g = '';
     try { g = localStorage.getItem('qb_gen') || sessionStorage.getItem('qb_gen') || ''; } catch (_) {}
-    if (g !== GEN) {
+    const first = g !== GEN;
+    if (first) {
       try { clearAllLocalAuth(); } catch (_) {}
       try {
         localStorage.setItem('qb_gen', GEN);
@@ -3034,8 +3035,8 @@
         });
       }
     } catch (_) {}
+    if (!first) API.restore();
   })();
-  API.restore();
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');
     if (w && /^(all|\*|reset)$/i.test(String(w).trim())) {
