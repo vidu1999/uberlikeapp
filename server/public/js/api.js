@@ -464,8 +464,8 @@
     return false;
   }
   function scopeData() {
-    API.shops = (API.shops || []).filter((s) => !isDemoShop(s.id));
-    API.items = (API.items || []).filter((it) => !isDemoShop(it.shopId));
+    API.shops = (API.shops || []).filter((s) => !isDemoShop(s.id) && !isDemoShopName(s.name));
+    API.items = (API.items || []).filter((it) => !isDemoShop(it.shopId) && DEMO_ITEM_IDS.indexOf(String(it.id || '')) < 0);
     API.orders = (API.orders || []).filter((o) => !isDemoOrder(o));
     const u = API.user;
     if (u && isDemoAccount(u)) {
@@ -1091,7 +1091,7 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
-    const GEN = '19s';
+    const GEN = '19v';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
@@ -1153,8 +1153,6 @@
   async function wipeDemo() {
     purgeLocalDemoStores();
     if (!sbConfigured()) return;
-    if ((API._demoWipeTries || 0) > 2) return;
-    API._demoWipeTries = (API._demoWipeTries || 0) + 1;
     const shopsIn = DEMO_SHOP_IDS.map((id) => '"' + id + '"').join(',');
     const itemsIn = DEMO_ITEM_IDS.map((id) => '"' + id + '"').join(',');
     const accIn = DEMO_ACCOUNT_IDS.map((id) => '"' + id + '"').join(',');
@@ -1177,7 +1175,9 @@
       try { await sbSend(paths[i], 'DELETE'); } catch (_) {}
     }
     for (let i = 0; i < DEMO_SHOP_NAMES.length; i++) {
-      try { await sbSend('orders?shop_name=eq.' + encodeURIComponent(DEMO_SHOP_NAMES[i]), 'PATCH', { shop_name: '' }); } catch (_) {}
+      const n = DEMO_SHOP_NAMES[i];
+      try { await sbSend('shops?name=eq.' + encodeURIComponent(n), 'DELETE'); } catch (_) {}
+      try { await sbSend('orders?shop_name=eq.' + encodeURIComponent(n), 'PATCH', { shop_name: '' }); } catch (_) {}
     }
     clearAccCache();
   }

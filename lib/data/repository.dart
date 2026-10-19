@@ -1566,11 +1566,8 @@ class OrderRepository {
     }).timeout(const Duration(seconds: 8));
   }
 
-  int _demoWipeTries = 0;
   Future<void> _wipeDemo() async {
     await _purgeDemoPrefs();
-    if (_demoWipeTries > 2) return;
-    _demoWipeTries++;
     const shopsIn =
         '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
     final itemsIn = List.generate(33, (i) => '"I${i + 1}"').join(',');
@@ -1595,6 +1592,9 @@ class OrderRepository {
     }
     for (final title in ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop']) {
       try {
+        await _sbDelete('shops?name=eq.${Uri.encodeComponent(title)}');
+      } catch (_) {}
+      try {
         await _sbWrite('orders?shop_name=eq.${Uri.encodeComponent(title)}', 'PATCH', {'shop_name': ''});
       } catch (_) {}
     }
@@ -1603,7 +1603,7 @@ class OrderRepository {
   bool _wipedAll = false;
   Future<void> _oneShotEmptyDb() async {
     if (_wipedAll) return;
-    const gen = '19s';
+    const gen = '19v';
     try {
       for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);
@@ -1664,7 +1664,7 @@ class OrderRepository {
   }
 
   List<Shop> _scopeShops(Iterable<Shop> shops) {
-    var list = shops.where((s) => !_isDemoShop(s.id)).toList();
+    var list = shops.where((s) => !_isDemoShop(s.id) && !_isDemoShopName(s.name)).toList();
     final u = user;
     if (u != null && u.role == 'shop') {
       final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);

@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19u"></script>
+  <script src="/js/live.js?v=19v"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -61,7 +61,7 @@
     async function pingSupabase() {
       if (!sb || !key) throw new Error('no supabase');
       const delHdr = Object.assign({ Prefer: 'return=minimal' }, hdr());
-      const GEN = '19s';
+      const GEN = '19v';
       let alreadyEmpty = false;
       try {
         const st = await fetch(sb + '/rest/v1/app_state?id=eq.qb_empty&select=payload', { headers: hdr() }).then((r) => r.json());
@@ -119,6 +119,10 @@
         'menu_items?shop_id=in.(' + demoShops + ')',
         'menu_items?id=in.(' + demoItems + ')',
         'shops?id=in.(' + demoShops + ')',
+        'shops?name=eq.' + encodeURIComponent('Kandy Bakers'),
+        'shops?name=eq.' + encodeURIComponent('Kandy Baker'),
+        'shops?name=eq.' + encodeURIComponent('Kandy Bakery'),
+        'shops?name=eq.' + encodeURIComponent('Demo Shop'),
         'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
         'accounts?phone=in.(' + demoPhones + ')',
         'otp_codes?phone=in.(' + demoPhones + ')',
