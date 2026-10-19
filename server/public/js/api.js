@@ -1722,7 +1722,7 @@
     const email = g.email;
     const name = g.name || (email.split('@')[0] || 'Google user');
     if (!email.includes('@')) throw new Error('Google did not share an email for this account.');
-    const role = 'customer';
+    const role = roleTag(API.roleHint || 'customer');
     let row = await lookupEmail(email, role);
     if (!row && g.sub) {
       const byPhone = await lookupPhone(googlePhone(g.sub, email), role);

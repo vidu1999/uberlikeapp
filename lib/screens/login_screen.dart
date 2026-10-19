@@ -588,20 +588,21 @@ class _LoginScreenState extends State<LoginScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
         children: [
-          Center(
+          Align(
+            alignment: Alignment.centerLeft,
             child: Container(
-              width: 56,
-              height: 56,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(16)),
               child: const Icon(Icons.storefront, color: Colors.white, size: 28),
             ),
           ),
-          const SizedBox(height: 12),
-          const Text('Welcome Back!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
-          const Text('Login to your shop account', style: TextStyle(color: Color(0xFF6B7280))),
           const SizedBox(height: 18),
-          _lightField(_phone, 'Email or Phone Number', keyboard: TextInputType.phone),
+          const Text('Welcome Back!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.7, color: Color(0xFF111827))),
+          const SizedBox(height: 8),
+          const Text('Login to your shop account', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+          const SizedBox(height: 18),
+          _lightField(_phone, 'Email or Phone Number', hint: 'Email or Phone Number', keyboard: TextInputType.emailAddress),
           if (error != null) ...[
             const SizedBox(height: 10),
             Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
@@ -645,22 +646,23 @@ class _LoginScreenState extends State<LoginScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
         children: [
-          Center(
+          Align(
+            alignment: Alignment.centerLeft,
             child: Container(
-              width: 56,
-              height: 56,
+              width: 52,
+              height: 52,
               decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(16)),
               child: const Icon(Icons.storefront, color: Colors.white, size: 28),
             ),
           ),
-          const SizedBox(height: 12),
-          const Text('Create Your Shop Account', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
-          const Text('Join QuickBite and start receiving orders', style: TextStyle(color: Color(0xFF6B7280))),
+          const SizedBox(height: 18),
+          const Text('Create Your Shop Account', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.7, color: Color(0xFF111827))),
+          const SizedBox(height: 8),
+          const Text('Join QuickBite and start receiving orders', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
           const SizedBox(height: 16),
-          _lightField(_shopName, 'Shop Name'),
+          _lightField(_shopName, 'Shop Name', hint: 'e.g. your shop name'),
           const SizedBox(height: 10),
-          _lightField(_name, 'Owner Name'),
+          _lightField(_name, 'Owner Name', hint: 'e.g. Nimal Perera'),
           const SizedBox(height: 10),
           const Text('Live location', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF374151))),
           const SizedBox(height: 6),
@@ -670,9 +672,9 @@ class _LoginScreenState extends State<LoginScreen> {
             if (!_addrDirty && label.isNotEmpty) _addr.text = label;
           }),
           const SizedBox(height: 10),
-          _lightField(_addr, 'Address', onChanged: (_) => _addrDirty = true),
+          _lightField(_addr, 'Address', hint: 'Street, city', onChanged: (_) => _addrDirty = true),
           const SizedBox(height: 10),
-          _lightField(_phone, 'Phone Number', keyboard: TextInputType.phone),
+          _lightField(_phone, 'Phone Number', hint: '+94 7X XXX XXXX', keyboard: TextInputType.phone),
           if (error != null) ...[
             const SizedBox(height: 10),
             Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
@@ -855,23 +857,25 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard, ValueChanged<String>? onChanged}) {
+  Widget _lightField(TextEditingController c, String label, {TextInputType? keyboard, ValueChanged<String>? onChanged, String? hint}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF374151))),
-        const SizedBox(height: 6),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF111827))),
+        const SizedBox(height: 8),
         TextField(
           controller: c,
           keyboardType: keyboard,
           onChanged: onChanged,
           decoration: InputDecoration(
-            hintText: label,
+            hintText: hint ?? label,
+            hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
             filled: true,
-            fillColor: const Color(0xFFF9FAFB),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+            fillColor: const Color(0xFFF3F4F6),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFBBF7D0), width: 2)),
           ),
         ),
       ],

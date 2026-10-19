@@ -504,23 +504,43 @@ html[data-role="shop"] .add { background: var(--g); }
 .ol-list .sd-order { background: #fff; color: #111; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
 .ol-list .sd-order .sub { color: #6B7280; }
 
+html[data-role="shop"] body:has([data-shop-auth]),
+html[data-role="shop"] .app:has([data-shop-auth]),
+html[data-role="shop"] body:has([data-otp-root]),
+html[data-role="shop"] .app:has([data-otp-root]) {
+  background: #fff !important;
+  color: #111 !important;
+  color-scheme: light;
+}
 .sp-auth {
-  min-height: 100%; background: #fff; color: #111;
-  padding: calc(20px + env(safe-area-inset-top, 0px)) 22px 32px;
+  min-height: 100%;
+  background: #fff;
+  color: #111;
+  color-scheme: light;
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 24px calc(32px + env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
 }
 .sp-auth .sp-mark {
-  width: 56px; height: 56px; border-radius: 16px; background: #00C853; color: #fff;
-  display: grid; place-items: center; margin: 4px auto 10px; font-size: 26px;
+  width: 52px; height: 52px; border-radius: 16px; background: #00C853; color: #fff;
+  display: grid; place-items: center; margin: 4px 0 18px;
 }
-.sp-auth h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; margin: 10px 0 6px; }
-.sp-auth .sub { color: #6B7280; margin: 0 0 18px; }
-.sp-auth label { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 6px; color: #374151; }
+.sp-auth .sp-mark svg { width: 26px; height: 26px; display: block; }
+.sp-auth h1 {
+  font-size: 28px; font-weight: 800; letter-spacing: -0.7px; margin: 0 0 8px; color: #111827; line-height: 1.15;
+}
+.sp-auth .sub { color: #6B7280; margin: 0 0 22px; font-size: 14px; line-height: 1.45; }
+.sp-auth label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 8px; color: #111827; }
 .sp-auth input {
-  width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 12px 14px; font-size: 15px; background: #F9FAFB;
+  width: 100%; border: 0; border-radius: 16px; padding: 16px 16px; font-size: 15px;
+  background: #F3F4F6; color: #111827; box-sizing: border-box;
 }
+.sp-auth input::placeholder { color: #9CA3AF; }
+.sp-auth input:focus { outline: 2px solid #BBF7D0; background: #fff; }
 .sp-auth .btn-green {
-  width: 100%; margin-top: 18px; background: #00C853; color: #fff; border: 0;
-  border-radius: 28px; padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer;
+  width: 100%; margin-top: 22px; background: #00C853; color: #fff; border: 0;
+  border-radius: 28px; padding: 16px; font-weight: 800; font-size: 16px; cursor: pointer;
 }
 .sp-auth .btn-green:disabled { opacity: .7; }
 .sp-auth .or { text-align: center; color: #9CA3AF; margin: 16px 0 10px; font-weight: 600; }
@@ -566,8 +586,8 @@ html[data-role="shop"] .add { background: var(--g); }
 .sp-auth .err { color: #b91c1c; min-height: 18px; font-size: 13px; margin-top: 8px; }
 .sp-map-wrap { position: relative; margin: 6px 0 8px; }
 .sp-map {
-  height: 200px; border-radius: 16px; overflow: hidden;
-  border: 1px solid #E5E7EB; background: #F3F4F6;
+  height: 148px; border-radius: 16px; overflow: hidden;
+  border: 0; background: #F3F4F6;
 }
 .sp-map-wrap .sp-live {
   position: absolute; right: 10px; bottom: 10px; z-index: 500;
