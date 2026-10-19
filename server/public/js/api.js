@@ -1280,14 +1280,6 @@
         } catch (_) {}
         return;
       }
-      if (API.user && sameRole(API.user.role, 'customer') && isPasswordOnlyUnverified(API.user)) {
-        API.user = null;
-        API.token = null;
-        try {
-          sessionKeys(API.roleHint).forEach(storeDel);
-          cookieClear(API.roleHint);
-        } catch (_) {}
-      }
     } catch (_) {}
   }
 
@@ -2077,7 +2069,7 @@
     }
     const who = want === 'shop' ? 'Shop' : want === 'rider' ? 'Rider' : 'User';
     if (!row) {
-      const err = new Error('These are not ' + who + ' credentials. Sign up to create an account.');
+      const err = new Error('This email is not registered. Create an account, then sign in with email and password.');
       err.code = 'NO_ACCOUNT';
       throw err;
     }
@@ -2086,11 +2078,7 @@
     if (secret === 'otp' || secret === 'wa' || !secret) {
       throw new Error('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
-    if (secret !== password) throw new Error('Wrong email, phone, or password.');
-    if (want === 'customer' && !API.isWhatsAppVerified(row)) {
-      API._pendingPassword = row;
-      return { next: 'whatsapp', email: row.email || '', name: row.name || '' };
-    }
+    if (secret !== password) throw new Error('Wrong email or password.');
     return enterMapped(row);
   };
 
@@ -2113,7 +2101,7 @@
       address: 'Sri Lanka',
     });
     API._pendingPassword = row;
-    return { ok: true, next: 'whatsapp', email: email, name: name };
+    return { ok: true, next: 'login', email: email, name: name };
   };
 
   API.attachWhatsApp = async function (phone) {

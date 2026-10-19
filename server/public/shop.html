@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19t" />
-  <link rel="stylesheet" href="/css/ui.css?v=19t" />
-  <link rel="stylesheet" href="/css/track.css?v=19t" />
+  <link rel="stylesheet" href="/css/app.css?v=19u" />
+  <link rel="stylesheet" href="/css/ui.css?v=19u" />
+  <link rel="stylesheet" href="/css/track.css?v=19u" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19t"></script>
-  <script src="/js/api.js?v=19t"></script>
-  <script src="/js/maps.js?v=19t"></script>
-  <script src="/js/track-ui.js?v=19t"></script>
-  <script src="/js/otp-login.js?v=19t"></script>
+  <script src="/js/live.js?v=19u"></script>
+  <script src="/js/api.js?v=19u"></script>
+  <script src="/js/maps.js?v=19u"></script>
+  <script src="/js/track-ui.js?v=19u"></script>
+  <script src="/js/otp-login.js?v=19u"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -939,9 +939,24 @@
           const label = b.textContent;
           try {
             if (id.includes('@') || String(pw).trim()) {
+              if (id.includes('@')) {
+                b.textContent = 'Checking email…';
+                let acc = null;
+                try { acc = await API.findAccount('shop', id); } catch (_) { acc = null; }
+                if (!acc) {
+                  state.reg.email = id;
+                  state.auth = 'register';
+                  state.fromReg = true;
+                  render();
+                  const rerr = document.querySelector('[data-err]');
+                  if (rerr) rerr.textContent = 'This email is not registered. Create a shop account, then sign in with email and password.';
+                  return;
+                }
+              }
               if (!String(pw).trim()) {
-                if (err) err.textContent = 'Enter your password.';
+                if (err) err.textContent = 'This email is registered. Enter your password to sign in.';
                 b.disabled = false;
+                b.textContent = label;
                 return;
               }
               b.textContent = 'Signing in…';
@@ -967,7 +982,7 @@
             render();
           } catch (e) {
             const msg = (e && e.message) || 'Could not sign in';
-            if (e && (e.code === 'NO_ACCOUNT' || /not .* credentials/i.test(msg))) {
+            if (e && (e.code === 'NO_ACCOUNT' || /not registered/i.test(msg) || /not .* credentials/i.test(msg))) {
               if (id.includes('@')) state.reg.email = id;
               state.auth = 'register';
               state.fromReg = true;

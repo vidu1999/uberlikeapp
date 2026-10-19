@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19t" />
-  <link rel="stylesheet" href="/css/ui.css?v=19t" />
-  <link rel="stylesheet" href="/css/track.css?v=19t" />
-  <link rel="stylesheet" href="/css/qb.css?v=19t" />
+  <link rel="stylesheet" href="/css/app.css?v=19u" />
+  <link rel="stylesheet" href="/css/ui.css?v=19u" />
+  <link rel="stylesheet" href="/css/track.css?v=19u" />
+  <link rel="stylesheet" href="/css/qb.css?v=19u" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19t"></script>
-  <script src="/js/api.js?v=19t"></script>
-  <script src="/js/maps.js?v=19t"></script>
-  <script src="/js/track-ui.js?v=19t"></script>
+  <script src="/js/live.js?v=19u"></script>
+  <script src="/js/api.js?v=19u"></script>
+  <script src="/js/maps.js?v=19u"></script>
+  <script src="/js/track-ui.js?v=19u"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -85,6 +85,7 @@
       otp: { phone: '', smsToken: '', err: '' },
       loginId: '',
       loginPw: '',
+      loginNote: '',
       reg: { name: '', phone: '', email: '', password: '' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'order' },
     };
@@ -569,7 +570,7 @@
           <div class="qb-tag">Good Food, Fast Delivery</div>
         </div>
         <h1>Welcome Back 👋</h1>
-        <p class="sub">Sign in with an existing User account. Unknown email &amp; password go to Sign Up. Unverified accounts must confirm WhatsApp before the feed.</p>
+        <p class="sub">${state.loginNote ? esc(state.loginNote) : 'We check your email first. If it is not registered, create an account. Then sign in with email and password.'}</p>
         <div class="qb-field"><span class="ico">${SVG.mail}</span><input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" /></div>
         <div class="qb-field"><span class="ico">${SVG.lock}</span><input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
         <button class="qb-forgot" type="button">Forgot Password?</button>
@@ -1249,20 +1250,28 @@
         signin.disabled = true;
         try {
           if (String(id).includes('@')) {
-            if (!String(pw || '').trim()) {
-              if (err) err.textContent = 'Enter your password.';
-              signin.disabled = false;
-              return;
-            }
-            signin.textContent = 'Signing in…';
-            const out = await API.signInPassword(id, pw);
-            if (out && out.next === 'whatsapp') {
-              state.wa = { open: true, step: 'phone', phone: '', err: '', mode: 'login' };
-              signin.disabled = false;
-              signin.textContent = 'Sign In';
+            signin.textContent = 'Checking email…';
+            const email = String(id).trim();
+            let acc = null;
+            try { acc = await API.findAccount('customer', email); } catch (_) { acc = null; }
+            if (!acc) {
+              state.reg.email = email;
+              state.reg.password = pw;
+              state.reg._note = 'This email is not registered. Create an account, then you can sign in with email and password.';
+              state.loginNote = '';
+              state.gate = 'register';
               render();
               return;
             }
+            if (!String(pw || '').trim()) {
+              if (err) err.textContent = 'This email is registered. Enter your password to sign in.';
+              signin.disabled = false;
+              signin.textContent = 'Sign In';
+              return;
+            }
+            signin.textContent = 'Signing in…';
+            await API.signInPassword(email, pw);
+            state.loginNote = '';
             state.gate = 'app';
             state.tab = 'home';
             state.screen = 'home';
@@ -1273,7 +1282,7 @@
           await startOtp(id);
         } catch (e) {
           const msg = (e && e.message) || 'Could not sign in';
-          if (e && (e.code === 'NO_ACCOUNT' || /not .* credentials/i.test(msg))) {
+          if (e && (e.code === 'NO_ACCOUNT' || /not registered/i.test(msg))) {
             state.reg.email = String(id).includes('@') ? String(id).trim() : state.reg.email;
             state.reg.password = pw;
             state.reg._note = msg;
@@ -1334,10 +1343,13 @@
             render();
             return;
           }
-          if (out.next === 'whatsapp') {
+          if (out.next === 'login' || out.next === 'whatsapp') {
             state.reg._note = '';
+            state.loginId = state.reg.email || out.email || '';
+            state.loginPw = state.reg.password || '';
+            state.loginNote = 'Account created. Sign in with your email and password.';
             state.gate = 'login';
-            state.wa = { open: true, step: 'phone', phone: state.reg.phone || '', err: '', mode: 'login' };
+            state.wa = { open: false, step: 'phone', phone: '', err: '', mode: 'login' };
             render();
             return;
           }

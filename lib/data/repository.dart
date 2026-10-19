@@ -1162,17 +1162,15 @@ class OrderRepository {
       row = await _lookupPhone(id, role);
     }
     final who = role == 'shop' ? 'Shop' : role == 'rider' ? 'Rider' : 'User';
-    if (row == null) throw Exception('These are not $who credentials. Sign up to create an account.');
+    if (row == null) {
+      throw Exception('This email is not registered. Create an account, then sign in with email and password.');
+    }
     final secret = _pinSecret('${row['pin'] ?? ''}');
     if (secret == 'google') throw Exception('This account uses Google. Tap Continue with Google.');
     if (secret == 'otp' || secret == 'wa' || secret.isEmpty) {
       throw Exception('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
-    if (secret != password) throw Exception('Wrong email, phone, or password.');
-    if (role == 'customer' && _isPasswordOnlyUnverified(row)) {
-      _pendingPassword = row;
-      return 'whatsapp';
-    }
+    if (secret != password) throw Exception('Wrong email or password.');
     await _enterRow(row);
     return 'app';
   }
@@ -1210,11 +1208,7 @@ class OrderRepository {
     } catch (_) {
       final hit = await _lookupPhone(phone, 'customer');
       if (hit != null) {
-        if (_isPasswordOnlyUnverified(hit)) {
-          _pendingPassword = hit;
-          return;
-        }
-        await _enterRow(hit);
+        _pendingPassword = hit;
         return;
       }
     }
@@ -1829,12 +1823,6 @@ class OrderRepository {
           pin: next.pin,
           photo: next.photo ?? u.photo,
         ));
-      }
-      if ((next.role == 'customer' || next.role == 'user') && _isPasswordOnlyUnverified(null, next)) {
-        userNotifier.value = null;
-        token = null;
-        await _persist();
-        return;
       }
       userNotifier.value = next;
       await _persist();

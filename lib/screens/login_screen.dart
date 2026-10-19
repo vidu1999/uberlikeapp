@@ -283,15 +283,27 @@ class _LoginScreenState extends State<LoginScreen> {
       if (widget.role == UserRole.customer && !register) {
         final id = _phone.text.trim();
         if (id.contains('@')) {
-          final next = await OrderRepository.instance.signInPassword(id, _pw.text);
+          final acc = await OrderRepository.instance.findAccount('customer', id);
           if (!mounted) return;
-          if (next == 'whatsapp') {
+          if (acc == null) {
             setState(() {
               busy = false;
-              error = 'This account is not WhatsApp-verified. Continue with WhatsApp to enter.';
+              register = true;
+              fromRegister = true;
+              _email.text = id;
+              error = 'This email is not registered. Create an account, then sign in with email and password.';
             });
             return;
           }
+          if (_pw.text.trim().isEmpty) {
+            setState(() {
+              busy = false;
+              error = 'This email is registered. Enter your password to sign in.';
+            });
+            return;
+          }
+          await OrderRepository.instance.signInPassword(id, _pw.text);
+          if (!mounted) return;
           setState(() => busy = false);
           return;
         }
@@ -308,7 +320,8 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() {
             busy = false;
             register = false;
-            error = 'Account created. Continue with WhatsApp to enter.';
+            _phone.text = email;
+            error = 'Account created. Sign in with your email and password.';
           });
           return;
         }
@@ -325,7 +338,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().replaceFirst('Exception: ', '');
-      final noCreds = msg.contains('not User credentials') || msg.contains('not Shop credentials');
+      final noCreds = msg.contains('not registered') || msg.contains('not User credentials') || msg.contains('not Shop credentials');
       setState(() {
         busy = false;
         error = msg;
