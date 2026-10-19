@@ -1091,7 +1091,7 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
-    const GEN = '19x';
+    const GEN = '19y';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
@@ -3017,7 +3017,7 @@
   } catch (_) {}
 
   (function bootCleanCache() {
-    const GEN = '19x';
+    const GEN = '19y';
     let g = '';
     try { g = localStorage.getItem('qb_gen') || sessionStorage.getItem('qb_gen') || ''; } catch (_) {}
     const first = g !== GEN;

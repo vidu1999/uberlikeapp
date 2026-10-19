@@ -1453,7 +1453,7 @@ class OrderRepository {
   Future<void> restore() async {
     try {
       final p = await SharedPreferences.getInstance();
-      const gen = '19x';
+      const gen = '19y';
       if (p.getString('qb_gen') != gen) {
         await p.remove(_sessionKey);
         await p.remove(_verifiedKey);
@@ -1618,7 +1618,7 @@ class OrderRepository {
   bool _wipedAll = false;
   Future<void> _oneShotEmptyDb() async {
     if (_wipedAll) return;
-    const gen = '19x';
+    const gen = '19y';
     try {
       for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);
