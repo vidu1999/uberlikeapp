@@ -167,8 +167,9 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 .shop-row .thumb, .shop-card .thumb, .item-card .thumb {
   width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: #eee; flex: none;
 }
+.shop-row .grow, .shop-card .grow { flex: 1; min-width: 0; }
 .shop-row .name-row, .shop-card .name-row {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
 }
 .shop-row .name-row .name, .shop-card .name-row .name { flex: 1; min-width: 0; }
 .shop-row .name, .shop-card .name, .item-card .name { font-weight: 800; font-size: 15px; color: var(--ink); }
@@ -198,14 +199,16 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
   border-radius: 20px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer;
 }
 .s-chip.on { background: var(--g); color: #fff; }
-.heart {
-  margin: 0; width: 28px; height: 28px; border: 0; background: transparent;
+.shop-row .heart, .shop-card .heart, .name-row .heart, .menu-hero .overlay .heart {
+  position: static !important; top: auto; right: auto;
+  margin: 0; width: 28px; height: 28px; border: 0; border-radius: 0;
+  background: transparent; box-shadow: none;
   color: #F9A8A8; cursor: pointer; display: grid; place-items: center; flex: none;
 }
-.heart svg { width: 20px; height: 20px; }
-.heart.on { color: #EF4444; }
+.shop-row .heart svg, .shop-card .heart svg, .name-row .heart svg { width: 20px; height: 20px; }
+.shop-row .heart.on, .shop-card .heart.on, .name-row .heart.on { color: #EF4444; }
 .menu-hero .overlay .name-row {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
 }
 .menu-hero .overlay .name-row h1 { flex: 1; min-width: 0; margin: 0; }
 .menu-hero .overlay .heart { color: #fff; }
