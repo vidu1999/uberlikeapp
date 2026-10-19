@@ -942,7 +942,7 @@
       const dump = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && /^(sd_|qb_)/.test(k)) dump.push(k);
+        if (k && k !== 'qb_gen' && /^(sd_|qb_)/.test(k)) dump.push(k);
       }
       dump.forEach(function (k) {
         try { localStorage.removeItem(k); } catch (_) {}
@@ -1091,7 +1091,7 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
-    const GEN = '19v';
+    const GEN = '19w';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
@@ -3016,6 +3016,25 @@
     };
   } catch (_) {}
 
+  (function bootCleanCache() {
+    const GEN = '19w';
+    let g = '';
+    try { g = localStorage.getItem('qb_gen') || sessionStorage.getItem('qb_gen') || ''; } catch (_) {}
+    if (g !== GEN) {
+      try { clearAllLocalAuth(); } catch (_) {}
+      try {
+        localStorage.setItem('qb_gen', GEN);
+        sessionStorage.setItem('qb_gen', GEN);
+      } catch (_) {}
+    }
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+        navigator.serviceWorker.getRegistrations().then(function (rs) {
+          rs.forEach(function (r) { try { r.unregister(); } catch (_) {} });
+        });
+      }
+    } catch (_) {}
+  })();
   API.restore();
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');

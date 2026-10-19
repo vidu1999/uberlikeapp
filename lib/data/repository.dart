@@ -1453,6 +1453,21 @@ class OrderRepository {
   Future<void> restore() async {
     try {
       final p = await SharedPreferences.getInstance();
+      const gen = '19w';
+      if (p.getString('qb_gen') != gen) {
+        await p.remove(_sessionKey);
+        await p.remove(_verifiedKey);
+        for (final k in p.getKeys()) {
+          if (k.startsWith('sd_') || k.startsWith('qb_')) await p.remove(k);
+        }
+        await p.setString('qb_gen', gen);
+        userNotifier.value = null;
+        token = null;
+        verifiedPhone = null;
+        needsShopRegister = false;
+        needsRiderRegister = false;
+        return;
+      }
       final vraw = p.getString(_verifiedKey);
       if (vraw != null && vraw.isNotEmpty) {
         final v = jsonDecode(vraw) as Map<String, dynamic>;
@@ -1603,7 +1618,7 @@ class OrderRepository {
   bool _wipedAll = false;
   Future<void> _oneShotEmptyDb() async {
     if (_wipedAll) return;
-    const gen = '19v';
+    const gen = '19w';
     try {
       for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);
