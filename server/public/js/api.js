@@ -1199,6 +1199,7 @@
       return o;
     });
     scopeData();
+    API._shopCatalogReady = true;
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await repairShopPublicName(API.user); } catch (_) {}
       try { saveSession(); } catch (_) {}
@@ -1250,6 +1251,7 @@
     API.orders = asRows(data && data.orders);
     API.messages = (data && data.messages && typeof data.messages === 'object' && !Array.isArray(data.messages)) ? data.messages : {};
     scopeData();
+    API._shopCatalogReady = true;
     notify();
   };
 

@@ -1159,6 +1159,7 @@ class OrderRepository {
     await _persist();
   }
 
+  bool _catalogReady = false;
   bool needsShopRegister = false;
   bool needsRiderRegister = false;
   String? verifiedPhone;
@@ -1195,6 +1196,7 @@ class OrderRepository {
     for (final s in Catalog.shops) {
       if (s.id == sid) return true;
     }
+    if (!_catalogReady && (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null')) return true;
     return false;
   }
 
@@ -1700,6 +1702,7 @@ class OrderRepository {
       }).toList();
       final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
       Catalog.set(shops, items);
+      _catalogReady = true;
       ordersNotifier.value = _retainStatus(
         _scopeOrders(
           orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
@@ -1771,6 +1774,7 @@ class OrderRepository {
           _scopeShops(rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map)))),
           _scopeItems(rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))),
         );
+        _catalogReady = true;
         messages.clear();
         final allow = orders.map((o) => o.id).toSet();
         final rawMsg = data['messages'];

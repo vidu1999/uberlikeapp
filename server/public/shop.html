@@ -7,25 +7,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19j" />
-  <link rel="stylesheet" href="/css/ui.css?v=19j" />
-  <link rel="stylesheet" href="/css/track.css?v=19j" />
+  <link rel="stylesheet" href="/css/app.css?v=19k" />
+  <link rel="stylesheet" href="/css/ui.css?v=19k" />
+  <link rel="stylesheet" href="/css/track.css?v=19k" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19j"></script>
-  <script src="/js/api.js?v=19j"></script>
-  <script src="/js/maps.js?v=19j"></script>
-  <script src="/js/track-ui.js?v=19j"></script>
-  <script src="/js/otp-login.js?v=19j"></script>
+  <script src="/js/live.js?v=19k"></script>
+  <script src="/js/api.js?v=19k"></script>
+  <script src="/js/maps.js?v=19k"></script>
+  <script src="/js/track-ui.js?v=19k"></script>
+  <script src="/js/otp-login.js?v=19k"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
       itemDraft: null, shopDraft: null,
-      auth: (API.verifiedPhone && API.verifiedPhone('shop') && !API.user) ? 'register' : 'login',
-      fromReg: !!(API.verifiedPhone && API.verifiedPhone('shop') && !API.user),
+      auth: 'login',
+      fromReg: false,
       reg: { shopName: '', ownerName: '', phone: (API.verifiedPhone && API.verifiedPhone('shop')) || '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '',
@@ -675,7 +675,7 @@
         return;
       }
       killRegMap();
-      if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
+      if (API.user && API._shopCatalogReady && API.isShopRegistered && !API.isShopRegistered()) {
         goShopRegister();
         return;
       }

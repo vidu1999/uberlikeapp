@@ -46,14 +46,6 @@ class _LoginScreenState extends State<LoginScreen> {
       _email.text = '';
     }
     if (widget.role == UserRole.rider) regRole = 'rider';
-    if (widget.role == UserRole.shop && repo.needsShopRegister) {
-      register = true;
-      fromRegister = true;
-    }
-    if (widget.role == UserRole.rider && repo.needsRiderRegister) {
-      register = true;
-      fromRegister = true;
-    }
   }
 
   @override
