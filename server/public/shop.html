@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19k" />
-  <link rel="stylesheet" href="/css/ui.css?v=19k" />
-  <link rel="stylesheet" href="/css/track.css?v=19k" />
+  <link rel="stylesheet" href="/css/app.css?v=19l" />
+  <link rel="stylesheet" href="/css/ui.css?v=19l" />
+  <link rel="stylesheet" href="/css/track.css?v=19l" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19k"></script>
-  <script src="/js/api.js?v=19k"></script>
-  <script src="/js/maps.js?v=19k"></script>
-  <script src="/js/track-ui.js?v=19k"></script>
-  <script src="/js/otp-login.js?v=19k"></script>
+  <script src="/js/live.js?v=19l"></script>
+  <script src="/js/api.js?v=19l"></script>
+  <script src="/js/maps.js?v=19l"></script>
+  <script src="/js/track-ui.js?v=19l"></script>
+  <script src="/js/otp-login.js?v=19l"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -26,7 +26,7 @@
       itemDraft: null, shopDraft: null,
       auth: 'login',
       fromReg: false,
-      reg: { shopName: '', ownerName: '', phone: (API.verifiedPhone && API.verifiedPhone('shop')) || '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
+      reg: { shopName: '', ownerName: '', phone: '', email: '', photo: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
       regMap: null,
       loginId: '',
       wa: { open: false, step: 'phone', phone: '', err: '' },
@@ -42,6 +42,17 @@
       if (API.user && API.user.shopId) return API.user.shopId;
       if (API.user && API.user.phone && API.shopIdFor) return API.shopIdFor(API.user.phone);
       return '';
+    }
+    function isRealWaPhone(p) {
+      const n = API.normalizePhone ? API.normalizePhone(p || '') : String(p || '').replace(/\D/g, '');
+      return /^07\d{8}$/.test(n);
+    }
+    function lockRegPhone(p) {
+      const v = API.verifiedPhone && API.verifiedPhone('shop');
+      if (!isRealWaPhone(v) || !isRealWaPhone(p)) return false;
+      const a = API.normalizePhone ? API.normalizePhone(v) : v;
+      const b = API.normalizePhone ? API.normalizePhone(p) : p;
+      return a === b;
     }
     function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }
     function menuBucket(cat) {
@@ -274,7 +285,7 @@
         <label>Address</label>
         <input id="regAddr" placeholder="Street, city" value="${esc(r.address)}" />
         <label>Phone Number</label>
-        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" ${API.verifiedPhone && API.verifiedPhone('shop') ? 'readonly' : ''} />
+        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" ${lockRegPhone(r.phone) ? 'readonly' : ''} />
         <p class="err" data-err></p>
         <button class="btn-green" type="button" data-shop-register>Register</button>
         <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
@@ -747,7 +758,16 @@
       }
     }
     function goShopRegister() {
-      const phone = (API.user && API.user.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || state.reg.phone || state.loginId;
+      const u = API.user;
+      const gName = (u && u.name) || '';
+      const gEmail = (u && u.email) || '';
+      const gPhoto = (u && (u.photo || u.vehicle)) || '';
+      if (gName && !state.reg.ownerName) state.reg.ownerName = gName;
+      if (gEmail) state.reg.email = gEmail;
+      if (gPhoto) state.reg.photo = gPhoto;
+      let phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || state.reg.phone || state.loginId || '';
+      if (API.normalizePhone) phone = API.normalizePhone(phone);
+      if (!isRealWaPhone(phone)) phone = '';
       const rec = (phone && API.recallShopProfile) ? API.recallShopProfile(phone) : null;
       if (rec) {
         if (!state.reg.shopName) state.reg.shopName = rec.shopName || '';
@@ -756,7 +776,16 @@
         if (state.reg.lat == null && rec.lat != null) state.reg.lat = Number(rec.lat);
         if (state.reg.lng == null && rec.lng != null) state.reg.lng = Number(rec.lng);
       }
-      if (phone) state.reg.phone = phone;
+      state.reg.phone = phone;
+      const prev = (API._pendingShop) || {};
+      if (API.setPendingShop) {
+        API.setPendingShop(Object.assign({}, prev, {
+          shopName: state.reg.shopName || prev.shopName || '',
+          ownerName: state.reg.ownerName || gName || prev.ownerName || '',
+          email: gEmail || state.reg.email || prev.email || '',
+          photo: gPhoto || state.reg.photo || prev.photo || '',
+        }));
+      }
       if (API.user && API.parkForRegister) API.parkForRegister('shop');
       state.auth = 'register';
       state.fromReg = true;
@@ -920,11 +949,17 @@
           return;
         }
         const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+        if (!isRealWaPhone(phone)) {
+          if (err) err.textContent = 'Enter a valid WhatsApp number (07X XXX XXXX).';
+          return;
+        }
         state.loginId = phone;
         API.setPendingShop({
           shopName: state.reg.shopName.trim(),
           ownerName: state.reg.ownerName.trim(),
           phone,
+          email: state.reg.email || '',
+          photo: state.reg.photo || '',
           address: String(state.reg.address).trim(),
           lat: state.reg.lat,
           lng: state.reg.lng,

@@ -36,16 +36,34 @@ class _LoginScreenState extends State<LoginScreen> {
   String? error;
   String phoneSent = '';
 
+  bool _isFakePhone(String? p) {
+    final n = (p ?? '').replaceAll(RegExp(r'\D'), '');
+    if (RegExp(r'^07\d{8}$').hasMatch(n)) return false;
+    return n.isEmpty || n.startsWith('99') || n.startsWith('98');
+  }
+
   @override
   void initState() {
     super.initState();
     final repo = OrderRepository.instance;
-    _phone = TextEditingController(text: repo.verifiedPhone ?? '');
+    final vp = repo.verifiedPhone ?? '';
+    _phone = TextEditingController(text: _isFakePhone(vp) ? '' : vp);
     if (widget.role == UserRole.shop || widget.role == UserRole.rider) {
       _name.text = '';
       _email.text = '';
     }
     if (widget.role == UserRole.rider) regRole = 'rider';
+    if (widget.role == UserRole.shop && repo.promptShopRegister) {
+      register = true;
+      fromRegister = true;
+      repo.promptShopRegister = false;
+      final p = repo.pendingShop;
+      if (p != null) {
+        if ((p['ownerName'] ?? '').isNotEmpty) _name.text = p['ownerName']!;
+        if ((p['email'] ?? '').isNotEmpty) _email.text = p['email']!;
+        if ((p['shopName'] ?? '').isNotEmpty) _shopName.text = p['shopName']!;
+      }
+    }
   }
 
   @override
@@ -146,14 +164,18 @@ class _LoginScreenState extends State<LoginScreen> {
           'shopName': _shopName.text.trim(),
           'ownerName': _name.text.trim(),
           'phone': _phone.text.trim(),
+          'email': _email.text.trim(),
           'address': _addr.text.trim(),
           'lat': '$_shopLat',
           'lng': '$_shopLng',
         };
-        await OrderRepository.instance.completeShopRegister();
-        if (!mounted) return;
-        setState(() => busy = false);
-        return;
+        final vp = OrderRepository.instance.verifiedPhone ?? '';
+        if (!_isFakePhone(vp)) {
+          await OrderRepository.instance.completeShopRegister();
+          if (!mounted) return;
+          setState(() => busy = false);
+          return;
+        }
       }
       if (widget.role == UserRole.rider && !register) {
         final acc = await OrderRepository.instance.findAccount('rider', _phone.text);
@@ -191,6 +213,13 @@ class _LoginScreenState extends State<LoginScreen> {
           });
           return;
         }
+        if (_isFakePhone(_phone.text)) {
+          setState(() {
+            busy = false;
+            error = 'Enter a valid WhatsApp number (07X XXX XXXX).';
+          });
+          return;
+        }
         if (_shopLat == null || _shopLng == null) {
           setState(() {
             busy = false;
@@ -209,6 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'shopName': _shopName.text.trim(),
           'ownerName': _name.text.trim(),
           'phone': _phone.text.trim(),
+          'email': _email.text.trim(),
           'address': _addr.text.trim(),
           'lat': '$_shopLat',
           'lng': '$_shopLng',
@@ -275,7 +305,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (OrderRepository.instance.needsShopRegister || OrderRepository.instance.needsRiderRegister) {
         final p = OrderRepository.instance.verifiedPhone;
-        if (p != null && p.isNotEmpty) _phone.text = p;
+        if (p != null && p.isNotEmpty && !_isFakePhone(p)) _phone.text = p;
         setState(() {
           busy = false;
           codeStep = false;
@@ -319,9 +349,29 @@ class _LoginScreenState extends State<LoginScreen> {
         name: acc.displayName ?? acc.email,
         sub: acc.id,
         photo: acc.photoUrl,
+        role: _apiRole,
       );
       if (!mounted) return;
-      setState(() => busy = false);
+      if (widget.role == UserRole.shop && !OrderRepository.instance.isShopRegistered) {
+        OrderRepository.instance.pendingShop = {
+          ...?OrderRepository.instance.pendingShop,
+          'ownerName': acc.displayName ?? acc.email,
+          'email': acc.email,
+          if ((acc.photoUrl ?? '').isNotEmpty) 'photo': acc.photoUrl!,
+        };
+        await OrderRepository.instance.parkForRegister('shop');
+      }
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        if (widget.role == UserRole.shop && OrderRepository.instance.promptShopRegister) {
+          register = true;
+          fromRegister = true;
+          _name.text = acc.displayName ?? _name.text;
+          _email.text = acc.email;
+          if (_isFakePhone(_phone.text)) _phone.text = '';
+        }
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -611,7 +661,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 16),
           const Center(child: Text('or', style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600))),
           const SizedBox(height: 10),
-          _lightGhost('Continue with Google'),
+          _lightGhost('Continue with Google', onPressed: _googleSignIn),
           const SizedBox(height: 8),
           _lightGhost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           const SizedBox(height: 18),
@@ -744,7 +794,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 16),
           const Center(child: Text('or', style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600))),
           const SizedBox(height: 10),
-          _ghost('Continue with Google'),
+          _ghost('Continue with Google', onPressed: _googleSignIn),
           const SizedBox(height: 8),
           _ghost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           const SizedBox(height: 18),

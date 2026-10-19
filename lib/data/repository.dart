@@ -639,20 +639,52 @@ class OrderRepository {
         await _lockShopTitle(phone, '${shop['name']}');
       } catch (_) {}
       Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
-      user = {
-        'id': _accountIdFor(phone, 'shop'),
-        'name': p['ownerName'] ?? 'Shop Owner',
-        'phone': phone,
-        'email': p['email'] ?? '',
-        'pin': 'otp',
-        'role': 'shop',
-        'shop_id': shopId,
-      };
-      try {
-        await _sbWrite('accounts', 'POST', [user]);
-      } catch (_) {
-        final again = await _lookupPhone(phone, 'shop');
-        if (again != null) user = again;
+      final pendEmail = (p['email'] ?? '').trim().toLowerCase();
+      Map<String, dynamic>? googleRow;
+      if (pendEmail.contains('@')) {
+        googleRow = await findAccount('shop', pendEmail);
+        if (googleRow != null) {
+          final gp = _normPhone('${googleRow['phone'] ?? ''}');
+          if (!_isPlaceholderPhone(gp) && gp != phone) {
+            throw Exception('This email already has a Shop account. Login instead — you cannot create another Shop with the same account.');
+          }
+        }
+      }
+      if (googleRow != null && (_isPlaceholderPhone('${googleRow['phone'] ?? ''}') || _normPhone('${googleRow['phone'] ?? ''}') == phone)) {
+        user = {
+          ...googleRow,
+          'name': (p['ownerName'] ?? '').trim().isNotEmpty ? p['ownerName'] : (googleRow['name'] ?? 'Shop Owner'),
+          'phone': phone,
+          'email': pendEmail.isNotEmpty ? pendEmail : '${googleRow['email'] ?? ''}',
+          'pin': _withWaPin('${googleRow['pin'] ?? 'google'}'),
+          'role': 'shop',
+          'shop_id': shopId,
+        };
+        try {
+          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', {
+            'phone': phone,
+            'name': user['name'],
+            'email': user['email'],
+            'pin': user['pin'],
+            'shop_id': shopId,
+          });
+        } catch (_) {}
+      } else {
+        user = {
+          'id': _accountIdFor(phone, 'shop'),
+          'name': p['ownerName'] ?? 'Shop Owner',
+          'phone': phone,
+          'email': pendEmail,
+          'pin': 'otp',
+          'role': 'shop',
+          'shop_id': shopId,
+        };
+        try {
+          await _sbWrite('accounts', 'POST', [user]);
+        } catch (_) {
+          final again = await _lookupPhone(phone, 'shop');
+          if (again != null) user = again;
+        }
       }
       user!['shopName'] = shop['name'];
       await _rememberShop(phone, {
@@ -920,18 +952,18 @@ class OrderRepository {
 
   String _accountIdForEmail(String email, String role) => 'ACC_${_roleTag(role)}_e_${_emailKey(email)}';
 
-  Future<void> signInWithGoogle({required String email, required String name, required String sub, String? photo}) async {
+  Future<void> signInWithGoogle({required String email, required String name, required String sub, String? photo, String role = 'customer'}) async {
     await _loadSupabaseConfig();
     email = email.trim().toLowerCase();
     name = name.trim();
     photo = (photo ?? '').trim();
     if (!email.contains('@')) throw Exception('Google did not share an email for this account.');
-    const role = 'customer';
+    role = _roleTag(role);
     Map<String, dynamic>? row;
     try {
-      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
+      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);
-        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
           row = m;
           break;
         }
@@ -1162,6 +1194,7 @@ class OrderRepository {
   bool _catalogReady = false;
   bool needsShopRegister = false;
   bool needsRiderRegister = false;
+  bool promptShopRegister = false;
   String? verifiedPhone;
 
   Future<void> completeShopRegister() async {
@@ -1207,14 +1240,35 @@ class OrderRepository {
   }
 
   Future<void> parkForRegister(String role) async {
-    final phone = user?.phone ?? verifiedPhone ?? '';
+    final u = user;
+    final phone = u?.phone ?? verifiedPhone ?? '';
+    final gName = u?.name ?? '';
+    final gEmail = u?.email ?? '';
+    final gPhoto = u?.photo ?? '';
     userNotifier.value = null;
     token = null;
-    if (phone.isNotEmpty) {
+    if (role == 'shop') promptShopRegister = true;
+    if (phone.isNotEmpty && !_isPlaceholderPhone(phone)) {
       verifiedPhone = phone;
       needsShopRegister = role == 'shop';
       needsRiderRegister = role == 'rider';
       await _persistVerified(role, phone);
+    } else {
+      verifiedPhone = null;
+      needsShopRegister = role == 'shop';
+      needsRiderRegister = role == 'rider';
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.remove(_verifiedKey);
+      } catch (_) {}
+    }
+    if (role == 'shop') {
+      pendingShop = {
+        ...?pendingShop,
+        if (gName.isNotEmpty) 'ownerName': gName,
+        if (gEmail.isNotEmpty) 'email': gEmail,
+        if (gPhoto.isNotEmpty) 'photo': gPhoto,
+      };
     }
     await _persist();
   }
@@ -1287,6 +1341,7 @@ class OrderRepository {
     pendingRider = null;
     needsShopRegister = false;
     needsRiderRegister = false;
+    promptShopRegister = false;
     verifiedPhone = null;
     _keptOrders.clear();
     ordersNotifier.value = <Order>[];
@@ -1301,6 +1356,10 @@ class OrderRepository {
   static const _verifiedKey = 'qb_verified';
 
   Future<void> _persistVerified(String role, String phone) async {
+    if (_isPlaceholderPhone(phone)) {
+      await _clearVerified();
+      return;
+    }
     try {
       final p = await SharedPreferences.getInstance();
       await p.setString(_verifiedKey, jsonEncode({'role': role, 'phone': phone}));
@@ -1325,10 +1384,12 @@ class OrderRepository {
         final v = jsonDecode(vraw) as Map<String, dynamic>;
         final role = '${v['role'] ?? ''}';
         final phone = '${v['phone'] ?? ''}';
-        if (phone.isNotEmpty) {
+        if (phone.isNotEmpty && !_isPlaceholderPhone(phone)) {
           verifiedPhone = phone;
           needsShopRegister = role == 'shop';
           needsRiderRegister = role == 'rider';
+        } else if (phone.isNotEmpty) {
+          await p.remove(_verifiedKey);
         }
       }
       final raw = p.getString(_sessionKey);

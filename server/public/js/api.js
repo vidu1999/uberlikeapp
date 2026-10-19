@@ -838,8 +838,12 @@
       cookieClear(role);
       cookieClear(API.roleHint);
     } catch (_) {}
-    if (phone) persistVerified({ role: roleTag(role), phone: normalizePhone(phone) });
+    if (phone && !isPlaceholderPhone(phone)) persistVerified({ role: roleTag(role), phone: normalizePhone(phone) });
+    else {
+      try { clearVerified(role); } catch (_) {}
+    }
   };
+  API.isPlaceholderPhone = isPlaceholderPhone;
 
   async function ensureShopRow(user, opts) {
     user = attachShopIdentity(user);
@@ -1462,16 +1466,37 @@
       try { await sbUpsert('shops', [shop]); } catch (_) {
         try { await sbPutRow('shops', shop); } catch (_) {}
       }
-      row = {
-        id: accountIdFor(phone, 'shop'),
-        name: p.ownerName || rec.ownerName || 'Shop Owner',
-        phone,
-        email: p.email || '',
-        pin: 'otp',
-        role: 'shop',
-        shop_id: shopId,
-      };
-      row = await saveAccount(row);
+      let googleRow = null;
+      const pendEmail = String(p.email || rec.email || '').trim().toLowerCase();
+      if (pendEmail && pendEmail.indexOf('@') >= 0) {
+        try { googleRow = await lookupEmail(pendEmail, 'shop'); } catch (_) {}
+        if (googleRow && !isPlaceholderPhone(googleRow.phone) && normalizePhone(googleRow.phone) !== phone) {
+          throw alreadyThisRoleError('shop');
+        }
+      }
+      if (googleRow && (isPlaceholderPhone(googleRow.phone) || normalizePhone(googleRow.phone) === phone)) {
+        const patch = {
+          phone: phone,
+          name: p.ownerName || rec.ownerName || googleRow.name || 'Shop Owner',
+          email: pendEmail || googleRow.email || '',
+          pin: withWaPin(googleRow.pin || 'google'),
+          shop_id: shopId,
+          role: 'shop',
+        };
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(googleRow.id), 'PATCH', patch); } catch (_) {}
+        row = Object.assign({}, googleRow, patch, { shopId: shopId });
+      } else {
+        row = {
+          id: accountIdFor(phone, 'shop'),
+          name: p.ownerName || rec.ownerName || 'Shop Owner',
+          phone,
+          email: pendEmail || '',
+          pin: 'otp',
+          role: 'shop',
+          shop_id: shopId,
+        };
+        row = await saveAccount(row);
+      }
       API.rememberShopProfile(phone, {
         shopId, shopName: shopTitle, ownerName: row.name, address: shop.address, lat: shop.lat, lng: shop.lng,
       });
@@ -1948,6 +1973,7 @@
   API.verifiedPhone = function (role) {
     const v = API._verified;
     if (!v || !sameRole(v.role, role)) return '';
+    if (isPlaceholderPhone(v.phone)) return '';
     return v.phone || '';
   };
 
@@ -1986,9 +2012,12 @@
     return 'sd_verified_' + roleTag(role || API.roleHint || 'customer');
   }
   function persistVerified(v) {
+    const role = v && v.role;
+    if (v && isPlaceholderPhone(v.phone)) v = null;
     API._verified = v || null;
     try {
       if (v && v.phone) storeSet(verifiedKey(v.role), JSON.stringify(v));
+      else if (role) storeDel(verifiedKey(role));
     } catch (_) {}
   }
   function restoreVerified(role) {
@@ -1996,7 +2025,13 @@
       const raw = storeGet(verifiedKey(role));
       if (!raw) return;
       const v = JSON.parse(raw);
-      if (v && v.phone && sameRole(v.role, role)) API._verified = v;
+      if (v && v.phone && sameRole(v.role, role)) {
+        if (isPlaceholderPhone(v.phone)) {
+          storeDel(verifiedKey(role));
+          return;
+        }
+        API._verified = v;
+      }
     } catch (_) {}
   }
   function clearVerified(role) {
