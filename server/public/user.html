@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18x" />
-  <link rel="stylesheet" href="/css/ui.css?v=18x" />
-  <link rel="stylesheet" href="/css/track.css?v=18x" />
-  <link rel="stylesheet" href="/css/qb.css?v=18x" />
+  <link rel="stylesheet" href="/css/app.css?v=18y" />
+  <link rel="stylesheet" href="/css/ui.css?v=18y" />
+  <link rel="stylesheet" href="/css/track.css?v=18y" />
+  <link rel="stylesheet" href="/css/qb.css?v=18y" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18x"></script>
-  <script src="/js/api.js?v=18x"></script>
-  <script src="/js/maps.js?v=18x"></script>
-  <script src="/js/track-ui.js?v=18x"></script>
+  <script src="/js/live.js?v=18y"></script>
+  <script src="/js/api.js?v=18y"></script>
+  <script src="/js/maps.js?v=18y"></script>
+  <script src="/js/track-ui.js?v=18y"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -499,7 +499,7 @@
     }
     function homeView() {
         const live = TrackUI.liveOrder(API.orders);
-      return `<div class="scroll">
+      return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         ${header()}
         <div class="u-hi">
           <p class="greet">${hello()},</p>
@@ -551,7 +551,7 @@
       const cats = [...new Set(items.map((i) => i.category))];
       if (cats.length && !cats.includes(state.menuCat)) state.menuCat = cats[0];
       const list = items.filter((i) => !state.menuCat || i.category === state.menuCat);
-      return `<div class="scroll">
+      return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>

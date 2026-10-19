@@ -43,7 +43,14 @@ html[data-role="rider"] .app {
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 8px;
+  padding-bottom: 20px;
+}
+.app:has(.bnav) .scroll {
+  padding-bottom: calc(var(--bnav) + env(safe-area-inset-bottom, 0px) + 20px);
+}
+.app:has(.bnav) .scroll.has-cartbar,
+.app:has(.bnav) .scroll.mi-page {
+  padding-bottom: calc(var(--bnav) + env(safe-area-inset-bottom, 0px) + 88px);
 }
 
 /* Bottom nav */
@@ -72,7 +79,7 @@ html[data-role="rider"] .bnav {
 html[data-role="rider"] .bnav { grid-template-columns: repeat(5, 1fr); }
 html[data-role="rider"] body,
 html[data-role="rider"] .app { background: var(--navy); color: #fff; }
-html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
+html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + env(safe-area-inset-bottom, 0px) + 20px); }
 
 /* ===== USER ===== */
 .u-top { padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 0; background: #fff; }
