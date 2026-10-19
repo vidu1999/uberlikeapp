@@ -249,6 +249,88 @@ class OrderRepository {
   String _shopIdFor(String phone) => 'SHOP_${_phoneKey(phone)}';
   String shopIdForPhone(String phone) => _shopIdFor(phone);
 
+  bool _isPlaceholderShopName(String? name) {
+    final n = (name ?? '').trim().toLowerCase();
+    return n.isEmpty || n == 'shop' || n == 'my shop' || n == 'new shop' || n == 'shop owner';
+  }
+
+  bool _isOwnerLikeShopName(String? name, SessionUser? u) {
+    if (_isPlaceholderShopName(name)) return true;
+    if (u == null || u.role != 'shop') return false;
+    return name!.trim().toLowerCase() == u.name.trim().toLowerCase();
+  }
+
+  String publicShopName(Shop? shop) {
+    final u = user;
+    final sid = (shop?.id.isNotEmpty == true) ? shop!.id : (u?.shopId ?? '');
+    final cands = <String>[];
+    void add(String? n) {
+      final t = (n ?? '').trim();
+      if (t.isEmpty || _isOwnerLikeShopName(t, u)) return;
+      if (!cands.contains(t)) cands.add(t);
+    }
+
+    add(shop?.name);
+    add(u?.shopName);
+    for (final o in orders) {
+      if (sid.isNotEmpty && o.shopId == sid) add(o.shopName);
+    }
+    if (cands.isNotEmpty) return cands.first;
+    return 'My Shop';
+  }
+
+  Shop _shopWithName(Shop s, String name) => Shop(
+        id: s.id,
+        name: name,
+        category: s.category,
+        rating: s.rating,
+        isOpen: s.isOpen,
+        lat: s.lat,
+        lng: s.lng,
+        image: s.image,
+        km: s.km,
+        reviews: s.reviews,
+        hours: s.hours,
+        address: s.address,
+        promo: s.promo,
+      );
+
+  Future<void> _repairShopPublicName() async {
+    final u = user;
+    if (u == null || u.role != 'shop') return;
+    final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+    if (sid.isEmpty) return;
+    final i = Catalog.shops.indexWhere((s) => s.id == sid);
+    if (i < 0) return;
+    final shop = Catalog.shops[i];
+    final next = publicShopName(shop);
+    if (next.isEmpty || next == 'My Shop') return;
+    if (shop.name != next) {
+      final shops = [...Catalog.shops];
+      shops[i] = _shopWithName(shop, next);
+      Catalog.set(shops, Catalog.items);
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'name': next});
+      } catch (_) {}
+    }
+    if ((u.shopName ?? '') != next) {
+      userNotifier.value = SessionUser(
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        role: u.role,
+        address: u.address,
+        vehicle: u.vehicle,
+        shopId: u.shopId,
+        shopName: next,
+        email: u.email,
+        pin: u.pin,
+        photo: u.photo,
+      );
+      await _persist();
+    }
+  }
+
   SessionUser _withShopId(SessionUser u) {
     var sid = u.shopId;
     if (sid == null || sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
@@ -1394,10 +1476,31 @@ class OrderRepository {
       if (rows.isEmpty) return;
       final m = Map<String, dynamic>.from(rows.first as Map);
       if (_isDemoAccountMap(m)) return;
-      userNotifier.value = SessionUser.fromJson(m);
-      if (userNotifier.value?.role == 'shop') {
-        userNotifier.value = _withShopId(userNotifier.value!);
+      var next = SessionUser.fromJson(m);
+      if (next.role == 'shop') {
+        final accName = (next.shopName ?? '').trim();
+        final prevName = (u.shopName ?? '').trim();
+        String? keep;
+        if (accName.isNotEmpty && !_isOwnerLikeShopName(accName, next)) {
+          keep = accName;
+        } else if (prevName.isNotEmpty && !_isOwnerLikeShopName(prevName, next)) {
+          keep = prevName;
+        }
+        next = _withShopId(SessionUser(
+          id: next.id,
+          name: next.name,
+          phone: next.phone,
+          role: next.role,
+          address: next.address,
+          vehicle: next.vehicle,
+          shopId: next.shopId ?? u.shopId,
+          shopName: keep,
+          email: next.email ?? u.email,
+          pin: next.pin,
+          photo: next.photo ?? u.photo,
+        ));
       }
+      userNotifier.value = next;
       await _persist();
     } catch (_) {}
   }
@@ -1482,6 +1585,11 @@ class OrderRepository {
           orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
         ),
       );
+      if (user?.role == 'shop') {
+        try {
+          await _repairShopPublicName();
+        } catch (_) {}
+      }
       messages.clear();
       final ids = orders.map((o) => o.id).where((id) => id.isNotEmpty).toList();
       if (ids.isNotEmpty) {

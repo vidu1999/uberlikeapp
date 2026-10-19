@@ -63,12 +63,29 @@ class _ShopHomeState extends State<ShopHome> {
 
   Shop get shop {
     for (final s in Catalog.shops) {
-      if (s.id == shopId) return s;
+      if (s.id == shopId) {
+        final n = OrderRepository.instance.publicShopName(s);
+        if (n == s.name) return s;
+        return Shop(
+          id: s.id,
+          name: n,
+          category: s.category,
+          rating: s.rating,
+          isOpen: s.isOpen,
+          lat: s.lat,
+          lng: s.lng,
+          image: s.image,
+          km: s.km,
+          reviews: s.reviews,
+          hours: s.hours,
+          address: s.address,
+          promo: s.promo,
+        );
+      }
     }
-    final u = OrderRepository.instance.user;
     return Shop(
       id: shopId,
-      name: u?.shopName ?? 'My Shop',
+      name: OrderRepository.instance.publicShopName(null),
       category: 'Bakery',
       rating: 5,
       isOpen: true,

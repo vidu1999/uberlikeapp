@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19b" />
-  <link rel="stylesheet" href="/css/ui.css?v=19b" />
-  <link rel="stylesheet" href="/css/track.css?v=19b" />
+  <link rel="stylesheet" href="/css/app.css?v=19c" />
+  <link rel="stylesheet" href="/css/ui.css?v=19c" />
+  <link rel="stylesheet" href="/css/track.css?v=19c" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19b"></script>
-  <script src="/js/api.js?v=19b"></script>
-  <script src="/js/maps.js?v=19b"></script>
-  <script src="/js/track-ui.js?v=19b"></script>
-  <script src="/js/otp-login.js?v=19b"></script>
+  <script src="/js/live.js?v=19c"></script>
+  <script src="/js/api.js?v=19c"></script>
+  <script src="/js/maps.js?v=19c"></script>
+  <script src="/js/track-ui.js?v=19c"></script>
+  <script src="/js/otp-login.js?v=19c"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -73,7 +73,7 @@
       const s = API.shops.find((x) => x.id === sid) || {};
       return {
         id: sid,
-        name: s.name || (API.user && API.user.shopName) || 'My Shop',
+        name: (API.publicShopName ? API.publicShopName({ id: sid, name: s.name }) : (s.name || (API.user && API.user.shopName) || 'My Shop')),
         category: s.category || 'Bakery',
         rating: Number(s.rating || 0) || 5,
         reviews: Number(s.reviews || 0),
@@ -919,7 +919,7 @@
         const form = document.getElementById('chatForm');
         if (form && form.text) form.text.value = '';
         try {
-          await API.sendMessage(state.orderId, (API.user && API.user.shopName) || (API.user && API.user.name) || 'Shop', 'shop', body);
+          await API.sendMessage(state.orderId, (API.publicShopName && API.publicShopName(myShop())) || (API.user && API.user.shopName) || 'Shop', 'shop', body);
         } catch (e) { alert(e.message); return; }
         if (API.markChatRead) API.markChatRead(state.orderId, 'shop');
         const keepChat = document.querySelector('[data-chat-root]');
@@ -943,7 +943,10 @@
       const logout = document.getElementById('logout');
       if (logout) logout.onclick = () => { API.logout(); state.tab = 'account'; state.auth = 'login'; render(); };
       root.querySelectorAll('[data-edit-shop]').forEach((b) => b.onclick = () => {
-        state.shopDraft = Object.assign({}, myShop());
+        const s = Object.assign({}, myShop());
+        const raw = (API.shops.find((x) => x.id === shopId()) || {}).name;
+        if (raw && String(raw).trim()) s.name = raw;
+        state.shopDraft = s;
         state.screen = 'edit-shop';
         render();
       });

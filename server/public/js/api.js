@@ -55,7 +55,8 @@
     ).join('|');
     const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
-    return [(API.user && API.user.id) || '', (API.shops || []).length, items, orders, msgs].join('~');
+    const shops = (API.shops || []).map((s) => (s && s.id) + ':' + (s && s.name || '')).join('|');
+    return [(API.user && API.user.id) || '', shops, items, orders, msgs].join('~');
   }
   function notify(force) {
     const fp = fingerprint();
@@ -681,6 +682,82 @@
     return !n || n === 'shop' || n === 'my shop' || n === 'new shop' || n === 'shop owner';
   }
 
+  function ownerNameList(user) {
+    const out = [];
+    function add(n) {
+      const t = String(n || '').trim().toLowerCase();
+      if (t && out.indexOf(t) < 0) out.push(t);
+    }
+    if (user) add(user.name);
+    try {
+      const rec = user && user.phone && API.recallShopProfile ? API.recallShopProfile(user.phone) : null;
+      if (rec) add(rec.ownerName);
+    } catch (_) {}
+    return out;
+  }
+
+  function isOwnerLikeShopName(name, user) {
+    const n = String(name || '').trim();
+    if (isPlaceholderShopName(n)) return true;
+    if (!user || !sameRole(user.role, 'shop')) return false;
+    return ownerNameList(user).indexOf(n.toLowerCase()) >= 0;
+  }
+
+  function publicShopNameFor(shop, user) {
+    user = user || API.user;
+    const sid = (shop && shop.id) || (user && (user.shopId || user.shop_id)) || '';
+    const rec = (user && user.phone && API.recallShopProfile ? API.recallShopProfile(user.phone) : null) || {};
+    const cands = [];
+    function add(n) {
+      const t = String(n || '').trim();
+      if (!t || isOwnerLikeShopName(t, user)) return;
+      if (cands.indexOf(t) < 0) cands.push(t);
+    }
+    add(shop && shop.name);
+    add(user && user.shopName);
+    add(rec.shopName);
+    function fromOrder(o) {
+      if (!o) return;
+      if (sid && String(o.shopId || o.shop_id || '') !== String(sid)) return;
+      add(o.shopName);
+    }
+    (API.orders || []).forEach(fromOrder);
+    try { keptOrders.forEach(fromOrder); } catch (_) {}
+    if (cands.length) return cands[0];
+    return 'My Shop';
+  }
+
+  async function repairShopPublicName(user) {
+    if (!user || !sameRole(user.role, 'shop')) return user;
+    const sid = user.shopId || user.shop_id || (user.phone && shopIdFor(user.phone)) || '';
+    if (!sid) return user;
+    const i = API.shops.findIndex((s) => s.id === sid);
+    if (i < 0) return user;
+    const shop = API.shops[i];
+    const next = publicShopNameFor(shop, user);
+    if (!next || next === 'My Shop') {
+      if (isOwnerLikeShopName(user.shopName, user)) user.shopName = '';
+      return user;
+    }
+    if (String(shop.name || '') !== next) {
+      shop.name = next;
+      API.shops[i] = shop;
+      if (sbConfigured()) {
+        try { await sbSend('shops?id=eq.' + encodeURIComponent(sid), 'PATCH', { name: next }); } catch (_) {}
+      }
+    }
+    user.shopName = next;
+    try {
+      const rec = API.recallShopProfile(user.phone) || {};
+      API.rememberShopProfile(user.phone, Object.assign({}, rec, { shopId: sid, shopName: next }));
+    } catch (_) {}
+    return user;
+  }
+
+  API.publicShopName = function (shop) {
+    return publicShopNameFor(shop || {}, API.user);
+  };
+
   API.isShopRegistered = function () {
     const u = API.user;
     if (!u || !sameRole(u.role, 'shop')) return false;
@@ -765,9 +842,14 @@
       if (finiteNum(shop.lat) == null && pinLat != null) { shop.lat = pinLat; dirty = true; }
       if (finiteNum(shop.lng) == null && pinLng != null) { shop.lng = pinLng; dirty = true; }
       if (!String(shop.address || '').trim() && pinAddr) { shop.address = pinAddr; dirty = true; }
-      if (isPlaceholderShopName(shop.name) && !isPlaceholderShopName(p.shopName)) {
-        shop.name = String(p.shopName).trim();
-        dirty = true;
+      if (isOwnerLikeShopName(shop.name, user) || isPlaceholderShopName(shop.name)) {
+        const restore = [rec.shopName, p.shopName].map(function (n) { return String(n || '').trim(); }).find(function (n) {
+          return n && !isOwnerLikeShopName(n, user);
+        });
+        if (restore) {
+          shop.name = restore;
+          dirty = true;
+        }
       }
       if (dirty) {
         try { await sbUpsert('shops', [shop]); } catch (_) {}
@@ -778,7 +860,8 @@
     const i = API.shops.findIndex((s) => s.id === sid);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
     else API.shops.push(mapped);
-    if (mapped.name) user.shopName = mapped.name;
+    if (mapped.name && !isOwnerLikeShopName(mapped.name, user)) user.shopName = mapped.name;
+    else if (isOwnerLikeShopName(user.shopName, user)) user.shopName = '';
     return user;
   }
 
@@ -961,7 +1044,12 @@
         if (photo) API.user.photo = photo;
         if (name) API.user.name = name;
         if (email) API.user.email = email;
-        if (sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
+        if (sameRole(API.user.role, 'shop')) {
+          API.user = attachShopIdentity(API.user);
+          const keep = u.shopName || mapped.shopName || '';
+          if (keep && !isOwnerLikeShopName(keep, API.user)) API.user.shopName = keep;
+          else if (isOwnerLikeShopName(API.user.shopName, API.user)) API.user.shopName = '';
+        }
       }
     } catch (_) {}
   }
@@ -1047,6 +1135,10 @@
       return o;
     });
     scopeData();
+    if (API.user && sameRole(API.user.role, 'shop')) {
+      try { API.user = await repairShopPublicName(API.user); } catch (_) {}
+      try { saveSession(); } catch (_) {}
+    }
     API.messages = {};
     const ids = (API.orders || []).map(function (o) { return o && o.id; }).filter(Boolean);
     if (ids.length) {
@@ -1373,7 +1465,7 @@
     }
     if (API.user && API.user.shopId) {
       const s = API.shops.find((x) => x.id === API.user.shopId);
-      if (s && s.name && !isPlaceholderShopName(s.name)) API.user.shopName = s.name;
+      if (s && s.name && !isOwnerLikeShopName(s.name, API.user)) API.user.shopName = s.name;
     }
     if (role === 'shop' && API.user && API.user.shopId) {
       const recKeep = API.recallShopProfile(phone) || {};
@@ -2387,7 +2479,10 @@
     const lane = API.chatLane(order);
     if (lane === 'shop') {
       const shop = API.shopOf ? API.shopOf(order.shopId) : {};
-      return order.shopName || shop.name || 'Shop';
+      const pub = API.publicShopName ? API.publicShopName(shop) : '';
+      if (pub && pub !== 'My Shop') return pub;
+      if (order.shopName && (!API.user || !sameRole(API.user.role, 'shop') || !isOwnerLikeShopName(order.shopName, API.user))) return order.shopName;
+      return shop.name && !isOwnerLikeShopName(shop.name, API.user) ? shop.name : 'Shop';
     }
     return order.customerName || 'Customer';
   };
