@@ -65,7 +65,10 @@ class _CustomerHomeState extends State<CustomerHome> {
 
   List<Shop> get _shops {
     var list = Catalog.shops;
-    if (category == 'Burgers') {
+    if (category == 'Favourites') {
+      final favs = OrderRepository.instance.favs;
+      list = list.where((s) => favs.contains(s.id)).toList();
+    } else if (category == 'Burgers') {
       list = list.where((s) => s.category == 'Fast Food').toList();
     } else if (category != 'All') {
       list = list.where((s) => s.category == category || (category == 'Beverages' && s.category == 'Coffee')).toList();
@@ -146,6 +149,7 @@ class _CustomerHomeState extends State<CustomerHome> {
       ('Pizza', 'Pizza', '/img/shop-pizza.jpg'),
       ('Bakery', 'Bakery', '/img/shop-bakery.jpg'),
       ('Beverages', 'Beverages', '/img/shop-coffee.jpg'),
+      ('Favourites', 'Favourites', null),
     ];
     return SafeArea(
       child: ListView(
@@ -288,9 +292,11 @@ class _CustomerHomeState extends State<CustomerHome> {
                             borderRadius: BorderRadius.circular(18),
                           ),
                           clipBehavior: Clip.antiAlias,
-                          child: c.$3 == null
-                              ? Icon(Icons.grid_view_rounded, color: on ? Colors.white : Brand.ink)
-                              : _photo(c.$3, w: 58, h: 58, r: 18),
+                          child: c.$1 == 'Favourites'
+                              ? Icon(Icons.favorite, color: on ? Colors.white : const Color(0xFFEF4444))
+                              : c.$3 == null
+                                  ? Icon(Icons.grid_view_rounded, color: on ? Colors.white : Brand.ink)
+                                  : _photo(c.$3, w: 58, h: 58, r: 18),
                         ),
                         const SizedBox(height: 6),
                         Text(c.$2, style: TextStyle(fontSize: 11, fontWeight: on ? FontWeight.w700 : FontWeight.w600, color: on ? Brand.ink : Brand.muted)),
@@ -305,7 +311,7 @@ class _CustomerHomeState extends State<CustomerHome> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Row(
               children: [
-                const Text('Popular Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                Text(category == 'Favourites' ? 'Favourite Shops' : 'Popular Shops', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
                 const Spacer(),
                 GestureDetector(
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
@@ -315,9 +321,14 @@ class _CustomerHomeState extends State<CustomerHome> {
             ),
           ),
           if (_shops.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Loading shops from the database…', style: TextStyle(color: Brand.muted)),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                category == 'Favourites'
+                    ? 'No favourite shops yet. Tap the heart next to a shop name.'
+                    : 'Loading shops from the database…',
+                style: const TextStyle(color: Brand.muted),
+              ),
             ),
           ..._shops.map((s) {
             final liked = OrderRepository.instance.favs.contains(s.id);

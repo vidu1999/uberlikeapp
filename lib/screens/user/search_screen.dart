@@ -18,7 +18,7 @@ class _SearchScreenState extends State<SearchScreen> {
   String category = 'All';
   final _focus = FocusNode();
 
-  static const cats = ['All', 'Burgers', 'Pizza', 'Bakery', 'Beverages'];
+  static const cats = ['All', 'Burgers', 'Pizza', 'Bakery', 'Beverages', 'Favourites'];
 
   @override
   void initState() {
@@ -43,6 +43,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   bool _shopCat(Shop s) {
+    if (category == 'Favourites') return OrderRepository.instance.favs.contains(s.id);
     if (category == 'All') return true;
     final c = s.category;
     if (c == category) return true;
@@ -54,6 +55,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   bool _itemCat(CatalogItem it) {
+    if (category == 'Favourites') return OrderRepository.instance.favs.contains(it.shopId);
     if (category == 'All') return true;
     final ic = it.category.toLowerCase();
     if (it.category == category) return true;
@@ -217,7 +219,11 @@ class _SearchScreenState extends State<SearchScreen> {
           final shops = _shops();
           final items = _items();
           final q = query.trim();
-          final shopHead = q.isNotEmpty ? 'Shops' : (category == 'All' ? 'Popular Near You' : category);
+          final shopHead = q.isNotEmpty
+              ? 'Shops'
+              : (category == 'Favourites'
+                  ? 'Favourite Shops'
+                  : (category == 'All' ? 'Popular Near You' : category));
           return Scaffold(
             backgroundColor: const Color(0xFFF7F8FA),
             body: SafeArea(
@@ -297,7 +303,9 @@ class _SearchScreenState extends State<SearchScreen> {
                           Padding(
                             padding: const EdgeInsets.all(24),
                             child: Text(
-                              q.isNotEmpty ? 'No shops or items match that search.' : 'No shops nearby yet.',
+                              category == 'Favourites'
+                                  ? 'No favourite shops yet. Tap the heart next to a shop name.'
+                                  : (q.isNotEmpty ? 'No shops or items match that search.' : 'No shops nearby yet.'),
                               style: const TextStyle(color: Brand.muted),
                             ),
                           ),

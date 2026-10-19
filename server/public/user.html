@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=18w" />
-  <link rel="stylesheet" href="/css/ui.css?v=18w" />
-  <link rel="stylesheet" href="/css/track.css?v=18w" />
-  <link rel="stylesheet" href="/css/qb.css?v=18w" />
+  <link rel="stylesheet" href="/css/app.css?v=18x" />
+  <link rel="stylesheet" href="/css/ui.css?v=18x" />
+  <link rel="stylesheet" href="/css/track.css?v=18x" />
+  <link rel="stylesheet" href="/css/qb.css?v=18x" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=18w"></script>
-  <script src="/js/api.js?v=18w"></script>
-  <script src="/js/maps.js?v=18w"></script>
-  <script src="/js/track-ui.js?v=18w"></script>
+  <script src="/js/live.js?v=18x"></script>
+  <script src="/js/api.js?v=18x"></script>
+  <script src="/js/maps.js?v=18x"></script>
+  <script src="/js/track-ui.js?v=18x"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -37,6 +37,7 @@
       { id: 'Pizza', label: 'Pizza', map: 'Pizza', img: '/img/shop-pizza.jpg' },
       { id: 'Bakery', label: 'Bakery', map: 'Bakery', img: '/img/shop-bakery.jpg' },
       { id: 'Beverages', label: 'Beverages', map: 'Beverages', img: '/img/iced-coffee.jpg' },
+      { id: 'Favourites', label: 'Favourites', map: 'Favourites', img: '' },
     ];
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#fff"/><path d="M8 10.5c0-1.2.9-2.2 2.4-2.6V7h1.3v.8c1.4.3 2.4 1.2 2.4 2.4 0 1.6-1.4 2.2-2.7 2.5v2.2c.7-.1 1.3-.4 1.7-.8l.9.8c-.7.7-1.7 1.1-2.6 1.3V17h-1.3v-.8c-1.6-.3-2.6-1.3-2.6-2.7 0-1.5 1.2-2.2 2.6-2.5V10c-.6.2-1.1.5-1.1 1.1H8zm3.7 1.3c.7-.2 1.2-.4 1.2-.9s-.5-.8-1.2-.9v1.8zm-1.3 3.3v-1.8c-.7.2-1.2.5-1.2 1s.5.7 1.2.8z" fill="#00C853"/></svg>';
 
@@ -303,6 +304,7 @@
     }
     function shopMatchesCat(s) {
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
+      if (cat.id === 'Favourites') return (state.favs || []).map(String).includes(String(s.id));
       if (cat.id === 'All') return true;
       const c = String(s.category || '');
       if (c === cat.map || c === cat.id) return true;
@@ -323,6 +325,7 @@
     }
     function itemMatchesCat(it) {
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
+      if (cat.id === 'Favourites') return (state.favs || []).map(String).includes(String(it.shopId));
       if (cat.id === 'All') return true;
       const ic = String(it.category || '');
       if (ic === cat.id || ic === cat.map) return true;
@@ -511,20 +514,20 @@
           <button class="u-play" data-shop="${(API.shops[1]||API.shops[0]||{}).id||''}">▶</button>
         </div>
         <div class="u-cats">
-          ${CATS.map((c) => `<button class="u-cat ${state.category===c.id?'on':''}" data-cat="${c.id}">
-            <div class="ico">${c.img ? `<img src="${c.img}" alt="" />` : SVG.grid}</div>
+          ${CATS.map((c) => `<button class="u-cat ${c.id==='Favourites'?'fav':''} ${state.category===c.id?'on':''}" data-cat="${c.id}">
+            <div class="ico">${c.id==='Favourites' ? SVG.heartOn : (c.img ? `<img src="${c.img}" alt="" />` : SVG.grid)}</div>
             <span>${c.label}</span>
           </button>`).join('')}
         </div>
-        <div class="sec-row"><h2>Popular Shops</h2><button class="see" data-go-search>See All ›</button></div>
-        ${filteredShops().slice(0,6).map((s) => shopRow(s, false)).join('') || '<div class="pad muted">No shops nearby yet. When a shop registers, they appear here.</div>'}
+        <div class="sec-row"><h2>${state.category==='Favourites' ? 'Favourite Shops' : 'Popular Shops'}</h2><button class="see" data-go-search>See All ›</button></div>
+        ${filteredShops().slice(0,6).map((s) => shopRow(s, false)).join('') || `<div class="pad muted">${state.category==='Favourites' ? 'No favourite shops yet. Tap the heart next to a shop name.' : 'No shops nearby yet. When a shop registers, they appear here.'}</div>`}
       </div>${cartbar()}${nav()}`;
     }
     function searchView() {
       const q = state.query.trim();
       const shops = filteredShops();
       const items = filteredItems();
-      const shopHead = q ? 'Shops' : (state.category === 'All' ? 'Popular Near You' : state.category);
+      const shopHead = q ? 'Shops' : (state.category === 'Favourites' ? 'Favourite Shops' : (state.category === 'All' ? 'Popular Near You' : state.category));
       const chips = CATS.map((c) => `<button class="s-chip ${state.category===c.id?'on':''}" data-cat="${c.id}">${esc(c.label)}</button>`).join('');
       let body = '';
       if (items.length) {
@@ -533,7 +536,7 @@
       if (shops.length) {
         body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + shops.map((s) => shopRow(s, true)).join('');
       } else if (!items.length) {
-        body += `<div class="pad muted">${q ? 'No shops or items match that search.' : 'No shops nearby yet.'}</div>`;
+        body += `<div class="pad muted">${state.category==='Favourites' ? 'No favourite shops yet. Tap the heart next to a shop name.' : (q ? 'No shops or items match that search.' : 'No shops nearby yet.')}</div>`;
       }
       return `<div class="scroll qb-search-page">
         <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>

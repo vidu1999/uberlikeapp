@@ -145,6 +145,9 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + 12px); }
 }
 .u-cat .ico img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .u-cat.on .ico { background: var(--g); }
+.u-cat.fav .ico { color: #EF4444; background: #FEE2E2; }
+.u-cat.fav.on .ico { color: #fff; background: var(--g); }
+.u-cat.fav .ico svg { width: 22px; height: 22px; }
 .u-cat span {
   display: block; margin-top: 6px; font-size: 11px; font-weight: 600; color: var(--muted);
 }
