@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19g" />
-  <link rel="stylesheet" href="/css/ui.css?v=19g" />
-  <link rel="stylesheet" href="/css/track.css?v=19g" />
+  <link rel="stylesheet" href="/css/app.css?v=19h" />
+  <link rel="stylesheet" href="/css/ui.css?v=19h" />
+  <link rel="stylesheet" href="/css/track.css?v=19h" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19g"></script>
-  <script src="/js/api.js?v=19g"></script>
-  <script src="/js/maps.js?v=19g"></script>
-  <script src="/js/track-ui.js?v=19g"></script>
-  <script src="/js/otp-login.js?v=19g"></script>
+  <script src="/js/live.js?v=19h"></script>
+  <script src="/js/api.js?v=19h"></script>
+  <script src="/js/maps.js?v=19h"></script>
+  <script src="/js/track-ui.js?v=19h"></script>
+  <script src="/js/otp-login.js?v=19h"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -86,7 +86,10 @@
         promo: s.promo || '',
       };
     }
-    function shopName() { return myShop().name; }
+    function shopName() {
+      const s = myShop();
+      return (API.shopTitle && API.shopTitle(s)) || s.name;
+    }
     function shopTags(s) {
       const c = String((s && s.category) || 'Bakery');
       if (/baker/i.test(c)) return 'Bakery • Cakes • Pastries';
@@ -907,7 +910,6 @@
           lat: state.reg.lat,
           lng: state.reg.lng,
         });
-        if (API.lockShopTitle) API.lockShopTitle(phone, state.reg.shopName.trim());
         if (API.rememberShopProfile) {
           API.rememberShopProfile(phone, {
             shopId: API.shopIdFor ? API.shopIdFor(phone) : '',

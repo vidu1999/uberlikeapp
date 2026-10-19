@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19g"></script>
+  <script src="/js/live.js?v=19h"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -73,6 +73,14 @@
         'accounts?phone=in.("0771234567","0771112222","0772223333","0775556666")',
       ];
       await Promise.all(wipe.map((p) => fetch(sb + '/rest/v1/' + p, { method: 'DELETE', headers: delHdr }).catch(() => {})));
+      const patchHdr = Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, hdr());
+      await Promise.all(['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop'].map((n) =>
+        fetch(sb + '/rest/v1/orders?shop_name=eq.' + encodeURIComponent(n), {
+          method: 'PATCH',
+          headers: patchHdr,
+          body: JSON.stringify({ shop_name: '' }),
+        }).catch(() => {})
+      ));
       const shops = await fetch(sb + '/rest/v1/shops?select=id', { headers: hdr() }).then((r) => r.json());
       const items = await fetch(sb + '/rest/v1/menu_items?select=id', { headers: hdr() }).then((r) => r.json());
       el.className = 'ok';

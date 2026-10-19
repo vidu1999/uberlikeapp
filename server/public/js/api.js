@@ -10,6 +10,7 @@
     base: (typeof window !== 'undefined' && window.QB_API) ? String(window.QB_API).replace(/\/$/, '') : '',
     roleHint: document.documentElement.getAttribute('data-role') || '',
   };
+  const persistedShopNames = {};
 
   function finiteNum(v) {
     const n = Number(v);
@@ -77,9 +78,11 @@
   }
 
   function mapShop(r) {
+    const id = r.id;
+    let name = String((id && persistedShopNames[id]) || r.name || '').trim();
     return {
-      id: r.id,
-      name: r.name,
+      id,
+      name,
       category: r.category,
       rating: Number(r.rating || 0),
       reviews: Number(r.reviews || 0),
@@ -328,7 +331,7 @@
     o.id = d.id || r.id;
     o.userId = d.userId || r.user_id || r.userId || '';
     o.shopId = d.shopId || r.shop_id || r.shopId || '';
-    o.shopName = d.shopName || r.shop_name || r.shopName || '';
+    o.shopName = liveShopTitle(o.shopId, d.shopName || r.shop_name || r.shopName || '');
     o.customerName = d.customerName || r.customer_name || r.customerName || '';
     o.customerPhone = d.customerPhone || r.customer_phone || r.customerPhone || '';
     o.customerEmail = String(d.customerEmail || d.email || r.customer_email || '').trim().toLowerCase();
@@ -683,7 +686,53 @@
   }
   function isDemoShopName(name) {
     const n = String(name || '').trim().toLowerCase();
-    return n === 'kandy bakers' || n === 'kandy baker' || n === 'demo shop';
+    return n === 'kandy bakers' || n === 'kandy baker' || n === 'kandy bakery' || n === 'demo shop';
+  }
+
+  function liveShopTitle(shopId, fallback) {
+    if (shopId && persistedShopNames[shopId]) return persistedShopNames[shopId];
+    const s = (API.shops || []).find(function (x) { return x && x.id === shopId; });
+    const fromShop = String((s && s.name) || '').trim();
+    if (fromShop && !isDemoShopName(fromShop) && !isPlaceholderShopName(fromShop)) return fromShop;
+    const f = String(fallback || '').trim();
+    if (f && !isDemoShopName(f) && !isPlaceholderShopName(f)) return f;
+    return fromShop || 'Shop';
+  }
+
+  function purgeLocalDemoStores() {
+    const keys = [];
+    function collect(store) {
+      try {
+        for (let i = 0; i < store.length; i++) {
+          const k = store.key(i);
+          if (k && keys.indexOf(k) < 0) keys.push(k);
+        }
+      } catch (_) {}
+    }
+    try { collect(localStorage); } catch (_) {}
+    try { collect(sessionStorage); } catch (_) {}
+    keys.forEach(function (k) {
+      if (!k) return;
+      if (k === 'sd_shop_public_names' || k === 'qb_shop_public_names') { storeDel(k); return; }
+      if (k.indexOf('sd_shop_title_') === 0 || k.indexOf('qb_shop_title_') === 0) { storeDel(k); return; }
+      if (k.indexOf('sd_shop_profile_') === 0 || k.indexOf('qb_shop_profile_') === 0) {
+        try {
+          const p = JSON.parse(storeGet(k) || 'null');
+          if (p && isDemoShopName(p.shopName)) {
+            p.shopName = '';
+            storeSet(k, JSON.stringify(p));
+          }
+        } catch (_) {}
+      }
+    });
+    if (API.user && isDemoShopName(API.user.shopName)) API.user.shopName = '';
+    try {
+      const p = pendingShop();
+      if (p && isDemoShopName(p.shopName)) {
+        p.shopName = '';
+        API.setPendingShop(p);
+      }
+    } catch (_) {}
   }
 
   function ownerNameList(user) {
@@ -713,76 +762,15 @@
     return false;
   }
 
-  function titleMapKey() { return 'sd_shop_public_names'; }
-  function readTitleMap() {
-    try { return JSON.parse(storeGet(titleMapKey()) || '{}') || {}; } catch (_) { return {}; }
-  }
-  function writeTitleMap(map) {
-    try { storeSet(titleMapKey(), JSON.stringify(map)); } catch (_) {}
-  }
-  function rememberPublicShopName(shopId, name, owner) {
-    const id = String(shopId || '');
-    const n = String(name || '').trim();
-    if (!id || isDemoShop(id) || !n || isPlaceholderShopName(n)) return '';
-    if (owner && n.toLowerCase() === String(owner).trim().toLowerCase()) return '';
-    const map = readTitleMap();
-    if (map[id] !== n) {
-      map[id] = n;
-      writeTitleMap(map);
-    }
-    return n;
-  }
   function titleForShop(shop) {
     if (!shop) return 'Shop';
-    const n = String(shop.name || '').trim();
-    return n || 'Shop';
+    return liveShopTitle(shop.id, shop.name);
   }
 
-  function shopTitleKey(phone) {
-    return 'sd_shop_title_' + normalizePhone(phone || '');
-  }
-  function readShopTitle(phone) {
-    if (!phone) return '';
-    try { return String(storeGet(shopTitleKey(phone)) || '').trim(); } catch (_) { return ''; }
-  }
-  function lockShopTitle(phone, name, user) {
-    user = user || API.user;
-    const n = String(name || '').trim();
-    if (!phone || !n || isPlaceholderShopName(n)) return readShopTitle(phone);
-    if (user && sameRole(user.role, 'shop') && isOwnerLikeShopName(n, user)) return readShopTitle(phone);
-    try { storeSet(shopTitleKey(phone), n); } catch (_) {}
-    return n;
-  }
   function publicNameCandidate(name, user, shopId) {
     const t = String(name || '').trim();
-    if (!t || isPlaceholderShopName(t) || isOwnerLikeShopName(t, user, shopId)) return '';
+    if (!t || isDemoShopName(t) || isPlaceholderShopName(t) || isOwnerLikeShopName(t, user, shopId)) return '';
     return t;
-  }
-
-  function publicShopNameFor(shop, user) {
-    user = user || API.user;
-    const sid = (shop && shop.id) || (user && (user.shopId || user.shop_id)) || '';
-    const rec = (user && user.phone && API.recallShopProfile ? API.recallShopProfile(user.phone) : null) || {};
-    const cands = [];
-    function add(n) {
-      const t = publicNameCandidate(n, user, sid);
-      if (!t) return;
-      if (cands.indexOf(t) < 0) cands.push(t);
-    }
-    add(readTitleMap()[sid]);
-    add(user && user.phone ? readShopTitle(user.phone) : '');
-    add(shop && shop.name);
-    add(user && user.shopName);
-    add(rec.shopName);
-    function fromOrder(o) {
-      if (!o) return;
-      if (sid && String(o.shopId || o.shop_id || '') !== String(sid)) return;
-      add(o.shopName);
-    }
-    (API.orders || []).forEach(fromOrder);
-    try { keptOrders.forEach(fromOrder); } catch (_) {}
-    if (cands.length) return cands[0];
-    return 'My Shop';
   }
 
   async function repairShopPublicName(user) {
@@ -790,7 +778,8 @@
     const sid = user.shopId || user.shop_id || (user.phone && shopIdFor(user.phone)) || '';
     if (!sid) return user;
     const shop = API.shops.find((s) => s.id === sid);
-    if (shop && shop.name) user.shopName = shop.name;
+    const n = liveShopTitle(sid, shop && shop.name);
+    if (n && n !== 'Shop') user.shopName = n;
     return user;
   }
 
@@ -800,8 +789,8 @@
   API.shopTitle = function (shop) {
     return titleForShop(shop || {});
   };
-  API.lockShopTitle = function (phone, name) {
-    return lockShopTitle(phone, name, API.user);
+  API.lockShopTitle = function () {
+    return '';
   };
 
   async function syncPublicShopNames() {}
@@ -812,9 +801,7 @@
     const sid = u.shopId || u.shop_id || (u.phone && shopIdFor(u.phone)) || '';
     if (!sid || isDemoShop(sid)) return false;
     const shop = (API.shops || []).find((s) => s.id === sid);
-    if (shop && String(shop.name || '').trim()) return true;
-    const rec = u.phone && API.recallShopProfile ? API.recallShopProfile(u.phone) : null;
-    return !!(rec && String(rec.shopName || '').trim());
+    return !!(shop && shop.id);
   };
 
   API.isRiderRegistered = function () {
@@ -860,20 +847,20 @@
     const pinLng = finiteNum(p.lng != null ? p.lng : rec.lng);
     const pinAddr = String(p.address || rec.address || '').trim();
     if (!shop) {
-      if (sbConfigured() && !shopLookupOk) {
-        const local = API.shops.find((s) => s.id === sid);
+      const local = API.shops.find((s) => s.id === sid);
+      if (!(opts && opts.required)) {
+        if (local) shop = { id: sid, name: local.name, category: local.category, rating: local.rating, reviews: local.reviews, is_open: local.isOpen !== false, lat: local.lat, lng: local.lng, hours: local.hours, address: local.address, image: local.image, promo: local.promo };
+        else return user;
+      } else if (sbConfigured() && !shopLookupOk) {
         if (local) shop = { id: sid, name: local.name, category: local.category, rating: local.rating, reviews: local.reviews, is_open: local.isOpen !== false, lat: local.lat, lng: local.lng, hours: local.hours, address: local.address, image: local.image, promo: local.promo };
         else return user;
       } else {
-        let name = String(p.shopName || rec.shopName || user.shopName || '').trim();
-        if (isDemoShopName(name) || isPlaceholderShopName(name)) name = String(p.shopName || '').trim();
+        let name = String(p.shopName || '').trim();
         if (!name || isDemoShopName(name) || isPlaceholderShopName(name)) {
-          if (opts && opts.required) throw new Error('Register your shop first.');
-          return user;
+          throw new Error('Register your shop first.');
         }
         if (pinLat == null || pinLng == null) {
-          if (opts && opts.required) throw new Error('Pin your shop on the map.');
-          return user;
+          throw new Error('Pin your shop on the map.');
         }
         shop = {
           id: sid,
@@ -908,7 +895,7 @@
     const i = API.shops.findIndex((s) => s.id === sid);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
     else API.shops.push(mapped);
-    if (mapped.name) user.shopName = mapped.name;
+    if (mapped.name && !isDemoShopName(mapped.name) && !isPlaceholderShopName(mapped.name)) user.shopName = mapped.name;
     return user;
   }
 
@@ -997,6 +984,7 @@
   async function wipeDemo() {
     if (API._wipedDemo || !sbConfigured()) return;
     API._wipedDemo = true;
+    purgeLocalDemoStores();
     const shopsIn = DEMO_SHOP_IDS.map((id) => '"' + id + '"').join(',');
     const paths = [
       'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
@@ -1010,6 +998,10 @@
     ];
     for (let i = 0; i < paths.length; i++) {
       try { await sbSend(paths[i], 'DELETE'); } catch (_) {}
+    }
+    const demoTitles = ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop'];
+    for (let i = 0; i < demoTitles.length; i++) {
+      try { await sbSend('orders?shop_name=eq.' + encodeURIComponent(demoTitles[i]), 'PATCH', { shop_name: '' }); } catch (_) {}
     }
     clearAccCache();
   }
@@ -1094,8 +1086,8 @@
         if (sameRole(API.user.role, 'shop')) {
           API.user = attachShopIdentity(API.user);
           const keep = u.shopName || mapped.shopName || '';
-          if (keep && !isOwnerLikeShopName(keep, API.user)) API.user.shopName = keep;
-          else if (isOwnerLikeShopName(API.user.shopName, API.user)) API.user.shopName = '';
+          if (keep && !isOwnerLikeShopName(keep, API.user) && !isDemoShopName(keep)) API.user.shopName = keep;
+          else if (isOwnerLikeShopName(API.user.shopName, API.user) || isDemoShopName(API.user.shopName)) API.user.shopName = '';
         }
       }
     } catch (_) {}
@@ -1150,6 +1142,7 @@
   }
 
   async function pullSupabase() {
+    purgeLocalDemoStores();
     await wipeTestNumber();
     await wipeDemo();
     await hydrateUser();
@@ -1417,7 +1410,9 @@
       const typed = String(p.shopName || '').trim();
       const existingName = String((shop && shop.name) || '').trim();
       let shopTitle = typed;
-      if (existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) shopTitle = existingName;
+      if (!shopTitle || isDemoShopName(shopTitle) || isPlaceholderShopName(shopTitle)) {
+        if (existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) shopTitle = existingName;
+      }
       if (!shopTitle || isDemoShopName(shopTitle) || isPlaceholderShopName(shopTitle)) {
         throw new Error('Enter your shop name.');
       }
@@ -1522,19 +1517,19 @@
       if (s && s.name && !isOwnerLikeShopName(s.name, API.user)) API.user.shopName = s.name;
     }
     if (role === 'shop' && API.user && API.user.shopId) {
-      const recKeep = API.recallShopProfile(phone) || {};
-      const title = readShopTitle(phone)
-        || publicNameCandidate(API.user.shopName, API.user)
-        || publicNameCandidate(recKeep.shopName, API.user)
+      const s = API.shops.find((x) => x.id === API.user.shopId) || {};
+      const nm = publicNameCandidate(s.name, API.user, API.user.shopId)
+        || publicNameCandidate(API.user.shopName, API.user, API.user.shopId)
         || '';
-      if (title) lockShopTitle(phone, title, API.user);
+      if (nm) API.user.shopName = nm;
+      const recKeep = API.recallShopProfile(phone) || {};
       API.rememberShopProfile(phone, {
         shopId: API.user.shopId,
-        shopName: title || recKeep.shopName || '',
+        shopName: nm,
         ownerName: API.user.name || recKeep.ownerName || '',
-        address: recKeep.address || '',
-        lat: recKeep.lat,
-        lng: recKeep.lng,
+        address: (s.address || recKeep.address || ''),
+        lat: s.lat != null ? s.lat : recKeep.lat,
+        lng: s.lng != null ? s.lng : recKeep.lng,
       });
     }
     API.token = 'sb_' + row.id;
@@ -2081,6 +2076,7 @@
         return;
       }
       if (API.user && sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
+      purgeLocalDemoStores();
       if (API.user) {
         clearVerified(hint);
         saveSession();
@@ -2389,15 +2385,13 @@
   };
 
   API.saveShop = async function (shop) {
-    if (API.user && sameRole(API.user.role, 'shop')) {
-      try { API.user = await ensureShopRow(API.user); } catch (_) {}
-    }
-    const id = shop.id || (API.user && API.user.shopId) || (API.user && API.user.phone ? shopIdFor(API.user.phone) : '');
-    if (!id) throw new Error('Missing shop');
+    const id = (API.user && sameRole(API.user.role, 'shop') && (API.user.shopId || (API.user.phone && shopIdFor(API.user.phone))))
+      || shop.id || '';
+    if (!id || isDemoShop(id)) throw new Error('Missing shop');
     const prev = API.shops.find((s) => s.id === id) || {};
     const nextName = String(shop.name || '').trim();
     if (!nextName) throw new Error('Enter a shop name.');
-    if (isDemoShopName(nextName)) throw new Error('Choose your shop name — not a demo name.');
+    if (isDemoShopName(nextName) || isPlaceholderShopName(nextName)) throw new Error('Choose your shop name — not a demo name.');
     const row = {
       id,
       name: nextName,
@@ -2415,17 +2409,62 @@
       image: shop.image || prev.image || '/img/shop-bakery.jpg',
       promo: shop.promo || shop.about || prev.promo || '',
     };
+    persistedShopNames[id] = nextName;
     if (sbConfigured()) {
+      try {
+        await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', {
+          name: nextName,
+          category: row.category,
+          hours: row.hours,
+          promo: row.promo,
+          image: row.image,
+          is_open: row.is_open,
+        });
+      } catch (_) {}
       await sbUpsert('shops', [row]);
-      try { await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', { name: nextName }); } catch (_) {}
+      await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', { name: nextName });
+      try {
+        const check = asRows(await sbGet('shops?id=eq.' + encodeURIComponent(id) + '&select=id,name'));
+        if (!check[0] || String(check[0].name || '').trim() !== nextName) {
+          await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', { name: nextName });
+        }
+      } catch (_) {}
+      try { await sbSend('orders?shop_id=eq.' + encodeURIComponent(id), 'PATCH', { shop_name: nextName }); } catch (_) {}
+    }
+    purgeLocalDemoStores();
+    if (API.user && API.user.phone) {
+      const rec = API.recallShopProfile(API.user.phone) || {};
+      API.rememberShopProfile(API.user.phone, {
+        shopId: id,
+        shopName: nextName,
+        ownerName: rec.ownerName || API.user.name || '',
+        address: row.address || rec.address || '',
+        lat: row.lat != null ? row.lat : rec.lat,
+        lng: row.lng != null ? row.lng : rec.lng,
+      });
     }
     const mapped = mapShop(row);
     const i = API.shops.findIndex((s) => s.id === id);
     if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
     else API.shops.push(mapped);
-    if (API.user && sameRole(API.user.role, 'shop')) API.user.shopName = mapped.name;
+    if (API.user && sameRole(API.user.role, 'shop')) API.user.shopName = nextName;
+    (API.orders || []).forEach(function (o) {
+      if (o && String(o.shopId || '') === String(id)) o.shopName = nextName;
+    });
+    try { saveSession(); } catch (_) {}
     notify(true);
     try { await API.refresh(); } catch (_) {}
+    const after = API.shops.find((s) => s.id === id);
+    if (!after || String(after.name || '').trim() !== nextName) {
+      persistedShopNames[id] = nextName;
+      if (sbConfigured()) {
+        try { await sbSend('shops?id=eq.' + encodeURIComponent(id), 'PATCH', { name: nextName }); } catch (_) {}
+      }
+      if (after) after.name = nextName;
+      else API.shops.push(Object.assign({}, mapped, { name: nextName }));
+      if (API.user && sameRole(API.user.role, 'shop')) API.user.shopName = nextName;
+      notify(true);
+    }
     return mapped;
   };
 

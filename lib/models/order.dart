@@ -217,6 +217,7 @@ class Order {
     double? riderLng,
     String? riderName,
     String? riderPhone,
+    String? shopName,
   }) {
     return Order(
       id: id,
@@ -231,7 +232,7 @@ class Order {
       riderLat: riderLat ?? this.riderLat,
       riderLng: riderLng ?? this.riderLng,
       timestamp: timestamp,
-      shopName: shopName,
+      shopName: shopName ?? this.shopName,
       customerName: customerName,
       customerPhone: customerPhone,
       customerEmail: customerEmail,

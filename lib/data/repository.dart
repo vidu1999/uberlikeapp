@@ -189,6 +189,7 @@ class OrderRepository {
   String _lockedShopTitle = '';
   Map<String, String> _shopOwners = {};
   Map<String, String> _publicNames = {};
+  final Map<String, String> _persistedNames = {};
 
   Future<void> _rememberShop(String phone, Map<String, String> p) async {
     try {
@@ -266,26 +267,28 @@ class OrderRepository {
   }
 
   Future<void> _loadShopTitle(String phone) async {
+    _lockedShopTitle = '';
     try {
       final p = await SharedPreferences.getInstance();
-      final n = (p.getString('$_shopTitleKey${_normPhone(phone)}') ?? '').trim();
-      if (n.isNotEmpty && !_isOwnerLikeShopName(n, user)) _lockedShopTitle = n;
+      await p.remove('$_shopTitleKey${_normPhone(phone)}');
     } catch (_) {}
   }
 
   Future<void> _lockShopTitle(String phone, String name) async {
-    final n = name.trim();
-    if (n.isEmpty || _isPlaceholderShopName(n) || _isOwnerLikeShopName(n, user)) return;
-    _lockedShopTitle = n;
+    _lockedShopTitle = '';
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString('$_shopTitleKey${_normPhone(phone)}', n);
+      await p.remove('$_shopTitleKey${_normPhone(phone)}');
     } catch (_) {}
   }
 
   String publicShopName(Shop? shop) {
+    final sid = shop?.id ?? user?.shopId ?? '';
+    if (sid.isNotEmpty && (_persistedNames[sid] ?? '').trim().isNotEmpty) {
+      return _persistedNames[sid]!.trim();
+    }
     final n = (shop?.name ?? user?.shopName ?? '').trim();
-    if (n.isNotEmpty) return n;
+    if (n.isNotEmpty && !_isDemoShopName(n)) return n;
     return 'My Shop';
   }
 
@@ -334,22 +337,60 @@ class OrderRepository {
   }
 
   Future<void> _loadPublicNames() async {
+    _publicNames = {};
     try {
       final p = await SharedPreferences.getInstance();
-      final raw = p.getString(_shopNamesKey);
-      if (raw == null || raw.isEmpty) return;
-      final m = jsonDecode(raw);
-      if (m is Map) {
-        _publicNames = m.map((k, v) => MapEntry('$k', '$v'));
-      }
+      await p.remove(_shopNamesKey);
     } catch (_) {}
   }
 
   Future<void> _savePublicNames() async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString(_shopNamesKey, jsonEncode(_publicNames));
+      await p.remove(_shopNamesKey);
     } catch (_) {}
+  }
+
+  Future<void> _purgeDemoPrefs() async {
+    _publicNames = {};
+    _lockedShopTitle = '';
+    try {
+      final p = await SharedPreferences.getInstance();
+      final drop = <String>[];
+      for (final k in p.getKeys()) {
+        if (k == _shopNamesKey || k.startsWith(_shopTitleKey)) drop.add(k);
+        if (k.startsWith(_shopProfKey)) {
+          try {
+            final raw = p.getString(k);
+            if (raw == null || raw.isEmpty) continue;
+            final m = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+            if (_isDemoShopName('${m['shopName'] ?? ''}')) {
+              m['shopName'] = '';
+              await p.setString(k, jsonEncode(m));
+            }
+          } catch (_) {}
+        }
+      }
+      for (final k in drop) {
+        await p.remove(k);
+      }
+    } catch (_) {}
+    final u = user;
+    if (u != null && _isDemoShopName(u.shopName)) {
+      userNotifier.value = SessionUser(
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        role: u.role,
+        address: u.address,
+        vehicle: u.vehicle,
+        shopId: u.shopId,
+        shopName: null,
+        email: u.email,
+        pin: u.pin,
+        photo: u.photo,
+      );
+    }
   }
 
   bool _leakedShopName(String name, String shopId) {
@@ -360,7 +401,7 @@ class OrderRepository {
 
   bool _isDemoShopName(String? name) {
     final n = (name ?? '').trim().toLowerCase();
-    return n == 'kandy bakers' || n == 'kandy baker' || n == 'demo shop';
+    return n == 'kandy bakers' || n == 'kandy baker' || n == 'kandy bakery' || n == 'demo shop';
   }
 
   Future<void> _syncPublicShopNames() async {}
@@ -386,7 +427,7 @@ class OrderRepository {
     );
   }
 
-  Future<String> _ensureShopRow() async {
+  Future<String> _ensureShopRow({bool create = false}) async {
     var u = user;
     if (u == null || u.role != 'shop') throw Exception('Not a shop account.');
     u = _withShopId(u);
@@ -411,8 +452,8 @@ class OrderRepository {
       return sid;
     }
     if (existing.isEmpty) {
-      var name = (p?['shopName'] ?? rec?['shopName'] ?? u.shopName ?? '').trim();
-      if (_isDemoShopName(name) || _isPlaceholderShopName(name)) name = (p?['shopName'] ?? '').trim();
+      if (!create) return sid;
+      var name = (p?['shopName'] ?? '').trim();
       if (name.isEmpty || _isDemoShopName(name) || _isPlaceholderShopName(name)) {
         throw Exception('Register your shop first.');
       }
@@ -1150,11 +1191,10 @@ class OrderRepository {
     final u = user;
     if (u == null || u.role != 'shop') return false;
     final sid = (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null') ? u.shopId! : (u.phone.isNotEmpty ? _shopIdFor(u.phone) : '');
-    if (sid.isEmpty) return false;
+    if (sid.isEmpty || _isDemoShop(sid)) return false;
     for (final s in Catalog.shops) {
-      if (s.id == sid && s.name.trim().isNotEmpty) return true;
+      if (s.id == sid) return true;
     }
-    if ((u.shopName ?? '').trim().isNotEmpty) return true;
     return false;
   }
 
@@ -1393,6 +1433,7 @@ class OrderRepository {
   Future<void> _wipeDemo() async {
     if (_wipedDemo) return;
     _wipedDemo = true;
+    await _purgeDemoPrefs();
     const shopsIn =
         '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
     const paths = [
@@ -1408,6 +1449,11 @@ class OrderRepository {
     for (final p in paths) {
       try {
         await _sbDelete(p);
+      } catch (_) {}
+    }
+    for (final title in ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop']) {
+      try {
+        await _sbWrite('orders?shop_name=eq.${Uri.encodeComponent(title)}', 'PATCH', {'shop_name': ''});
       } catch (_) {}
     }
   }
@@ -1498,6 +1544,18 @@ class OrderRepository {
 
   List<Order> _scopeOrders(Iterable<Order> list) {
     var next = list.where((o) => !_isDemoOrder(o)).toList();
+    next = next.map((o) {
+      final live = (_persistedNames[o.shopId] ?? '').trim();
+      if (live.isNotEmpty && live != o.shopName) return o.copyWith(shopName: live);
+      for (final s in Catalog.shops) {
+        if (s.id == o.shopId && s.name.trim().isNotEmpty && !_isDemoShopName(s.name)) {
+          if (s.name != o.shopName) return o.copyWith(shopName: s.name);
+          return o;
+        }
+      }
+      if (_isDemoShopName(o.shopName)) return o.copyWith(shopName: 'Shop');
+      return o;
+    }).toList();
     final u = user;
     if (u == null) return <Order>[];
     next = next.where((o) => _orderMine(o, u)).toList();
@@ -1532,9 +1590,9 @@ class OrderRepository {
         final accName = (next.shopName ?? '').trim();
         final prevName = (u.shopName ?? '').trim();
         String? keep;
-        if (accName.isNotEmpty && !_isOwnerLikeShopName(accName, next)) {
+        if (accName.isNotEmpty && !_isOwnerLikeShopName(accName, next) && !_isDemoShopName(accName)) {
           keep = accName;
-        } else if (prevName.isNotEmpty && !_isOwnerLikeShopName(prevName, next)) {
+        } else if (prevName.isNotEmpty && !_isOwnerLikeShopName(prevName, next) && !_isDemoShopName(prevName)) {
           keep = prevName;
         }
         next = _withShopId(SessionUser(
@@ -1610,6 +1668,7 @@ class OrderRepository {
 
   Future<bool> _refreshFromSupabase() async {
     try {
+      await _purgeDemoPrefs();
       await _wipeDemo();
       await _hydrateUser();
       if (user?.role == 'shop') {
@@ -1629,6 +1688,11 @@ class OrderRepository {
       final itemRows = await _sbGet(itemQ);
       final orderRows = await _fetchMyOrderRows();
       var shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
+      shops = shops.map((s) {
+        final want = (_persistedNames[s.id] ?? '').trim();
+        if (want.isNotEmpty && want != s.name) return _shopWithName(s, want);
+        return s;
+      }).toList();
       final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
       Catalog.set(shops, items);
       ordersNotifier.value = _retainStatus(
@@ -1966,35 +2030,76 @@ class OrderRepository {
     String? image,
     bool isOpen = true,
   }) async {
+    final u = user;
     var sid = id;
-    if (sid.isEmpty || sid == 'null') sid = await _ensureShopRow();
+    if (sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
+      sid = (u?.shopId != null && u!.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u?.phone ?? '');
+    }
+    if (sid.isEmpty || _isDemoShop(sid)) throw Exception('Missing shop');
     Shop? prev;
     for (final s in Catalog.shops) {
       if (s.id == sid) prev = s;
     }
     final nextName = name.trim();
     if (nextName.isEmpty) throw Exception('Enter a shop name.');
-    if (_isDemoShopName(nextName)) throw Exception('Choose your shop name — not a demo name.');
-    await _sbUpsert('shops', [
-      {
-        'id': sid,
+    if (_isDemoShopName(nextName) || _isPlaceholderShopName(nextName)) {
+      throw Exception('Choose your shop name — not a demo name.');
+    }
+    final row = {
+      'id': sid,
+      'name': nextName,
+      'category': category,
+      'rating': prev?.rating ?? 5,
+      'reviews': prev?.reviews ?? 0,
+      'is_open': isOpen,
+      'lat': prev?.lat,
+      'lng': prev?.lng,
+      'hours': hours,
+      'address': prev?.address ?? '',
+      'image': image ?? prev?.image ?? '/img/shop-bakery.jpg',
+      'promo': about,
+    };
+    _persistedNames[sid] = nextName;
+    try {
+      await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {
         'name': nextName,
         'category': category,
-        'rating': prev?.rating ?? 5,
-        'reviews': prev?.reviews ?? 0,
-        'is_open': isOpen,
-        'lat': prev?.lat,
-        'lng': prev?.lng,
         'hours': hours,
-        'address': prev?.address ?? '',
-        'image': image ?? prev?.image ?? '/img/shop-bakery.jpg',
         'promo': about,
-      }
-    ]);
+        'image': row['image'],
+        'is_open': isOpen,
+      });
+    } catch (_) {}
+    await _sbUpsert('shops', [row]);
     try {
       await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'name': nextName});
     } catch (_) {}
+    try {
+      await _sbWrite('orders?shop_id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'shop_name': nextName});
+    } catch (_) {}
+    await _purgeDemoPrefs();
+    if (u != null && u.phone.isNotEmpty) {
+      final rec = await _recalledShop(u.phone) ?? {};
+      await _rememberShop(u.phone, {
+        'shopId': sid,
+        'shopName': nextName,
+        'ownerName': rec['ownerName'] ?? u.name,
+        'address': '${row['address'] ?? rec['address'] ?? ''}',
+        'lat': '${row['lat'] ?? rec['lat'] ?? ''}',
+        'lng': '${row['lng'] ?? rec['lng'] ?? ''}',
+      });
+    }
     await refresh();
+    final i = Catalog.shops.indexWhere((s) => s.id == sid);
+    if (i >= 0 && Catalog.shops[i].name.trim() != nextName) {
+      _persistedNames[sid] = nextName;
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'name': nextName});
+      } catch (_) {}
+      final shops = [...Catalog.shops];
+      shops[i] = _shopWithName(shops[i], nextName);
+      Catalog.set(shops, Catalog.items);
+    }
   }
 
   Future<void> saveItem({
