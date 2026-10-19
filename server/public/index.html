@@ -50,7 +50,7 @@
     </div>
     <p class="ok" id="health">Checking live server…</p>
   </div>
-  <script src="/js/live.js?v=19o"></script>
+  <script src="/js/live.js?v=19p"></script>
   <script>
     const el = document.getElementById('health');
     const sb = (window.QB_SUPABASE_URL || '').replace(/\/$/, '');
@@ -61,42 +61,50 @@
     async function pingSupabase() {
       if (!sb || !key) throw new Error('no supabase');
       const delHdr = Object.assign({ Prefer: 'return=minimal' }, hdr());
-      const GEN = '19o';
+      const GEN = '19p';
       let alreadyEmpty = false;
       try {
         const st = await fetch(sb + '/rest/v1/app_state?id=eq.qb_empty&select=payload', { headers: hdr() }).then((r) => r.json());
         alreadyEmpty = Array.isArray(st) && st[0] && st[0].payload && String(st[0].payload.v) === GEN;
       } catch (_) {}
       if (!alreadyEmpty) {
-        const all = [
-          'messages?order_id=not.is.null',
-          'orders?id=not.is.null',
-          'menu_items?id=not.is.null',
-          'shops?id=not.is.null',
-          'accounts?id=not.is.null',
-          'otp_codes?id=not.is.null',
-          'app_state?id=not.is.null',
-        ];
-        await Promise.all(all.map((p) => fetch(sb + '/rest/v1/' + p, { method: 'DELETE', headers: delHdr }).catch(() => {})));
-        const tables = ['accounts', 'shops', 'menu_items', 'orders', 'otp_codes', 'messages'];
-        for (let t = 0; t < tables.length; t++) {
-          try {
-            const rows = await fetch(sb + '/rest/v1/' + tables[t] + '?select=*&limit=1000', { headers: hdr() }).then((r) => r.json());
-            if (Array.isArray(rows)) {
-              await Promise.all(rows.map((row) => {
-                const q = tables[t] === 'messages' && row.order_id
-                  ? 'messages?order_id=eq.' + encodeURIComponent(row.order_id) + '&id=eq.' + encodeURIComponent(row.id)
-                  : tables[t] + '?id=eq.' + encodeURIComponent(row.id);
-                return fetch(sb + '/rest/v1/' + q, { method: 'DELETE', headers: delHdr }).catch(() => {});
-              }));
-            }
-          } catch (_) {}
+        const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
+        for (let round = 0; round < 6; round++) {
+          await Promise.all(tables.map((t) => fetch(sb + '/rest/v1/' + t + (t === 'messages' ? '?order_id=not.is.null' : '?id=not.is.null'), { method: 'DELETE', headers: delHdr }).catch(() => {})));
+          for (let t = 0; t < tables.length; t++) {
+            try {
+              const rows = await fetch(sb + '/rest/v1/' + tables[t] + '?select=*&limit=1000', { headers: hdr() }).then((r) => r.json());
+              if (Array.isArray(rows)) {
+                await Promise.all(rows.map((row) => {
+                  const q = tables[t] === 'messages' && row.order_id
+                    ? 'messages?order_id=eq.' + encodeURIComponent(row.order_id) + '&id=eq.' + encodeURIComponent(row.id)
+                    : tables[t] + '?id=eq.' + encodeURIComponent(row.id);
+                  return fetch(sb + '/rest/v1/' + q, { method: 'DELETE', headers: delHdr }).catch(() => {});
+                }));
+              }
+            } catch (_) {}
+          }
+          let leftShops = [];
+          let leftItems = [];
+          let leftAcc = [];
+          try { leftShops = await fetch(sb + '/rest/v1/shops?select=id&limit=20', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+          try { leftItems = await fetch(sb + '/rest/v1/menu_items?select=id&limit=20', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+          try { leftAcc = await fetch(sb + '/rest/v1/accounts?select=id&limit=20', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+          if ((!Array.isArray(leftShops) || !leftShops.length) && (!Array.isArray(leftItems) || !leftItems.length) && (!Array.isArray(leftAcc) || !leftAcc.length)) break;
         }
-        await fetch(sb + '/rest/v1/app_state', {
-          method: 'POST',
-          headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, hdr()),
-          body: JSON.stringify([{ id: 'qb_empty', payload: { v: GEN, at: Date.now() } }]),
-        }).catch(() => {});
+        let shopsNow = [];
+        let itemsNow = [];
+        let accNow = [];
+        try { shopsNow = await fetch(sb + '/rest/v1/shops?select=id&limit=5', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+        try { itemsNow = await fetch(sb + '/rest/v1/menu_items?select=id&limit=5', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+        try { accNow = await fetch(sb + '/rest/v1/accounts?select=id&limit=5', { headers: hdr() }).then((r) => r.json()); } catch (_) {}
+        if ((!Array.isArray(shopsNow) || !shopsNow.length) && (!Array.isArray(itemsNow) || !itemsNow.length) && (!Array.isArray(accNow) || !accNow.length)) {
+          await fetch(sb + '/rest/v1/app_state', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }, hdr()),
+            body: JSON.stringify([{ id: 'qb_empty', payload: { v: GEN, at: Date.now() } }]),
+          }).catch(() => {});
+        }
       }
       const demoShops = '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
       const demoItems = Array.from({ length: 33 }, (_, i) => '"I' + (i + 1) + '"').join(',');
@@ -126,7 +134,11 @@
       const shops = await fetch(sb + '/rest/v1/shops?select=id', { headers: hdr() }).then((r) => r.json());
       const items = await fetch(sb + '/rest/v1/menu_items?select=id', { headers: hdr() }).then((r) => r.json());
       el.className = 'ok';
-      el.textContent = 'Live · Supabase · ' + shops.length + ' shops · ' + items.length + ' dishes';
+      const nShops = Array.isArray(shops) ? shops.length : 0;
+      const nItems = Array.isArray(items) ? items.length : 0;
+      el.textContent = nShops || nItems
+        ? 'Live · Supabase · ' + nShops + ' shops · ' + nItems + ' dishes'
+        : 'Live · empty · 0 shops · 0 dishes';
     }
     const hang = setTimeout(() => {
       if (el.textContent.indexOf('Checking') === 0) {

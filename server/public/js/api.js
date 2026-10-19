@@ -1041,30 +1041,35 @@
     } catch (_) { return true; }
   }
 
+  async function countTable(table) {
+    try { return asRows(await sbGet(table + '?select=id&limit=50')).length; } catch (_) { return 0; }
+  }
+
   async function wipeAllData() {
     if (API._wipedAll) return true;
     if (!sbConfigured()) return false;
     const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
-    let ok = true;
-    for (let i = 0; i < tables.length; i++) {
-      const done = await wipeTableAll(tables[i]);
-      if (!done) ok = false;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      for (let i = 0; i < tables.length; i++) {
+        try { await wipeTableAll(tables[i]); } catch (_) {}
+      }
+      const shopsLeft = await countTable('shops');
+      const itemsLeft = await countTable('menu_items');
+      const accLeft = await countTable('accounts');
+      const ordLeft = await countTable('orders');
+      if (!shopsLeft && !itemsLeft && !accLeft && !ordLeft) {
+        API._wipedAll = true;
+        clearAllLocalAuth();
+        notify(true);
+        return true;
+      }
     }
-    let shopsLeft = 1;
-    let accLeft = 1;
-    try { shopsLeft = asRows(await sbGet('shops?select=id&limit=1')).length; } catch (_) { shopsLeft = 0; }
-    try { accLeft = asRows(await sbGet('accounts?select=id&limit=1')).length; } catch (_) { accLeft = 0; }
-    if (shopsLeft || accLeft) ok = false;
-    if (!ok) return false;
-    API._wipedAll = true;
-    clearAllLocalAuth();
-    notify(true);
-    return true;
+    return false;
   }
 
   async function oneShotEmptyDb() {
     if (API._wipedAll || !sbConfigured()) return;
-    const GEN = '19o';
+    const GEN = '19p';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
@@ -1240,6 +1245,13 @@
           if (keep && !isOwnerLikeShopName(keep, API.user) && !isDemoShopName(keep)) API.user.shopName = keep;
           else if (isOwnerLikeShopName(API.user.shopName, API.user) || isDemoShopName(API.user.shopName)) API.user.shopName = '';
         }
+      } else {
+        API.user = null;
+        API.token = null;
+        try {
+          sessionKeys(API.roleHint).forEach(storeDel);
+          cookieClear(API.roleHint);
+        } catch (_) {}
       }
     } catch (_) {}
   }
