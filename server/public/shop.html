@@ -7,20 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19zi" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zi" />
-  <link rel="stylesheet" href="/css/track.css?v=19zi" />
+  <link rel="stylesheet" href="/css/app.css?v=19zj" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zj" />
+  <link rel="stylesheet" href="/css/track.css?v=19zj" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zi"></script>
-  <script src="/js/api.js?v=19zi"></script>
-  <script src="/js/maps.js?v=19zi"></script>
-  <script src="/js/track-ui.js?v=19zi"></script>
-  <script src="/js/otp-login.js?v=19zi"></script>
+  <script src="/js/live.js?v=19zj"></script>
+  <script src="/js/api.js?v=19zj"></script>
+  <script src="/js/maps.js?v=19zj"></script>
+  <script src="/js/track-ui.js?v=19zj"></script>
+  <script src="/js/otp-login.js?v=19zj"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -415,6 +415,7 @@
           ${['All','Food','Drinks','Desserts'].map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${c}">${c}</button>`).join('')}
         </div>
         <div class="mi-search">🔍 <input id="menuQ" placeholder="Search menu items…" value="${esc(state.menuQ)}" /></div>
+        <button type="button" class="st-banner" data-open-stock><b>Stock Management</b><span>Set counts, unlimited, or sold out</span></button>
         ${list.map((it) => `<div class="mi-row" data-edit-item="${esc(it.id)}">
           <img src="${itemImg(it)}" alt="" />
           <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)} · ${esc(stockLine(it))}</div></div>
@@ -427,7 +428,7 @@
     function stockView() {
       const list = shopItems();
       return `<div class="scroll st-page">
-        <div class="ie-head"><button class="back" type="button" data-close-stock>←</button><h1>Stock Management</h1></div>
+        <div class="st-head"><button class="back" type="button" data-close-stock>←</button><h1>Stock Management</h1></div>
         ${list.map((it) => {
           const d = (state.stockDraft && state.stockDraft[it.id]) || stockInfo(it);
           const sold = !d.unlimited && Number(d.stock || 0) <= 0;
@@ -437,16 +438,18 @@
             <div class="grow">
               <b>${esc(it.name)}</b>
               <div class="pr" data-st-lab="${esc(it.id)}">${esc(lab)}</div>
-              <label class="st-unl"><input type="checkbox" data-st-unl="${esc(it.id)}" ${d.unlimited ? 'checked' : ''} /> Unlimited</label>
             </div>
-            <div class="st-step ${d.unlimited ? 'off' : ''}" data-st-step="${esc(it.id)}">
-              <button type="button" data-st-d="${esc(it.id)}" data-n="-1">−</button>
-              <b data-st-n="${esc(it.id)}">${d.unlimited ? '∞' : (d.stock || 0)}</b>
-              <button type="button" data-st-d="${esc(it.id)}" data-n="1">+</button>
+            <div class="st-right">
+              <button type="button" class="st-inf ${d.unlimited ? 'on' : ''}" data-st-unl="${esc(it.id)}" aria-label="Unlimited stock">∞</button>
+              <div class="st-step" data-st-step="${esc(it.id)}">
+                <button type="button" data-st-d="${esc(it.id)}" data-n="-1">−</button>
+                <b data-st-n="${esc(it.id)}">${d.unlimited ? '∞' : (d.stock || 0)}</b>
+                <button type="button" data-st-d="${esc(it.id)}" data-n="1">+</button>
+              </div>
             </div>
           </div>`;
         }).join('') || '<div class="pad muted">Add menu items first, then set stock.</div>'}
-        ${list.length ? `<button class="btn full st-save" type="button" data-save-stock>Update Stock</button>` : ''}
+        ${list.length ? `<div class="st-foot"><button class="st-save" type="button" data-save-stock>Update Stock</button></div>` : ''}
         <p class="err" data-stock-err></p>
       </div>`;
     }
@@ -1209,11 +1212,11 @@
         if (!d) return;
         const lab = root.querySelector('[data-st-lab="' + id + '"]');
         const num = root.querySelector('[data-st-n="' + id + '"]');
-        const step = root.querySelector('[data-st-step="' + id + '"]');
+        const inf = root.querySelector('[data-st-unl="' + id + '"]');
         const sold = !d.unlimited && Number(d.stock || 0) <= 0;
         if (lab) lab.textContent = d.unlimited ? 'Unlimited' : (sold ? 'Sold out' : 'Stock: ' + (d.stock || 0));
         if (num) num.textContent = d.unlimited ? '∞' : String(d.stock || 0);
-        if (step) step.classList.toggle('off', !!d.unlimited);
+        if (inf) inf.classList.toggle('on', !!d.unlimited);
       }
       root.querySelectorAll('[data-st-d]').forEach((b) => b.onclick = (e) => {
         e.preventDefault();
@@ -1221,15 +1224,23 @@
         if (!state.stockDraft) state.stockDraft = {};
         if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
         const d = state.stockDraft[id];
-        if (d.unlimited) return;
+        if (d.unlimited) {
+          d.unlimited = false;
+          d.stock = 15;
+          paintStockRow(id);
+          return;
+        }
         d.stock = Math.max(0, Number(d.stock || 0) + Number(b.dataset.n || 0));
         paintStockRow(id);
       });
-      root.querySelectorAll('[data-st-unl]').forEach((el) => el.onchange = () => {
+      root.querySelectorAll('[data-st-unl]').forEach((el) => el.onclick = (e) => {
+        e.preventDefault();
         const id = el.dataset.stUnl;
         if (!state.stockDraft) state.stockDraft = {};
         if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
-        state.stockDraft[id].unlimited = !!el.checked;
+        const d = state.stockDraft[id];
+        d.unlimited = !d.unlimited;
+        if (!d.unlimited && !d.stock) d.stock = 15;
         paintStockRow(id);
       });
       const saveStock = root.querySelector('[data-save-stock]');
