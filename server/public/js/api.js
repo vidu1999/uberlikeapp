@@ -408,6 +408,15 @@
     const have = roleLabel(role);
     return new Error('This number already has a ' + have + ' account. Login instead — you cannot create another ' + have + ' with the same number. You can still use this number for the other apps.');
   }
+  function alreadyEmailError(role) {
+    const have = roleLabel(role);
+    return new Error('This email already has a ' + have + ' account. Sign in with that email instead — one email and one WhatsApp number per ' + have + ' account.');
+  }
+  function emailsEqual(a, b) {
+    const x = String(a || '').trim().toLowerCase();
+    const y = String(b || '').trim().toLowerCase();
+    return !!(x && y && x === y && x.indexOf('@') >= 0);
+  }
   function clearAccCache() {
     API._accs = null;
     API._accsAt = 0;
@@ -1248,23 +1257,51 @@
   async function saveAccount(row) {
     const orig = normalizePhone(row.phone);
     row.phone = orig;
+    const em = String(row.email || '').trim().toLowerCase();
+    if (em.indexOf('@') >= 0) {
+      const byE = await lookupEmail(em, row.role);
+      if (byE && byE.id !== row.id) {
+        if (emailsEqual(byE.email, em) && isPlaceholderPhone(byE.phone) && !isPlaceholderPhone(orig)) {
+          return byE;
+        }
+        if (emailsEqual(byE.email, em) && (isPlaceholderPhone(orig) || normalizePhone(byE.phone) === orig)) {
+          return byE;
+        }
+        throw alreadyEmailError(row.role);
+      }
+      if (byE && byE.id === row.id) return Object.assign({}, byE, row, { id: byE.id, phone: byE.phone || orig, email: em });
+    }
+    if (orig && !isPlaceholderPhone(orig)) {
+      const byP = await lookupPhone(orig, row.role);
+      if (byP && byP.id !== row.id) {
+        if (emailsEqual(byP.email, em)) return byP;
+        throw alreadyThisRoleError(row.role);
+      }
+    }
     try {
       await sbSend('accounts', 'POST', [row]);
       clearAccCache();
       return row;
     } catch (_) {}
-    const key = phoneKey(orig);
-    const alts = sameRole(row.role, 'shop') ? ['94' + key] : sameRole(row.role, 'rider') ? [key] : [];
-    for (let i = 0; i < alts.length; i++) {
-      try {
-        await sbSend('accounts', 'POST', [Object.assign({}, row, { phone: alts[i] })]);
-        clearAccCache();
-        row.phone = orig;
-        return row;
-      } catch (_) {}
+    try {
+      const existing = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(row.id) + '&select=*'));
+      if (existing[0] && !isDemoAccount(existing[0]) && sameRole(existing[0].role, row.role)) {
+        const got = mapAccount(existing[0]);
+        if (em && got.email && !emailsEqual(got.email, em)) throw alreadyEmailError(row.role);
+        return Object.assign({}, got, { email: em || got.email });
+      }
+    } catch (e) {
+      if (e && /already has a/.test(String(e.message || ''))) throw e;
+    }
+    if (orig && !isPlaceholderPhone(orig)) {
+      const again = await lookupPhone(orig, row.role);
+      if (again) {
+        if (!em || !again.email || emailsEqual(again.email, em) || again.id === row.id) return again;
+        throw alreadyThisRoleError(row.role);
+      }
     }
     clearAccCache();
-    return (await lookupPhone(orig, row.role)) || row;
+    throw new Error('Could not save this account. Try again.');
   }
 
   API.saveProfile = async function (fields) {
@@ -1710,7 +1747,7 @@
       if (pendEmail && pendEmail.indexOf('@') >= 0) {
         try { googleRow = await lookupEmail(pendEmail, 'shop'); } catch (_) {}
         if (googleRow && !isPlaceholderPhone(googleRow.phone) && normalizePhone(googleRow.phone) !== phone) {
-          throw alreadyThisRoleError('shop');
+          throw alreadyEmailError('shop');
         }
       }
       if (googleRow && (isPlaceholderPhone(googleRow.phone) || normalizePhone(googleRow.phone) === phone)) {
@@ -2083,13 +2120,19 @@
       };
       try {
         row = await saveAccount(stub);
-      } catch (_) {
-        row = stub;
+      } catch (e) {
+        if (e && /already has a/.test(String(e.message || ''))) {
+          row = await lookupEmail(email, role);
+          if (!row) throw e;
+        } else {
+          row = stub;
+        }
       }
       try {
         const existing = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(stub.id) + '&select=*'));
         if (existing[0] && !isDemoAccount(existing[0])) row = mapAccount(existing[0]);
       } catch (_) {}
+      if (!row) row = stub;
       if (!row.email) row.email = email;
     } else {
       const patch = { email: email };
@@ -2238,17 +2281,15 @@
     if (API.isWhatsAppVerified(u) && normalizePhone(u.phone) === phone) return u;
     const taken = await lookupPhone(phone, role);
     if (taken && taken.id !== u.id) {
-      const uEmail = String(u.email || '').toLowerCase();
-      const tEmail = String(taken.email || '').toLowerCase();
-      if (!(uEmail && (!tEmail || tEmail === uEmail))) throw alreadyThisRoleError(role);
-      const patch = { pin: withWaPin(taken.pin || 'otp') };
-      if (uEmail && tEmail !== uEmail) patch.email = uEmail;
+      if (!emailsEqual(u.email, taken.email)) throw alreadyThisRoleError(role);
+      const patch = { pin: withWaPin(taken.pin || u.pin || 'otp') };
       if (u.name && (!taken.name || taken.name === 'Guest')) patch.name = u.name;
+      if (u.shopId && !taken.shopId) patch.shop_id = u.shopId;
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(taken.id), 'PATCH', patch); } catch (_) {}
-      if (u.id && u.email) {
-        try { await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', { email: null }); } catch (_) {}
+      if (isPlaceholderPhone(u.phone) && u.id) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'DELETE'); } catch (_) {}
       }
-      Object.assign(taken, patch);
+      Object.assign(taken, patch, { email: taken.email || u.email });
       return enterMapped(taken);
     }
     const nextPin = withWaPin(u.pin || 'google');

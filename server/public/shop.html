@@ -16,11 +16,11 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zc"></script>
-  <script src="/js/api.js?v=19zc"></script>
-  <script src="/js/maps.js?v=19zc"></script>
-  <script src="/js/track-ui.js?v=19zc"></script>
-  <script src="/js/otp-login.js?v=19zc"></script>
+  <script src="/js/live.js?v=19zd"></script>
+  <script src="/js/api.js?v=19zd"></script>
+  <script src="/js/maps.js?v=19zd"></script>
+  <script src="/js/track-ui.js?v=19zd"></script>
+  <script src="/js/otp-login.js?v=19zd"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -703,7 +703,8 @@
       killRegMap();
       if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
         const linked = !!(API.user.shopId || API.user.shop_id);
-        if (!linked) {
+        const realWa = isRealWaPhone(API.user.phone);
+        if (!linked && !realWa) {
           const fakePhone = API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone);
           if (fakePhone || API._shopCatalogReady) {
             goShopRegister();
@@ -919,7 +920,7 @@
           state.loginId = '';
           state.reg.phone = '';
           if (API.refresh) { try { await API.refresh(); } catch (_) {} }
-          if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
+          if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
             goShopRegister();
             return;
           }
@@ -978,7 +979,7 @@
               state.fromReg = false;
               await API.signInPassword(id, pw, 'shop');
               if (API.refresh) { try { await API.refresh(); } catch (_) {} }
-              if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
+              if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
                 goShopRegister();
                 return;
               }
@@ -1045,6 +1046,23 @@
               const pe = String(state.reg.email || '').toLowerCase();
               if (!pe || !te || te !== pe) {
                 if (err) err.textContent = 'This number already has a Shop account. Login instead — you cannot create another Shop with the same number.';
+                return;
+              }
+            }
+          } catch (ex) {
+            if (ex && /already has a/i.test(String(ex.message || ''))) {
+              if (err) err.textContent = ex.message;
+              return;
+            }
+          }
+        }
+        if (state.reg.email && API.findAccount) {
+          try {
+            const byEmail = await API.findAccount('shop', state.reg.email);
+            if (byEmail && !(API.isPlaceholderPhone && API.isPlaceholderPhone(byEmail.phone))) {
+              const ep = API.normalizePhone ? API.normalizePhone(byEmail.phone) : byEmail.phone;
+              if (ep && ep !== phone) {
+                if (err) err.textContent = 'This email already has a Shop account. Sign in with that email instead.';
                 return;
               }
             }
@@ -1294,7 +1312,7 @@
         }
         await API.signInGoogle(profile);
         if (API.refresh) { try { await API.refresh(); } catch (_) {} }
-        if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
+        if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
           goShopRegister();
           return true;
         }

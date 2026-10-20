@@ -515,6 +515,19 @@ class OrderRepository {
     );
   }
 
+  Never _alreadyEmail(String role) {
+    final label = _roleLabel(role);
+    throw Exception(
+      'This email already has a $label account. Sign in with that email instead — one email and one WhatsApp number per $label account.',
+    );
+  }
+
+  bool _emailsEqual(String? a, String? b) {
+    final x = (a ?? '').trim().toLowerCase();
+    final y = (b ?? '').trim().toLowerCase();
+    return x.isNotEmpty && y.isNotEmpty && x == y && x.contains('@');
+  }
+
   Future<List<Map<String, dynamic>>> _allAccounts() async {
     try {
       final rows = await _sbGet('accounts?select=*');
@@ -692,7 +705,7 @@ class OrderRepository {
         if (googleRow != null) {
           final gp = _normPhone('${googleRow['phone'] ?? ''}');
           if (!_isPlaceholderPhone(gp) && gp != phone) {
-            throw Exception('This email already has a Shop account. Login instead — you cannot create another Shop with the same account.');
+            _alreadyEmail('shop');
           }
         }
       }
@@ -729,7 +742,13 @@ class OrderRepository {
           await _sbWrite('accounts', 'POST', [user]);
         } catch (_) {
           final again = await _lookupPhone(phone, 'shop');
-          if (again != null) user = again;
+          if (again != null) {
+            final ae = '${again['email'] ?? ''}'.trim().toLowerCase();
+            if (pendEmail.isNotEmpty && ae.isNotEmpty && ae != pendEmail) {
+              _alreadyThisRole('shop');
+            }
+            user = again;
+          }
         }
       }
       user!['shopName'] = shop['name'];
@@ -1309,20 +1328,20 @@ class OrderRepository {
     if (isWhatsAppVerified(u) && _normPhone(u.phone) == phone) return;
     final taken = await _lookupPhone(phone, role);
     if (taken != null && '${taken['id']}' != u.id) {
-      final uEmail = (u.email ?? '').toLowerCase();
-      final tEmail = '${taken['email'] ?? ''}'.toLowerCase();
-      if (!(uEmail.isNotEmpty && (tEmail.isEmpty || tEmail == uEmail))) {
+      if (!_emailsEqual(u.email, '${taken['email'] ?? ''}')) {
         _alreadyThisRole(role);
       }
-      final patch = <String, dynamic>{'pin': _withWaPin('${taken['pin'] ?? 'otp'}')};
-      if (uEmail.isNotEmpty && tEmail != uEmail) patch['email'] = uEmail;
+      final patch = <String, dynamic>{'pin': _withWaPin('${taken['pin'] ?? u.pin ?? 'otp'}')};
       if (u.name.isNotEmpty && ('${taken['name']}' == 'Guest' || '${taken['name']}'.isEmpty)) patch['name'] = u.name;
+      if ((u.shopId ?? '').isNotEmpty && '${taken['shop_id'] ?? taken['shopId'] ?? ''}'.isEmpty) {
+        patch['shop_id'] = u.shopId;
+      }
       try {
         await _sbWrite('accounts?id=eq.${taken['id']}', 'PATCH', patch);
       } catch (_) {}
-      if (u.email != null && u.email!.isNotEmpty) {
+      if (_isPlaceholderPhone(u.phone)) {
         try {
-          await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'email': null});
+          await _sbWrite('accounts?id=eq.${u.id}', 'DELETE');
         } catch (_) {}
       }
       taken.addAll(patch);

@@ -464,8 +464,11 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       if (widget.role == UserRole.shop && !OrderRepository.instance.isShopRegistered) {
-        final sid = OrderRepository.instance.user?.shopId;
-        if (sid == null || sid.isEmpty || sid == 'null') {
+        final u = OrderRepository.instance.user;
+        final sid = u?.shopId;
+        final phone = u?.phone ?? '';
+        final realWa = RegExp(r'^07\d{8}$').hasMatch(phone.replaceAll(RegExp(r'\D'), ''));
+        if ((sid == null || sid.isEmpty || sid == 'null') && !realWa) {
           OrderRepository.instance.pendingShop = {
             ...?OrderRepository.instance.pendingShop,
             'ownerName': acc.displayName ?? acc.email,
