@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zj" />
   <link rel="stylesheet" href="/css/track.css?v=19zj" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zg" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zk" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -55,7 +55,7 @@
       category: 'All',
       shopId: null,
       menuTab: 'menu',
-      menuCat: 'Cakes',
+      menuCat: 'All',
       trackId: null,
       cart: [],
       favs: [],
@@ -737,9 +737,9 @@
     function shopView() {
       const shop = API.shopOf(state.shopId);
       const items = API.items.filter((i) => i.shopId === shop.id);
-      const cats = [...new Set(items.map((i) => i.category))];
-      if (cats.length && !cats.includes(state.menuCat)) state.menuCat = cats[0];
-      const list = items.filter((i) => !state.menuCat || i.category === state.menuCat);
+      const cats = [...new Set(items.map((i) => i.category).filter(Boolean))];
+      if (state.menuCat !== 'All' && cats.length && !cats.includes(state.menuCat)) state.menuCat = 'All';
+      const list = items.filter((i) => !state.menuCat || state.menuCat === 'All' || i.category === state.menuCat);
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
@@ -757,7 +757,7 @@
           <button class="${state.menuTab==='info'?'on':''}" data-mtab="info">Info</button>
         </div>
         ${state.menuTab==='menu' ? `
-          <div class="menu-cats">${cats.map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          <div class="menu-cats">${['All'].concat(cats).map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
           ${list.map((it)=>`<div class="menu-row">
             <img src="${itemImg(it)}" alt="" />
             <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
@@ -1572,7 +1572,7 @@
       }
       root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render({ keepScroll: true }); });
       root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
-      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; render(); });
+      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; state.menuTab = 'menu'; state.menuCat = 'All'; render(); });
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
         const id = b.dataset.fav;
