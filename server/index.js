@@ -7,6 +7,7 @@ const path = require('path');
 const otp = require('./otp');
 const db = require('./db');
 const seed = require('./seed');
+const payLk = require('./pay-lk');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -313,6 +314,13 @@ async function handleApi(req, res, url) {
       cloud: dbReady.cloud,
       error: dbReady.error,
     });
+    return;
+  }
+
+  if (pathname === '/api/pay') {
+    const body = req.method === 'POST' ? await readBody(req) : {};
+    const out = await payLk.handle(req.method, body);
+    json(res, out.status, out.body);
     return;
   }
 

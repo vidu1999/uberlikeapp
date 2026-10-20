@@ -2717,32 +2717,90 @@
     if (method) order.paymentMethod = method;
     return order;
   }
-  API.chargeCard = async function (input) {
+  function lkPhone(p) {
+    const d = String(p || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.indexOf('94') === 0 && d.length >= 11) return '+' + d;
+    if (d.charAt(0) === '0' && d.length === 10) return '+94' + d.slice(1);
+    if (d.length === 9) return '+94' + d;
+    return '+' + d;
+  }
+  function payApiError(data, fallback) {
+    if (!data) return fallback;
+    if (typeof data.error === 'string' && data.error) return data.error;
+    if (data.error && data.error.message) return data.error.message;
+    if (data.message) return data.message;
+    return fallback;
+  }
+  async function payApi(payload) {
+    let res;
+    try {
+      res = await fetch((API.base || '') + '/api/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+      });
+    } catch (_) {
+      throw new Error('Could not reach Payments.lk. Try again.');
+    }
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (_) {}
+    if (!res.ok) {
+      throw new Error(payApiError(data, res.status === 404 ? 'Card payment is not connected on this host.' : 'Card payment failed.'));
+    }
+    return data;
+  }
+  API.createPayCheckout = async function (input) {
     input = input || {};
-    const number = String(input.number || '').replace(/\D/g, '');
     const amount = Math.round(Number(input.amount) || 0);
     if (amount < 1) throw new Error('Invalid payment amount.');
-    await new Promise((r) => setTimeout(r, 700));
-    if (number === '4000000000000002' || number === '4000000000000341') {
-      throw new Error('Card declined. Use another card.');
+    const amountCents = Math.round(amount * 100);
+    const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : 'https://quickbite-2ao.pages.dev';
+    const reference = String(input.reference || ('QB-' + Date.now()));
+    const customer = {};
+    if (input.customer && input.customer.name) customer.name = String(input.customer.name);
+    else if (API.user && API.user.name) customer.name = String(API.user.name);
+    if (input.customer && input.customer.email) customer.email = String(input.customer.email);
+    else if (API.user && API.user.email) customer.email = String(API.user.email);
+    const phone = lkPhone((input.customer && input.customer.phone) || (API.user && API.user.phone) || '');
+    if (phone) customer.phone = phone;
+    const data = await payApi({
+      action: 'create',
+      amountCents: amountCents,
+      description: input.description || 'QuickBite order',
+      reference: reference,
+      successUrl: origin + '/user.html?paid=1',
+      cancelUrl: origin + '/user.html?paid=0',
+      customer: customer,
+      idempotencyKey: reference,
+    });
+    if (!data.url) throw new Error('Payments.lk did not return a checkout URL.');
+    return data;
+  };
+  API.confirmPayCheckout = async function (checkoutId, amountCents) {
+    const data = await payApi({
+      action: 'confirm',
+      checkoutId: checkoutId,
+      amountCents: Math.round(Number(amountCents) || 0),
+    });
+    if (data.status !== 'succeeded' || !data.paymentId) {
+      throw new Error(data.error || 'Payment was not completed.');
     }
-    if (number && number.length >= 13 && !luhnOk(number)) {
-      throw new Error('Card declined.');
-    }
-    const last4 = String(input.last4 || (number ? number.slice(-4) : '')).replace(/\D/g, '').slice(-4);
-    const shopCredit = Math.round(Number(input.shopCredit != null ? input.shopCredit : amount));
-    const riderCredit = Math.round(Number(input.riderCredit != null ? input.riderCredit : 0));
     return {
       ok: true,
-      paymentId: 'PAY-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase(),
+      paymentId: data.paymentId,
       status: 'captured',
-      amount: amount,
-      shopCredit: shopCredit,
-      riderCredit: riderCredit,
-      brand: input.brand || 'Card',
-      last4: last4,
-      paidAt: new Date().toISOString(),
+      amount: Math.round(Number(data.amountCents) / 100),
+      amountCents: Math.round(Number(data.amountCents) || 0),
+      brand: data.brand || 'Card',
+      last4: data.last4 || '',
+      paidAt: data.paidAt || new Date().toISOString(),
+      checkoutId: data.checkoutId || checkoutId,
     };
+  };
+  API.chargeCard = async function () {
+    throw new Error('Card payments go through Payments.lk checkout.');
   };
 
   function groupedLines(items) {
@@ -2863,18 +2921,6 @@
     }
     if (payload.payment && payload.payment.paymentId) {
       applyPay(order, payload.payment, payload.paymentMethod);
-    } else if (API.isCardMethod(payload.paymentMethod) && !order.paid) {
-      const sub = Number(order.subtotal) || 0;
-      const fee = Number(order.deliveryFee) || 0;
-      applyPay(order, {
-        paymentId: 'PAY-' + Date.now().toString(36).toUpperCase(),
-        status: 'captured',
-        shopCredit: sub,
-        riderCredit: fee,
-        brand: String(payload.paymentMethod || 'Card').split(' ')[0],
-        last4: String(payload.paymentMethod || '').replace(/\D/g, '').slice(-4),
-        paidAt: new Date().toISOString(),
-      }, payload.paymentMethod);
     }
     const shopPin = shopOf(order.shopId);
     const sLat = finiteNum(order.shopLat != null ? order.shopLat : shopPin.lat);

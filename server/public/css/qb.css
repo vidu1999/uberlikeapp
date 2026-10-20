@@ -201,6 +201,8 @@
 .card-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .card-save { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin: 4px 0 8px; }
 .card-hint { font-size: 12px; margin: 0; }
+.pay-lk .card-using { margin-bottom: 8px; }
+.pay-lk .card-hint b { color: #111; font-variant-numeric: tabular-nums; }
 .card-using { margin: 0 0 10px; }
 .saved-card {
   display: flex; align-items: center; gap: 10px; background: #F7F8FA;
