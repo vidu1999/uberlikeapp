@@ -10,16 +10,17 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zj" />
   <link rel="stylesheet" href="/css/track.css?v=19zj" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zl" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zm" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zl"></script>
+  <script src="/js/api.js?v=19zm"></script>
   <script src="/js/maps.js?v=19zj"></script>
   <script src="/js/track-ui.js?v=19zj"></script>
+  <script src="https://payments.lk/js/pay.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -840,7 +841,7 @@
           ${payBlock()}
           <label class="pay-opt pay-disabled"><input type="radio" name="pay" value="wallet" disabled /> Online Wallet (Coming Soon)</label>
           <div class="totals"><div class="row tot"><span>Total</span><span>${rs(sub+f)}</span></div></div>
-          <button class="btn-qb" id="place">${state.payKind==='card' ? 'Pay ' + rs(sub+f) : 'Place Order'}</button>
+          <button class="btn-qb" id="place"${state.payKind==='card' ? ' data-payments-lk-checkout="/checkout" data-payments-lk-error-target="[data-card-err]" data-payments-lk-body="{}"' : ''}>${state.payKind==='card' ? 'Pay ' + rs(sub+f) : 'Place Order'}</button>
         </div>
       </div>${state.paying ? `<div class="pay-mask"><div class="pay-box"><div class="pay-spin"></div><b>${state.paymentObj ? 'Placing your order' : 'Opening Payments.lk'}</b><p>${state.paymentObj ? 'Payment received. Creating the order…' : 'You will enter your card on the Payments.lk page.'}</p><p class="muted">Shop ${rs(sub)} · Rider ${rs(f)}</p></div></div>` : ''}${state.wa.open ? waSheet() : ''}`;
     }
@@ -1189,8 +1190,45 @@
         description: 'QuickBite · ' + ((shop && shop.name) || 'order'),
         loc: { lat: state.loc.lat, lng: state.loc.lng, label: state.loc.label, custom: !!state.loc.custom, frozen: !!state.loc.frozen, _gps: true },
       }, extra || {});
+      pending.lineItems = payLineItems(pending);
       try { sessionStorage.setItem(PAY_PENDING_KEY, JSON.stringify(pending)); } catch (_) {}
       return pending;
+    }
+    function payLineItems(pending) {
+      const items = (pending && pending.items) || state.cart || [];
+      const lines = [];
+      items.forEach(function (it) {
+        if (lines.length >= 9) return;
+        const qty = Math.min(99, Math.max(1, Math.round(Number(it.qty) || 1)));
+        const unit = Math.round(Number(it.price) * 100);
+        if (unit < 100) return;
+        lines.push({ name: String(it.name || 'Item').slice(0, 80), unitAmountCents: unit, quantity: qty });
+      });
+      const deliv = Math.round(Number(pending && pending.deliveryFee != null ? pending.deliveryFee : fee()) * 100);
+      if (deliv >= 100) {
+        lines.push({
+          name: ((pending && pending.deliveryType) || state.deliveryType) === 'express' ? 'Express delivery' : 'Delivery',
+          unitAmountCents: deliv,
+          quantity: 1,
+        });
+      }
+      return lines;
+    }
+    function payCheckoutBody(pending) {
+      const p = pending || {};
+      const customer = {};
+      if (API.user && API.user.name) customer.name = API.user.name;
+      if (API.user && API.user.email) customer.email = API.user.email;
+      const phone = String((API.user && API.user.phone) || '').replace(/\D/g, '');
+      if (phone) {
+        customer.phone = phone.indexOf('94') === 0 ? '+' + phone : (phone.charAt(0) === '0' ? '+94' + phone.slice(1) : '+94' + phone);
+      }
+      return {
+        reference: p.reference,
+        description: p.description || 'QuickBite order',
+        lineItems: p.lineItems || payLineItems(p),
+        customer: customer,
+      };
     }
     function loadPayPending() {
       try { return JSON.parse(sessionStorage.getItem(PAY_PENDING_KEY) || 'null'); } catch (_) { return null; }
@@ -1896,12 +1934,26 @@
         try {
           if (state.payKind === 'card' && !state.paymentObj) {
             state.paying = true;
-            render({ keepScroll: true });
             const pending = stashPayPending();
+            const body = payCheckoutBody(pending);
+            render({ keepScroll: true });
+            const btn = document.getElementById('place');
+            if (btn) {
+              btn.setAttribute('data-payments-lk-checkout', '/checkout');
+              btn.setAttribute('data-payments-lk-error-target', '[data-card-err]');
+              btn.setAttribute('data-payments-lk-body', JSON.stringify(body));
+            }
+            const payBtn = window.PaymentsLk && window.PaymentsLk.payButton;
+            if (payBtn && typeof payBtn.start === 'function' && btn) {
+              payBtn.start(btn);
+              return;
+            }
             const checkout = await API.createPayCheckout({
               amount: pending.amount,
+              amountCents: pending.amountCents,
               description: pending.description,
               reference: pending.reference,
+              lineItems: pending.lineItems,
             });
             if (checkout && checkout.id) {
               try {
@@ -1926,7 +1978,13 @@
           render({ keepScroll: true });
         }
       }
-      if (place) place.onclick = placeNow;
+      if (place) place.onclick = function (e) {
+        if (state.payKind === 'card' && e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        placeNow();
+      };
       bindWaSheet(placeNow);
       root.querySelectorAll('[data-track]').forEach((b) => b.onclick = () => openTrack(b.dataset.track, true));
       root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
@@ -2038,6 +2096,12 @@
         render();
       };
     }
+
+    document.addEventListener('payments-lk:error', function (ev) {
+      state.paying = false;
+      state.cardErr = (ev.detail && ev.detail.message) || 'The payment could not be started. Please try again.';
+      render({ keepScroll: true });
+    });
 
     API.on(() => {
       if (state.gate === 'otp' || state.gate === 'register' || state.gate === 'login' || state.gate === 'onboard' || state.gate === 'splash' || state.gate === 'download') {

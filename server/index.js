@@ -140,7 +140,7 @@ function cors(res, extra) {
     {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key, Payments-Signature',
       'Cache-Control': 'no-store',
     },
     extra || {},
@@ -154,20 +154,19 @@ function json(res, code, body) {
   res.end(data);
 }
 
-function readBody(req) {
+function readRaw(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
-    req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      if (!raw) return resolve({});
-      try {
-        resolve(JSON.parse(raw));
-      } catch (err) {
-        reject(err);
-      }
-    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
+  });
+}
+
+function readBody(req) {
+  return readRaw(req).then((raw) => {
+    if (!raw) return {};
+    return JSON.parse(raw);
   });
 }
 
@@ -320,6 +319,28 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/pay') {
     const body = req.method === 'POST' ? await readBody(req) : {};
     const out = await payLk.handle(req.method, body);
+    json(res, out.status, out.body);
+    return;
+  }
+
+  if (pathname === '/checkout') {
+    const body = req.method === 'POST' ? await readBody(req) : {};
+    const origin = String(req.headers.origin || '').replace(/\/$/, '') || ('https://' + String(req.headers.host || 'quickbite-2ao.pages.dev').replace(/\/$/, ''));
+    const out = await payLk.handleCheckout(req.method, body, {
+      idempotencyKey: req.headers['idempotency-key'],
+      origin: origin,
+    });
+    json(res, out.status, out.body);
+    return;
+  }
+
+  if (pathname === '/webhooks/payments-lk') {
+    if (req.method === 'GET') {
+      json(res, 200, { ok: true, provider: 'payments.lk' });
+      return;
+    }
+    const raw = await readRaw(req);
+    const out = await payLk.handleWebhook(raw, req.headers['payments-signature']);
     json(res, out.status, out.body);
     return;
   }
@@ -729,7 +750,7 @@ function handleStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.startsWith('/api/') || url.pathname === '/checkout' || url.pathname === '/webhooks/payments-lk') {
       await handleApi(req, res, url);
       return;
     }

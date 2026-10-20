@@ -2754,9 +2754,10 @@
   API.createPayCheckout = async function (input) {
     input = input || {};
     const amount = Math.round(Number(input.amount) || 0);
-    if (amount < 1) throw new Error('Invalid payment amount.');
-    const amountCents = Math.round(amount * 100);
-    const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : 'https://quickbite-2ao.pages.dev';
+    const amountCents = Math.round(Number(input.amountCents != null ? input.amountCents : amount * 100) || 0);
+    if (!Array.isArray(input.lineItems) || !input.lineItems.length) {
+      if (amountCents < 100 && amount < 1) throw new Error('Invalid payment amount.');
+    }
     const reference = String(input.reference || ('QB-' + Date.now()));
     const customer = {};
     if (input.customer && input.customer.name) customer.name = String(input.customer.name);
@@ -2765,17 +2766,34 @@
     else if (API.user && API.user.email) customer.email = String(API.user.email);
     const phone = lkPhone((input.customer && input.customer.phone) || (API.user && API.user.phone) || '');
     if (phone) customer.phone = phone;
-    const data = await payApi({
-      action: 'create',
-      amountCents: amountCents,
-      description: input.description || 'QuickBite order',
+    const payload = {
       reference: reference,
-      successUrl: origin + '/user.html?paid=1',
-      cancelUrl: origin + '/user.html?paid=0',
+      description: input.description || 'QuickBite order',
       customer: customer,
-      idempotencyKey: reference,
-    });
-    if (!data.url) throw new Error('Payments.lk did not return a checkout URL.');
+    };
+    if (Array.isArray(input.lineItems) && input.lineItems.length) payload.lineItems = input.lineItems;
+    else payload.amountCents = amountCents;
+    let res;
+    try {
+      res = await fetch((API.base || '') + '/checkout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'Idempotency-Key': reference,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (_) {
+      throw new Error('Could not reach Payments.lk. Try again.');
+    }
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (_) {}
+    if (!res.ok || !data.url) {
+      throw new Error(payApiError(data, res.status === 404 ? 'Card payment is not connected on this host.' : 'Card payment failed.'));
+    }
     return data;
   };
   API.confirmPayCheckout = async function (checkoutId, amountCents) {
