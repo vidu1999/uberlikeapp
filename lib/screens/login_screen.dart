@@ -752,7 +752,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _shopLogin() {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFF07140F),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(22, 48, 22, 32),
         children: [
@@ -766,13 +766,12 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          const Text('Welcome Back!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.7, color: Color(0xFF111827))),
+          const Text('Welcome Back!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -0.7, color: Colors.white)),
           const SizedBox(height: 8),
-          const Text('Login to your shop account', style: TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
+          const Text('Login to your shop account', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 14)),
           const SizedBox(height: 18),
-          _lightField(_phone, 'Email or Phone Number', hint: 'Email or Phone Number', keyboard: TextInputType.emailAddress),
-          const SizedBox(height: 10),
-          _lightField(_pw, 'Password', hint: 'Password', obscure: true),
+          _field(_phone, 'Email or Phone Number', Icons.person_outline, keyboard: TextInputType.emailAddress),
+          _field(_pw, 'Password', Icons.lock_outline, obscure: true),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
@@ -782,7 +781,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           if (error != null) ...[
             const SizedBox(height: 4),
-            Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),
+            Text(error!, style: const TextStyle(color: Color(0xFFFCA5A5))),
           ],
           const SizedBox(height: 8),
           SizedBox(
@@ -794,11 +793,11 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const Center(child: Text('or', style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600))),
+          const Center(child: Text('or', style: TextStyle(color: Color(0xFF6B7280), fontWeight: FontWeight.w600))),
           const SizedBox(height: 10),
-          _lightGhost('Continue with Google', onPressed: _googleSignIn),
+          _ghost('Continue with Google', onPressed: _googleSignIn),
           const SizedBox(height: 8),
-          _lightGhost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
+          _ghost('Continue with WhatsApp', onPressed: _openWhatsAppLogin, icon: _waMark()),
           const SizedBox(height: 18),
           Center(
             child: TextButton(
@@ -807,7 +806,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 error = null;
               }),
               child: const Text.rich(TextSpan(children: [
-                TextSpan(text: "Don't have an account? ", style: TextStyle(color: Color(0xFF6B7280))),
+                TextSpan(text: "Don't have an account? ", style: TextStyle(color: Color(0xFF9CA3AF))),
                 TextSpan(text: 'Sign Up', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800)),
               ])),
             ),
