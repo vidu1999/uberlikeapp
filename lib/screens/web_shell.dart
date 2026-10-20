@@ -127,9 +127,6 @@ class _WebShellState extends State<WebShell> {
       );
       android.setMediaPlaybackRequiresUserGesture(false);
       android.setOnShowFileSelector(_pickFiles);
-      try {
-        android.setMixedContentMode(MixedContentMode.alwaysAllow);
-      } catch (_) {}
     }
     try {
       await controller.loadRequest(Uri.parse(_startUrl));
