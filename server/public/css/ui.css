@@ -76,6 +76,8 @@ html[data-role="rider"] .bnav {
   background: var(--navy);
   border-top-color: #1F2937;
 }
+html[data-role="shop"] .bnav { grid-template-columns: repeat(5, 1fr); }
+html[data-role="shop"] .bnav button { font-size: 10px; }
 html[data-role="rider"] .bnav { grid-template-columns: repeat(5, 1fr); }
 html[data-role="rider"] body,
 html[data-role="rider"] .app { background: var(--navy); color: #fff; }
@@ -280,6 +282,11 @@ html[data-role="shop"] .back-fab {
 .sd-bell {
   margin-left: auto; width: 40px; height: 40px; border: 0; border-radius: 50%;
   background: var(--navy3); color: #fff; display: grid; place-items: center; cursor: pointer;
+  position: relative;
+}
+.nt-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 8px; height: 8px; background: #E11D48; border-radius: 50%;
 }
 .sd-shop {
   display: flex; align-items: center; gap: 10px;
@@ -1362,3 +1369,68 @@ html[data-role="rider"] .scroll.rd-details {
   position: absolute; left: 16px; right: 16px; bottom: calc(var(--bnav) + 16px);
   background: var(--navy2); border-radius: 16px; padding: 14px; z-index: 5;
 }
+
+.an-page { color: #fff; }
+.an-pills {
+  display: flex; gap: 8px; padding: 8px 16px 14px; overflow-x: auto; scrollbar-width: none;
+}
+.an-pills button {
+  border: 0; background: var(--navy3); color: #9CA3AF; font-weight: 800; font-size: 13px;
+  padding: 8px 14px; border-radius: 999px; white-space: nowrap; cursor: pointer;
+}
+.an-pills button.on { background: #00C853; color: #fff; }
+.an-custom {
+  display: flex; align-items: center; gap: 8px; padding: 0 16px 12px; color: #9CA3AF; font-size: 12px;
+}
+.an-custom input {
+  flex: 1; border: 0; background: var(--navy2); color: #fff; border-radius: 12px; padding: 10px 12px; font-size: 13px;
+}
+.an-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px 12px; }
+.an-kpi {
+  background: #fff; color: #111; border-radius: 18px; padding: 14px 16px;
+}
+.an-kpi span { display: block; font-size: 12px; font-weight: 700; color: #6B7280; }
+.an-kpi b { display: block; font-size: 26px; font-weight: 800; margin: 6px 0 4px; letter-spacing: -0.6px; }
+.an-kpi small { font-weight: 700; font-size: 12px; }
+.an-kpi small.up { color: #00C853; }
+.an-kpi small.dn { color: #E11D48; }
+.an-card {
+  margin: 0 16px 14px; background: #fff; color: #111; border-radius: 18px; padding: 14px 16px 12px;
+}
+.an-card h3 { margin: 0 0 10px; font-size: 16px; font-weight: 800; }
+.an-svg { width: 100%; height: 140px; display: block; }
+.an-top {
+  display: flex; align-items: center; gap: 12px; padding: 8px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.an-top:last-child { border-bottom: 0; }
+.an-top img { width: 48px; height: 48px; border-radius: 12px; object-fit: cover; background: #eee; flex: none; }
+.an-top b { font-size: 14px; }
+.an-top span { margin-left: auto; color: #6B7280; font-weight: 800; font-size: 13px; white-space: nowrap; }
+
+.nt-page { background: #fff; color: #111; min-height: 100%; }
+html[data-role="shop"] .nt-page { background: #fff; color: #111; }
+.nt-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 8px; background: #fff;
+}
+.nt-head h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.4px; color: #111; }
+.nt-head .back {
+  width: 40px; height: 40px; border: 0; border-radius: 50%; background: #F3F4F6; font-size: 18px; cursor: pointer; color: #111;
+}
+.nt-row {
+  width: 100%; display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border: 0; border-bottom: 1px solid #F3F4F6;
+  background: #fff; color: #111; text-align: left; cursor: pointer;
+}
+.nt-row b { display: block; font-size: 14px; font-weight: 800; }
+.nt-row .sub { color: #6B7280; font-size: 12px; font-weight: 600; margin-top: 3px; }
+.nt-row small { color: #9CA3AF; font-size: 11px; font-weight: 700; flex: none; margin-top: 2px; }
+.nt-ico {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 16px; flex: none;
+}
+.nt-ico.bag { background: #ECFDF3; }
+.nt-ico.bike { background: #EFF6FF; }
+.nt-ico.alert { background: #FFF7ED; color: #EA580C; font-weight: 900; }
+.nt-ico.star { background: #FFFBEB; color: #F5B400; }

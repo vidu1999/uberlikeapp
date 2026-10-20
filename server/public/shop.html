@@ -7,24 +7,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19zj" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zj" />
-  <link rel="stylesheet" href="/css/track.css?v=19zj" />
+  <link rel="stylesheet" href="/css/app.css?v=19zk" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zk" />
+  <link rel="stylesheet" href="/css/track.css?v=19zk" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zj"></script>
-  <script src="/js/maps.js?v=19zj"></script>
-  <script src="/js/track-ui.js?v=19zj"></script>
-  <script src="/js/otp-login.js?v=19zj"></script>
+  <script src="/js/live.js?v=19zk"></script>
+  <script src="/js/api.js?v=19zk"></script>
+  <script src="/js/maps.js?v=19zk"></script>
+  <script src="/js/track-ui.js?v=19zk"></script>
+  <script src="/js/otp-login.js?v=19zk"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
       screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
+      anRange: 'today', anFrom: '', anTo: '',
       itemDraft: null, shopDraft: null,
       auth: 'login',
       fromReg: false,
@@ -158,6 +159,211 @@
       if (o.status === 'picked_up' || o.status === 'on_the_way') return 'Picked up';
       return API.statusLabel(o.status);
     }
+    function orderTs(o) {
+      const t = Date.parse((o && (o.timestamp || o.updatedAt)) || '') || 0;
+      return t;
+    }
+    function startDay(d) {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    }
+    function endDay(d) {
+      const x = new Date(d);
+      x.setHours(23, 59, 59, 999);
+      return x;
+    }
+    function anBounds() {
+      const now = new Date();
+      const today0 = startDay(now);
+      const day = 86400000;
+      const r = state.anRange || 'today';
+      if (r === '7') {
+        const from = new Date(today0.getTime() - 6 * day);
+        return { from: from, to: now, prevFrom: new Date(from.getTime() - 7 * day), prevTo: from };
+      }
+      if (r === '30') {
+        const from = new Date(today0.getTime() - 29 * day);
+        return { from: from, to: now, prevFrom: new Date(from.getTime() - 30 * day), prevTo: from };
+      }
+      if (r === 'custom') {
+        const from = state.anFrom ? startDay(state.anFrom) : new Date(today0.getTime() - 13 * day);
+        const to = state.anTo ? endDay(state.anTo) : now;
+        const span = Math.max(day, to.getTime() - from.getTime());
+        return { from: from, to: to, prevFrom: new Date(from.getTime() - span), prevTo: from };
+      }
+      return {
+        from: today0,
+        to: now,
+        prevFrom: new Date(today0.getTime() - day),
+        prevTo: today0,
+      };
+    }
+    function liveOrders() {
+      return shopOrders().filter((o) => o && o.status !== 'cancelled');
+    }
+    function ordersIn(from, to) {
+      const a = from.getTime();
+      const b = to.getTime();
+      return liveOrders().filter((o) => {
+        const t = orderTs(o);
+        return t >= a && t <= b;
+      });
+    }
+    function orderRev(o) {
+      return Number(o.subtotal != null ? o.subtotal : (o.totalAmount || 0)) || 0;
+    }
+    function pctChange(cur, prev) {
+      if (!prev) return cur ? 100 : 0;
+      return Math.round(((cur - prev) / prev) * 100);
+    }
+    function timeAgo(ts) {
+      const s = Math.max(0, (Date.now() - Number(ts || 0)) / 1000);
+      if (s < 45) return 'Now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      const d = Math.floor(s / 86400);
+      return d === 1 ? '1d ago' : d + 'd ago';
+    }
+    function salesPoints(from, to, list) {
+      const span = Math.max(1, to.getTime() - from.getTime());
+      const day = 86400000;
+      let n = 7;
+      if (span <= day + 60000) n = 6;
+      else if (span <= 8 * day) n = Math.max(2, Math.round(span / day));
+      else n = 7;
+      const step = span / Math.max(1, n - 1);
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        const a = from.getTime() + (i === 0 ? 0 : step * (i - 0.5));
+        const b = from.getTime() + (i === n - 1 ? span : step * (i + 0.5));
+        const v = list.filter((o) => {
+          const t = orderTs(o);
+          return t >= a && t <= b;
+        }).reduce((s, o) => s + orderRev(o), 0);
+        const mid = new Date(from.getTime() + step * i);
+        let lab = '';
+        if (span <= day + 60000) lab = mid.toLocaleTimeString('en-US', { hour: 'numeric' });
+        else if (n <= 8) lab = mid.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2);
+        else lab = (mid.getMonth() + 1) + '/' + mid.getDate();
+        pts.push({ v: v, lab: lab });
+      }
+      return pts;
+    }
+    function salesChart(pts) {
+      const w = 320;
+      const h = 128;
+      const padX = 12;
+      const padY = 16;
+      const max = Math.max(1, ...pts.map((p) => p.v));
+      const n = Math.max(1, pts.length - 1);
+      const coords = pts.map((p, i) => {
+        const x = padX + (i / n) * (w - padX * 2);
+        const y = h - padY - (p.v / max) * (h - padY * 2);
+        return { x: x, y: y };
+      });
+      const line = coords.map((c) => c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+      const area = padX + ',' + (h - padY) + ' ' + line + ' ' + (w - padX) + ',' + (h - padY);
+      const dots = coords.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3.5" fill="#00C853" />`).join('');
+      const labs = pts.map((p, i) => {
+        const x = padX + (i / n) * (w - padX * 2);
+        return `<text x="${x.toFixed(1)}" y="${h - 2}" text-anchor="middle" fill="#9CA3AF" font-size="9">${esc(p.lab)}</text>`;
+      }).join('');
+      return `<svg class="an-svg" viewBox="0 0 ${w} ${h}">${''
+        }<polyline fill="rgba(0,200,83,.12)" stroke="none" points="${area}" />${''
+        }<polyline fill="none" stroke="#00C853" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${line}" />${''
+        }${dots}${labs}</svg>`;
+    }
+    function topSold(list) {
+      const bag = {};
+      list.forEach((o) => {
+        (o.items || []).forEach((it) => {
+          const id = String(it.id || it.name || '');
+          if (!id) return;
+          if (!bag[id]) bag[id] = { id: it.id, name: it.name || 'Item', qty: 0, image: it.image || '' };
+          bag[id].qty += Number(it.qty || 1);
+        });
+      });
+      return Object.keys(bag).map((k) => {
+        const row = bag[k];
+        const menu = (API.items || []).find((i) => i.id === row.id);
+        if (menu && menu.image) row.image = menu.image;
+        return row;
+      }).sort((a, b) => b.qty - a.qty).slice(0, 5);
+    }
+    function shopNotes() {
+      const notes = [];
+      liveOrders().forEach((o) => {
+        const placed = orderTs(o) || Date.now();
+        notes.push({
+          id: 'new-' + o.id,
+          kind: 'order',
+          icon: 'bag',
+          title: 'New Order ' + oid(o.id),
+          body: (o.customerName || 'Customer') + ' placed a new order',
+          ts: placed,
+          orderId: o.id,
+        });
+        if (o.status && o.status !== 'pending') {
+          const st = Date.parse(o.updatedAt || '') || placed + 1;
+          const label = (API.statusLabel && API.statusLabel(o.status)) || badgeText(o);
+          notes.push({
+            id: 'st-' + o.id + '-' + o.status,
+            kind: 'status',
+            icon: 'bike',
+            title: 'Order ' + oid(o.id),
+            body: 'Status changed to ' + label,
+            ts: st,
+            orderId: o.id,
+          });
+        }
+        if (o.status === 'delivered' && o.ratings && o.ratings.shop) {
+          notes.push({
+            id: 'rv-' + o.id,
+            kind: 'review',
+            icon: 'star',
+            title: 'New Review',
+            body: 'You received a ' + o.ratings.shop + ' star review',
+            ts: Date.parse(o.ratings.at || o.updatedAt || '') || placed,
+            orderId: o.id,
+          });
+        }
+      });
+      shopItems().forEach((it) => {
+        const st = stockInfo(it);
+        if (st.unlimited) return;
+        if (st.stock <= 0) {
+          notes.push({
+            id: 'out-' + it.id,
+            kind: 'stock',
+            icon: 'alert',
+            title: 'Sold out',
+            body: it.name + ' is unavailable (0 left)',
+            ts: Date.now() - 1000,
+            stock: true,
+          });
+        } else if (st.stock <= 5) {
+          notes.push({
+            id: 'low-' + it.id,
+            kind: 'stock',
+            icon: 'alert',
+            title: 'Low Stock Alert',
+            body: it.name + ' is running low (' + st.stock + ' left)',
+            ts: Date.now() - 2000,
+            stock: true,
+          });
+        }
+      });
+      notes.sort((a, b) => b.ts - a.ts);
+      return notes.slice(0, 40);
+    }
+    function notesUnread() {
+      return liveOrders().filter((o) => o.status === 'pending').length
+        + shopItems().filter((it) => {
+          const st = stockInfo(it);
+          return !st.unlimited && st.stock <= 5;
+        }).length;
+    }
     const SVG = {
       dash: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
       orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
@@ -169,13 +375,15 @@
       chef: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 14h8v6H8z"/><path d="M6 14c0-5 3-8 6-8s6 3 6 8"/></svg>',
       check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="m5 12 5 5 9-10"/></svg>',
       bike: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17 10 8h6l4 9"/></svg>',
+      chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg>',
     };
     function nav() {
       const t = state.tab;
       return `<nav class="bnav">
-        <button data-tab="dash" class="${t==='dash'?'on':''}">${SVG.dash}Dashboard</button>
+        <button data-tab="dash" class="${t==='dash'?'on':''}">${SVG.dash}Home</button>
         <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
         <button data-tab="menu" class="${t==='menu'?'on':''}">${SVG.menu}Menu</button>
+        <button data-tab="analytics" class="${t==='analytics'?'on':''}">${SVG.chart}Analytics</button>
         <button data-tab="account" class="${t==='account'?'on':''}">${SVG.profile}Profile</button>
       </nav>`;
     }
@@ -359,7 +567,7 @@
         <div class="sd-head">
           <div class="sd-logo">${SVG.store}</div>
           <h1>Shop Dashboard</h1>
-          <button class="sd-bell" data-tab="orders">${SVG.bell}</button>
+          <button class="sd-bell" type="button" data-notes>${SVG.bell}${notesUnread() ? '<i class="nt-dot"></i>' : ''}</button>
         </div>
         <div class="sd-shop">${esc(shopName())} <span class="open-pill"><i></i> Open</span></div>
         <div class="sd-hero">
@@ -400,6 +608,82 @@
           <button class="${state.filter==='ready'?'on':''}" data-filter="ready">Ready</button>
         </div>
         ${list.map(orderCard).join('') || '<div class="pad muted">No orders in this tab.</div>'}
+      </div>${nav()}`;
+    }
+    function analyticsView() {
+      const b = anBounds();
+      const cur = ordersIn(b.from, b.to);
+      const prev = ordersIn(b.prevFrom, b.prevTo);
+      const n = cur.length;
+      const pn = prev.length;
+      const rev = cur.reduce((s, o) => s + orderRev(o), 0);
+      const prevRev = prev.reduce((s, o) => s + orderRev(o), 0);
+      const dN = n - pn;
+      const dP = pctChange(rev, prevRev);
+      const pts = salesPoints(b.from, b.to, cur);
+      const top = topSold(cur);
+      const range = state.anRange || 'today';
+      const nLabel = range === 'today' ? "Today's Orders" : (range === '7' ? 'Last 7 days' : (range === '30' ? 'Last 30 days' : 'Orders'));
+      const nHint = range === 'today'
+        ? (dN === 0 ? 'Same as yesterday' : ((dN > 0 ? '+' : '') + dN + ' from yesterday'))
+        : (dN === 0 ? 'Same as previous period' : ((dN > 0 ? '+' : '') + dN + ' vs last period'));
+      return `<div class="scroll an-page">
+        <div class="sd-head">
+          <div class="sd-logo">${SVG.store}</div>
+          <h1>Analytics</h1>
+          <button class="sd-bell" type="button" data-notes>${SVG.bell}${notesUnread() ? '<i class="nt-dot"></i>' : ''}</button>
+        </div>
+        <div class="an-pills">
+          ${[['today','Today'],['7','7 Days'],['30','30 Days'],['custom','Custom']].map((p) =>
+            `<button type="button" class="${range===p[0]?'on':''}" data-an="${p[0]}">${p[1]}</button>`
+          ).join('')}
+        </div>
+        ${range === 'custom' ? `<div class="an-custom">
+          <input id="anFrom" type="date" value="${esc(state.anFrom || '')}" />
+          <span>to</span>
+          <input id="anTo" type="date" value="${esc(state.anTo || '')}" />
+        </div>` : ''}
+        <div class="an-kpis">
+          <div class="an-kpi">
+            <span>${esc(nLabel)}</span>
+            <b>${n}</b>
+            <small class="${dN>=0?'up':'dn'}">${esc(nHint)}</small>
+          </div>
+          <div class="an-kpi">
+            <span>Total Revenue</span>
+            <b>${rs(rev)}</b>
+            <small class="${dP>=0?'up':'dn'}">${dP>0?'+':''}${dP}%</small>
+          </div>
+        </div>
+        <div class="an-card">
+          <h3>Sales Overview</h3>
+          ${n ? salesChart(pts) : '<p class="muted">No sales in this period.</p>'}
+        </div>
+        <div class="an-card">
+          <h3>Top Selling Items</h3>
+          ${top.map((it) => `<div class="an-top">
+            <img src="${itemImg(it)}" alt="" />
+            <div class="grow"><b>${esc(it.name)}</b></div>
+            <span>${it.qty} sold</span>
+          </div>`).join('') || '<p class="muted">No items sold in this period.</p>'}
+        </div>
+      </div>${nav()}`;
+    }
+    function notesView() {
+      const list = shopNotes();
+      return `<div class="scroll nt-page">
+        <div class="nt-head">
+          <button class="back" type="button" data-close-notes>←</button>
+          <h1>Notifications</h1>
+        </div>
+        ${list.map((n) => `<button type="button" class="nt-row" data-note="${esc(n.id)}" data-note-order="${esc(n.orderId || '')}" data-note-stock="${n.stock ? '1' : ''}">
+          <div class="nt-ico ${esc(n.icon)}">${n.icon==='star' ? '★' : (n.icon==='alert' ? '!' : (n.icon==='bike' ? '🛵' : '🛍️'))}</div>
+          <div class="grow">
+            <b>${esc(n.title)}</b>
+            <div class="sub">${esc(n.body)}</div>
+          </div>
+          <small>${esc(timeAgo(n.ts))}</small>
+        </button>`).join('') || '<div class="pad muted">No notifications yet. New orders, low stock, and reviews show up here.</div>'}
       </div>${nav()}`;
     }
     function menuView() {
@@ -574,6 +858,7 @@
           <div class="sp-prof-stat"><b>${rs(revenue)}</b><span>Total Revenue</span></div>
           <div class="sp-prof-stat"><b>${rs(wallet)}</b><span>Card wallet</span></div>
         </div>
+        <button class="sp-prof-out" type="button" data-notes style="margin-top:8px">Notifications${notesUnread() ? ' · ' + notesUnread() : ''}</button>
         <button class="sp-prof-out" type="button" data-open-wallet style="margin-top:8px">Card wallet · ${rs(wallet)}</button>
         <div class="sp-prof-about">
           <h3>About Us</h3>
@@ -703,6 +988,7 @@
       if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
       if (keep && state.screen === 'stock' && root.querySelector('[data-save-stock]')) return;
       if (keep && state.screen === 'edit-shop' && root.querySelector('[data-save-shop]')) return;
+      if (keep && state.tab === 'analytics' && state.anRange === 'custom' && root.querySelector('#anFrom')) return;
       try {
       if (API.user && state.auth === 'register' && API.isShopRegistered && !API.isShopRegistered()) {
         killRegMap();
@@ -825,8 +1111,10 @@
       else if (state.screen === 'wallet') root.innerHTML = walletView();
       else if (state.screen === 'item') root.innerHTML = itemEditView();
       else if (state.screen === 'stock') root.innerHTML = stockView();
+      else if (state.screen === 'notes') root.innerHTML = notesView();
       else if (state.screen === 'edit-shop') root.innerHTML = editShopView();
       else if (state.screen === 'store') root.innerHTML = storeView();
+      else if (state.tab === 'analytics') root.innerHTML = analyticsView();
       else if (state.tab === 'menu') root.innerHTML = menuView();
       else if (state.tab === 'orders') root.innerHTML = ordersView();
       else if (state.tab === 'account') root.innerHTML = accountView();
@@ -1178,6 +1466,32 @@
     function bind() {
       const root = document.getElementById('root');
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.trackId = null; state.screen = ''; render(); });
+      function openStockPage() {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
+        const draft = {};
+        shopItems().forEach((it) => {
+          const st = stockInfo(it);
+          draft[it.id] = { unlimited: st.unlimited, stock: st.unlimited ? 0 : st.stock };
+        });
+        state.stockDraft = draft;
+        state.screen = 'stock';
+        render();
+      }
+      root.querySelectorAll('[data-notes]').forEach((b) => b.onclick = () => { state.screen = 'notes'; render(); });
+      root.querySelectorAll('[data-close-notes]').forEach((b) => b.onclick = () => { state.screen = ''; render(); });
+      root.querySelectorAll('[data-an]').forEach((b) => b.onclick = () => { state.anRange = b.dataset.an; render({ keepScroll: true }); });
+      const anFrom = document.getElementById('anFrom');
+      const anTo = document.getElementById('anTo');
+      if (anFrom) anFrom.onchange = () => { state.anFrom = anFrom.value; render({ keepScroll: true }); };
+      if (anTo) anTo.onchange = () => { state.anTo = anTo.value; render({ keepScroll: true }); };
+      root.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => {
+        if (b.dataset.noteStock === '1') { openStockPage(); return; }
+        if (b.dataset.noteOrder) {
+          state.orderId = b.dataset.noteOrder;
+          state.screen = 'order';
+          render();
+        }
+      });
       root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
       root.querySelectorAll('[data-act]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); API.patch(b.dataset.id, { status: b.dataset.act }); });
       root.querySelectorAll('[data-toggle]').forEach((el) => el.onchange = (e) => {
@@ -1193,17 +1507,7 @@
         if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
         state.itemId = null; state.itemDraft = { category: 'Food', isAvailable: true, stockUnlimited: true }; state.screen = 'item'; render();
       });
-      root.querySelectorAll('[data-open-stock]').forEach((b) => b.onclick = () => {
-        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
-        const draft = {};
-        shopItems().forEach((it) => {
-          const st = stockInfo(it);
-          draft[it.id] = { unlimited: st.unlimited, stock: st.unlimited ? 0 : st.stock };
-        });
-        state.stockDraft = draft;
-        state.screen = 'stock';
-        render();
-      });
+      root.querySelectorAll('[data-open-stock]').forEach((b) => b.onclick = () => openStockPage());
       root.querySelectorAll('[data-close-stock]').forEach((b) => b.onclick = () => {
         state.screen = ''; state.stockDraft = null; state.tab = 'menu'; render();
       });
