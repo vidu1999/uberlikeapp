@@ -2385,15 +2385,25 @@
 
   API.googleSignIn = function () {
     return new Promise(function (resolve, reject) {
-      const clientId = String(window.QB_GOOGLE_CLIENT_ID || '118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com').trim();
-      if (!clientId) {
-        reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
-        return;
-      }
       function done(profile) {
         const g = googleProfile(profile);
         if (g.email) resolve(Object.assign({}, profile, g));
         else reject(new Error('Google did not share an email for this account.'));
+      }
+      if (window.QuickBiteNative && typeof window.QuickBiteNative.postMessage === 'function') {
+        window._qbGoogleDone = function (err, profile) {
+          window._qbGoogleDone = null;
+          if (err) reject(new Error(String(err)));
+          else done(profile || {});
+        };
+        try { window.QuickBiteNative.postMessage('google'); }
+        catch (e) { reject(e); }
+        return;
+      }
+      const clientId = String(window.QB_GOOGLE_CLIENT_ID || '118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com').trim();
+      if (!clientId) {
+        reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
+        return;
       }
       function fromAccessToken(accessToken) {
         fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
