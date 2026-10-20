@@ -7,18 +7,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19z" />
-  <link rel="stylesheet" href="/css/ui.css?v=19z" />
-  <link rel="stylesheet" href="/css/track.css?v=19z" />
+  <link rel="stylesheet" href="/css/app.css?v=19za" />
+  <link rel="stylesheet" href="/css/ui.css?v=19za" />
+  <link rel="stylesheet" href="/css/track.css?v=19za" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19z"></script>
-  <script src="/js/api.js?v=19z"></script>
-  <script src="/js/maps.js?v=19z"></script>
-  <script src="/js/track-ui.js?v=19z"></script>
-  <script src="/js/otp-login.js?v=19z"></script>
+  <script src="/js/live.js?v=19za"></script>
+  <script src="/js/api.js?v=19za"></script>
+  <script src="/js/maps.js?v=19za"></script>
+  <script src="/js/track-ui.js?v=19za"></script>
+  <script src="/js/otp-login.js?v=19za"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
@@ -47,8 +47,9 @@
       orderId: null,
       filter: 'new', online: true, mapHandle: null, liveLat: null, liveLng: null,
       loginId: '', loginPw: '',
+      pendingAcceptId: null,
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
-      wa: { open: false, step: 'phone', phone: '', err: '' },
+      wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
     };
     const WA_LOGO = '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>';
     let gpsWatch = null;
@@ -272,9 +273,15 @@
       const w = state.wa || {};
       if (!w.open) return '';
       const codeStep = w.step === 'code';
+      const acceptMode = w.mode === 'accept';
+      const title = acceptMode ? 'Verify WhatsApp' : 'Continue with WhatsApp';
+      const sub = acceptMode
+        ? 'Verify WhatsApp before you accept an order. We send a 4-digit code to that chat.'
+        : 'Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.';
+      const verifyLabel = acceptMode ? 'Verify &amp; accept' : 'Verify &amp; enter';
       return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
-        + '<b>Continue with WhatsApp</b>'
-        + '<p>Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.</p>'
+        + '<b>' + title + '</b>'
+        + '<p>' + sub + '</p>'
         + (codeStep
           ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
             + '<div class="otp-boxes">'
@@ -283,7 +290,7 @@
             + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
             + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
             + '</div><p class="err">' + esc(w.err || '') + '</p>'
-            + '<button class="btn-green" type="button" data-wa-verify>Verify &amp; enter</button>'
+            + '<button class="btn-green" type="button" data-wa-verify>' + verifyLabel + '</button>'
             + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
           : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
             + '<p class="err">' + esc(w.err || '') + '</p>'
@@ -697,11 +704,57 @@
       state.fromReg = true;
       render(true);
     }
+    function waPrefill() {
+      const p = (me().phone || state.loginId || '').trim();
+      const n = API.normalizePhone ? API.normalizePhone(p) : p;
+      if (API.isPlaceholderPhone && API.isPlaceholderPhone(n)) return '';
+      if (/^07\d{8}$/.test(n)) return n;
+      return '';
+    }
+    function paintWa() {
+      if (API.user) render(true, { keepScroll: true });
+      else render(true);
+    }
+    function askWa(orderId) {
+      state.pendingAcceptId = orderId || null;
+      state.wa = { open: true, step: 'phone', phone: waPrefill(), err: '', mode: 'accept' };
+      paintWa();
+    }
+    function mountWa() {
+      if (!(state.wa && state.wa.open)) return;
+      const root = document.getElementById('root');
+      if (!root.querySelector('[data-wa-sheet]')) root.insertAdjacentHTML('beforeend', waSheet());
+      bindWaSheet();
+    }
+    function needWa(orderId) {
+      if (API.isWhatsAppVerified && API.isWhatsAppVerified()) return false;
+      askWa(orderId);
+      return true;
+    }
+    async function acceptOrder(id) {
+      if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
+      if (needWa(id)) return;
+      const u = me();
+      const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+      if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+      try {
+        await API.patch(id, body);
+      } catch (e) {
+        if (e && e.code === 'WHATSAPP_REQUIRED') { askWa(id); return; }
+        alert((e && e.message) || 'Could not accept');
+        return;
+      }
+      try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
+      state.orderId = id;
+      state.screen = 'live';
+      startLiveGps(id);
+      render(true);
+    }
     function bindWaSheet() {
       const sheet = document.querySelector('[data-wa-sheet]');
       if (!sheet) return;
       const close = sheet.querySelector('[data-wa-close]');
-      if (close) close.onclick = () => { state.wa.open = false; render(true); };
+      if (close) close.onclick = () => { state.wa.open = false; state.pendingAcceptId = null; paintWa(); };
       const send = sheet.querySelector('[data-wa-send]');
       if (send) send.onclick = async () => {
         const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
@@ -714,10 +767,10 @@
           state.loginId = state.wa.phone;
           state.wa.step = 'code';
           state.wa.err = '';
-          render(true);
+          paintWa();
         } catch (e) {
           state.wa.err = e.message || 'Could not send WhatsApp code';
-          render(true);
+          paintWa();
         }
       };
       const resend = sheet.querySelector('[data-wa-resend]');
@@ -725,19 +778,23 @@
         try {
           await API.sendOtp('rider', state.wa.phone);
           state.wa.err = 'Code sent again.';
-          render(true);
+          paintWa();
         } catch (e) {
           state.wa.err = e.message || 'Could not resend';
-          render(true);
+          paintWa();
         }
       };
       const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
       async function verifyWa() {
         const code = codeValue();
-        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render(true); return; }
+        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; paintWa(); return; }
         try {
           const out = await API.verifyOtp('rider', state.wa.phone, code);
+          const acceptId = state.pendingAcceptId;
+          const acceptMode = state.wa.mode === 'accept';
           state.wa.open = false;
+          state.wa.err = '';
+          state.pendingAcceptId = null;
           if (out && out.needsRegister) {
             state.auth = 'register';
             state.fromReg = true;
@@ -745,11 +802,15 @@
             render(true);
             return;
           }
+          if (acceptMode && acceptId && API.user) {
+            await acceptOrder(acceptId);
+            return;
+          }
           state.auth = 'home';
           render(true);
         } catch (e) {
           state.wa.err = e.message || 'Could not verify';
-          render(true);
+          paintWa();
         }
       }
       const verifyBtn = sheet.querySelector('[data-wa-verify]');
@@ -791,7 +852,7 @@
       if (lp) lp.oninput = () => { state.loginPw = lp.value; };
       const waOpen = root.querySelector('[data-wa-login]');
       if (waOpen) waOpen.onclick = () => {
-        state.wa = { open: true, step: 'phone', phone: '', err: '' };
+        state.wa = { open: true, step: 'phone', phone: '', err: '', mode: 'login' };
         render(true);
       };
       bindWaSheet();
@@ -956,27 +1017,24 @@
       if (online) online.onclick = () => { state.online = !state.online; render(true); };
       root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = async (e) => {
         e.stopPropagation();
-        if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
-        const id = b.dataset.pick;
-        const u = me();
-        const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
-        if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
-        await API.patch(id, body);
-        try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
-        state.orderId = id;
-        state.screen = 'live';
-        startLiveGps(id);
-        render(true);
+        await acceptOrder(b.dataset.pick);
       });
       root.querySelectorAll('[data-nav]').forEach((b) => b.onclick = async () => {
         if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
         const id = b.dataset.nav;
+        if (needWa(id)) return;
         const u = me();
         const o = (API.orders || []).find((x) => x.id === id);
         const body = { riderId: u.id, riderName: u.name, riderPhone: u.phone };
         if (!o || o.status === 'ready') body.status = 'accepted';
         if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
-        await API.patch(id, body);
+        try {
+          await API.patch(id, body);
+        } catch (e) {
+          if (e && e.code === 'WHATSAPP_REQUIRED') { askWa(id); return; }
+          alert((e && e.message) || 'Could not start navigation');
+          return;
+        }
         state.orderId = id;
         state.screen = 'live';
         startLiveGps(id);
@@ -984,6 +1042,7 @@
       });
       root.querySelectorAll('[data-pickup]').forEach((b) => b.onclick = async () => {
         const id = b.dataset.pickup;
+        if (needWa(id)) return;
         const o = (API.orders || []).find((x) => x.id === id);
         if (!o) return;
         if (!closeToShop(o)) return;
@@ -1219,6 +1278,7 @@
         else root.innerHTML = homeView();
         bind();
       } finally {
+        if (API.user) mountWa();
         if (keep) {
           const sc = root.querySelector('.scroll');
           if (sc) sc.scrollTop = y;
@@ -1238,6 +1298,7 @@
       }, 1600);
     }
     API.on(() => {
+      if (state.wa && state.wa.open) return;
       if (!API.user && document.querySelector('[data-otp-root], [data-rider-auth]')) return;
       render(false, { keepScroll: true });
     });

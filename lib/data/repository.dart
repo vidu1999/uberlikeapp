@@ -945,6 +945,10 @@ class OrderRepository {
       await attachWhatsApp(phone);
       return true;
     }
+    if (role == 'rider' && user != null && _sameRole(user!.role, 'rider')) {
+      await attachWhatsApp(phone);
+      return true;
+    }
     if (role == 'shop' || role == 'rider') {
       final existing = await _lookupPhone(phone, role);
       final registeringShop = role == 'shop' &&
@@ -1263,14 +1267,15 @@ class OrderRepository {
     phone = _normPhone(phone);
     if (!RegExp(r'^07\d{8}$').hasMatch(phone)) throw Exception('Enter a valid WhatsApp number');
     final u = user;
-    if (u == null || !_sameRole(u.role, 'customer')) throw Exception('Sign in first');
+    if (u == null) throw Exception('Sign in first');
+    final role = _sameRole(u.role, 'rider') ? 'rider' : _sameRole(u.role, 'shop') ? 'shop' : 'customer';
     if (isWhatsAppVerified(u) && _normPhone(u.phone) == phone) return;
-    final taken = await _lookupPhone(phone, 'customer');
+    final taken = await _lookupPhone(phone, role);
     if (taken != null && '${taken['id']}' != u.id) {
       final uEmail = (u.email ?? '').toLowerCase();
       final tEmail = '${taken['email'] ?? ''}'.toLowerCase();
       if (!(uEmail.isNotEmpty && (tEmail.isEmpty || tEmail == uEmail))) {
-        throw Exception('This number already has a User account. Login instead — you cannot create another User with the same number.');
+        _alreadyThisRole(role);
       }
       final patch = <String, dynamic>{'pin': _withWaPin('${taken['pin'] ?? 'otp'}')};
       if (uEmail.isNotEmpty && tEmail != uEmail) patch['email'] = uEmail;
@@ -2227,6 +2232,9 @@ class OrderRepository {
     final u = user;
     if (u != null && u.role == 'rider' && !isRiderRegistered) {
       throw Exception('Register as a rider first, then accept orders.');
+    }
+    if (u != null && u.role == 'rider' && !isWhatsAppVerified(u)) {
+      throw Exception('WHATSAPP_REQUIRED');
     }
     await _patch(id, {
       'riderId': riderId ?? u?.id,

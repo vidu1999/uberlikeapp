@@ -264,32 +264,215 @@ class _RiderHomeState extends State<RiderHome> {
     return null;
   }
 
-  Future<void> _accept(Order o) async {
+  bool _isFakePhone(String? p) {
+    final n = (p ?? '').replaceAll(RegExp(r'\D'), '');
+    if (RegExp(r'^07\d{8}$').hasMatch(n)) return false;
+    return n.isEmpty || n.startsWith('99') || n.startsWith('98');
+  }
+
+  Future<bool> _verifyWhatsApp() async {
+    if (OrderRepository.instance.isWhatsAppVerified()) return true;
+    final phoneCtrl = TextEditingController(
+      text: _isFakePhone(OrderRepository.instance.user?.phone) ? '' : (OrderRepository.instance.user?.phone ?? ''),
+    );
+    final digits = List.generate(4, (_) => TextEditingController());
+    final focus = List.generate(4, (_) => FocusNode());
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        var step = 'phone';
+        var err = '';
+        var sending = false;
+        var sent = '';
+        return Padding(
+          padding: EdgeInsets.only(left: 18, right: 18, top: 20, bottom: 18 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: StatefulBuilder(
+            builder: (ctx, setS) {
+              Future<void> send() async {
+                final raw = phoneCtrl.text.trim();
+                if (raw.isEmpty) {
+                  setS(() => err = 'Enter your WhatsApp number');
+                  return;
+                }
+                setS(() {
+                  sending = true;
+                  err = '';
+                });
+                try {
+                  final data = await OrderRepository.instance.sendOtp('rider', raw);
+                  sent = data?['phone']?.toString() ?? raw;
+                  setS(() {
+                    sending = false;
+                    step = 'code';
+                  });
+                } catch (e) {
+                  setS(() {
+                    sending = false;
+                    err = e.toString().replaceFirst('Exception: ', '');
+                  });
+                }
+              }
+
+              Future<void> verify() async {
+                final code = digits.map((c) => c.text).join();
+                if (code.length != 4) {
+                  setS(() => err = 'Enter the 4-digit code');
+                  return;
+                }
+                setS(() {
+                  sending = true;
+                  err = '';
+                });
+                try {
+                  final done = await OrderRepository.instance.verifyOtp('rider', sent, code);
+                  if (!ctx.mounted) return;
+                  if (!done) {
+                    setS(() {
+                      sending = false;
+                      err = 'That code does not match this phone number.';
+                    });
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                } catch (e) {
+                  setS(() {
+                    sending = false;
+                    err = e.toString().replaceFirst('Exception: ', '');
+                  });
+                }
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Verify WhatsApp', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF111827))),
+                  const SizedBox(height: 6),
+                  Text(
+                    step == 'code'
+                        ? 'Code sent to $sent'
+                        : 'Verify WhatsApp before you accept an order. We send a 4-digit code to that chat.',
+                    style: const TextStyle(color: Color(0xFF6B7280), height: 1.4),
+                  ),
+                  const SizedBox(height: 14),
+                  if (step == 'phone') ...[
+                    TextField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      style: const TextStyle(color: Color(0xFF111827)),
+                      decoration: InputDecoration(
+                        hintText: '07X XXX XXXX',
+                        filled: true,
+                        fillColor: const Color(0xFFF9FAFB),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE5E7EB))),
+                      ),
+                    ),
+                  ] else ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: List.generate(4, (i) {
+                        return SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: TextField(
+                            controller: digits[i],
+                            focusNode: focus[i],
+                            textAlign: TextAlign.center,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF111827)),
+                            maxLength: 1,
+                            decoration: InputDecoration(
+                              counterText: '',
+                              filled: true,
+                              fillColor: const Color(0xFFF9FAFB),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onChanged: (v) {
+                              if (v.isNotEmpty && i < 3) focus[i + 1].requestFocus();
+                              if (digits.every((c) => c.text.isNotEmpty)) verify();
+                            },
+                          ),
+                        );
+                      }),
+                    ),
+                  ],
+                  if (err.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(err, style: const TextStyle(color: Color(0xFFB91C1C))),
+                  ],
+                  const SizedBox(height: 14),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(48), shape: const StadiumBorder()),
+                    onPressed: sending ? null : (step == 'phone' ? send : verify),
+                    child: Text(
+                      sending ? 'Please wait…' : (step == 'phone' ? 'Send WhatsApp code' : 'Verify & accept'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+    phoneCtrl.dispose();
+    for (final c in digits) {
+      c.dispose();
+    }
+    for (final f in focus) {
+      f.dispose();
+    }
+    return ok == true && OrderRepository.instance.isWhatsAppVerified();
+  }
+
+  Future<bool> _readyToAccept() async {
     if (!OrderRepository.instance.isRiderRegistered) {
       await OrderRepository.instance.parkForRegister('rider');
-      return;
+      return false;
     }
-    await OrderRepository.instance.assignRider(o.id);
-    await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);
-    if (lat != null && lng != null) {
-      await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
-    }
+    if (OrderRepository.instance.isWhatsAppVerified()) return true;
+    return _verifyWhatsApp();
+  }
+
+  Future<void> _accept(Order o) async {
+    if (!await _readyToAccept()) return;
     try {
-      await OrderRepository.instance.sendMessage(
-        o.id,
-        '${OrderRepository.instance.user?.name ?? 'Rider'} accepted your order and is heading to the shop.',
-        'system',
-        'QuickBite',
-      );
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      orderId = o.id;
-      page = 'live';
-    });
+      await OrderRepository.instance.assignRider(o.id);
+      await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);
+      if (lat != null && lng != null) {
+        await OrderRepository.instance.updateRiderLocation(o.id, lat!, lng!);
+      }
+      try {
+        await OrderRepository.instance.sendMessage(
+          o.id,
+          '${OrderRepository.instance.user?.name ?? 'Rider'} accepted your order and is heading to the shop.',
+          'system',
+          'QuickBite',
+        );
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        orderId = o.id;
+        page = 'live';
+      });
+    } catch (e) {
+      if ('$e'.contains('WHATSAPP_REQUIRED')) {
+        if (await _verifyWhatsApp()) await _accept(o);
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'.replaceFirst('Exception: ', ''))));
+    }
   }
 
   Future<void> _navigate(Order o) async {
+    if (!await _readyToAccept()) return;
     await OrderRepository.instance.assignRider(o.id);
     if (!o.status.inRiderJob) {
       await OrderRepository.instance.updateStatus(o.id, OrderStatus.accepted);

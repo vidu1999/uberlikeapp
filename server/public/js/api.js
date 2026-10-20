@@ -1902,6 +1902,9 @@
     if (want === 'customer' && API.user && sameRole(API.user.role, 'customer')) {
       return API.attachWhatsApp(phone);
     }
+    if (want === 'rider' && API.user && sameRole(API.user.role, 'rider')) {
+      return API.attachWhatsApp(phone);
+    }
     if (want === 'shop' || want === 'rider') {
       const existing = await lookupPhone(phone, want);
       const pShop = pendingShop() || {};
@@ -2146,13 +2149,15 @@
     phone = normalizePhone(phone);
     if (!/^07\d{8}$/.test(phone)) throw new Error('Enter a valid WhatsApp number');
     const u = API.user;
-    if (!u || !sameRole(u.role, 'customer')) throw new Error('Sign in first');
+    if (!u) throw new Error('Sign in first');
+    const role = sameRole(u.role, 'rider') ? 'rider' : sameRole(u.role, 'shop') ? 'shop' : 'customer';
+    if (!sameRole(u.role, role)) throw new Error('Sign in first');
     if (API.isWhatsAppVerified(u) && normalizePhone(u.phone) === phone) return u;
-    const taken = await lookupPhone(phone, 'customer');
+    const taken = await lookupPhone(phone, role);
     if (taken && taken.id !== u.id) {
       const uEmail = String(u.email || '').toLowerCase();
       const tEmail = String(taken.email || '').toLowerCase();
-      if (!(uEmail && (!tEmail || tEmail === uEmail))) throw alreadyThisRoleError('customer');
+      if (!(uEmail && (!tEmail || tEmail === uEmail))) throw alreadyThisRoleError(role);
       const patch = { pin: withWaPin(taken.pin || 'otp') };
       if (uEmail && tEmail !== uEmail) patch.email = uEmail;
       if (u.name && (!taken.name || taken.name === 'Guest')) patch.name = u.name;
@@ -2666,6 +2671,11 @@
     body = Object.assign({}, body || {});
     if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
       if (!API.isRiderRegistered()) throw new Error('Register as a rider first, then accept orders.');
+      if (!API.isWhatsAppVerified()) {
+        const err = new Error('Verify WhatsApp before accepting an order.');
+        err.code = 'WHATSAPP_REQUIRED';
+        throw err;
+      }
     }
     if (locOnlyBody(body)) {
       const local = applyLocalOrder(id, body);
