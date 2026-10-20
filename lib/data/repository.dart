@@ -288,8 +288,10 @@ class OrderRepository {
       return _persistedNames[sid]!.trim();
     }
     final n = (shop?.name ?? user?.shopName ?? '').trim();
-    if (n.isNotEmpty && !_isDemoShopName(n)) return n;
-    return 'My Shop';
+    if (n.isNotEmpty && !_isDemoShopName(n) && n.toLowerCase() != 'my shop') return n;
+    final keep = (user?.shopName ?? '').trim();
+    if (keep.isNotEmpty && keep.toLowerCase() != 'my shop' && !_isDemoShopName(keep)) return keep;
+    return n.isNotEmpty ? n : 'Shop';
   }
 
   Shop _shopWithName(Shop s, String name) => Shop(
@@ -311,7 +313,7 @@ class OrderRepository {
   Future<void> _repairShopPublicName() async {
     final u = user;
     if (u == null || u.role != 'shop') return;
-    final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+    final sid = _linkedShopId(u);
     if (sid.isEmpty) return;
     final i = Catalog.shops.indexWhere((s) => s.id == sid);
     if (i < 0) return;
@@ -406,12 +408,19 @@ class OrderRepository {
 
   Future<void> _syncPublicShopNames() async {}
 
+  String _linkedShopId(SessionUser? u) {
+    if (u == null || u.role != 'shop') return '';
+    var sid = (u.shopId ?? '').trim();
+    if (sid == 'null' || _isDemoShop(sid)) sid = '';
+    if (sid.isNotEmpty && _isPlaceholderPhone(u.phone) && sid == _shopIdFor(u.phone)) sid = '';
+    if (sid.isEmpty && u.phone.isNotEmpty && !_isPlaceholderPhone(u.phone)) sid = _shopIdFor(u.phone);
+    return sid;
+  }
+
   SessionUser _withShopId(SessionUser u) {
-    var sid = u.shopId;
-    if (sid == null || sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
-      if (u.role == 'shop' && u.phone.isNotEmpty) sid = _shopIdFor(u.phone);
-    }
-    if (sid == u.shopId) return u;
+    final sid = _linkedShopId(u);
+    final next = sid.isEmpty ? null : sid;
+    if (next == u.shopId) return u;
     return SessionUser(
       id: u.id,
       name: u.name,
@@ -419,7 +428,7 @@ class OrderRepository {
       role: u.role,
       address: u.address,
       vehicle: u.vehicle,
-      shopId: sid,
+      shopId: next,
       shopName: u.shopName,
       email: u.email,
       pin: u.pin,
@@ -435,11 +444,16 @@ class OrderRepository {
       userNotifier.value = u;
       await _persist();
     }
-    final sid = u.shopId ?? '';
-    if (sid.isEmpty) throw Exception('Shop is not linked to this account.');
-    try {
-      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'shop_id': sid});
-    } catch (_) {}
+    final sid = _linkedShopId(u);
+    if (sid.isEmpty) {
+      if (create) throw Exception('Shop is not linked to this account.');
+      return '';
+    }
+    if (!_isPlaceholderPhone(u.phone) || sid != _shopIdFor(u.phone)) {
+      try {
+        await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'shop_id': sid});
+      } catch (_) {}
+    }
     final rec = await _recalledShop(u.phone);
     final p = pendingShop;
     final pinLat = double.tryParse(p?['lat'] ?? rec?['lat'] ?? '');
@@ -1034,23 +1048,35 @@ class OrderRepository {
     if (!email.contains('@')) throw Exception('Google did not share an email for this account.');
     role = _roleTag(role);
     Map<String, dynamic>? row;
+    bool matches(Map<String, dynamic> m) {
+      return '${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m);
+    }
     try {
-      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
+      for (final raw in await _sbGet('accounts?id=eq.${Uri.encodeComponent(_accountIdForEmail(email, role))}&select=*')) {
         final m = Map<String, dynamic>.from(raw as Map);
-        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
-          row = m;
-          break;
-        }
+        if (matches(m)) { row = m; break; }
       }
     } catch (_) {}
     if (row == null) {
+      try {
+        for (final raw in await _sbGet('accounts?email=eq.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if (matches(m)) { row = m; break; }
+        }
+      } catch (_) {}
+    }
+    if (row == null) {
       final list = await _allAccounts();
-      for (final m in list) {
-        if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
-          row = m;
-          break;
+      final hits = list.where(matches).toList();
+      for (final m in hits) {
+        if ('${m['shop_id'] ?? m['shopId'] ?? ''}'.isNotEmpty) { row = m; break; }
+      }
+      if (row == null) {
+        for (final m in hits) {
+          if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) { row = m; break; }
         }
       }
+      row ??= hits.isNotEmpty ? hits.first : null;
     }
     if (row == null && sub.isNotEmpty) {
       final byPhone = await _lookupPhone(_googlePhone(sub, email), role);
@@ -1071,19 +1097,28 @@ class OrderRepository {
       try {
         await _sbWrite('accounts', 'POST', [row]);
       } catch (_) {
-        row = await _lookupPhone(_googlePhone(sub, email), role) ?? row;
+        try {
+          final existing = await _sbGet('accounts?id=eq.${Uri.encodeComponent('${row!['id']}')}&select=*');
+          if (existing.isNotEmpty) row = Map<String, dynamic>.from(existing.first as Map);
+        } catch (_) {
+          row = await _lookupPhone(_googlePhone(sub, email), role) ?? row;
+        }
       }
     } else {
       final patch = <String, dynamic>{'email': email};
-      if (name.isNotEmpty) patch['name'] = name;
       if (photo.isNotEmpty) patch['vehicle'] = photo;
+      if (role == 'shop') {
+        if (name.isNotEmpty && _isPlaceholderName('${row['name'] ?? ''}')) patch['name'] = name;
+      } else if (name.isNotEmpty) {
+        patch['name'] = name;
+      }
       try {
         await _sbWrite('accounts?id=eq.${row['id']}', 'PATCH', patch);
       } catch (_) {}
       row.addAll(patch);
     }
     if (photo.isNotEmpty) row['photo'] = photo;
-    if (name.isNotEmpty) row['name'] = name;
+    if (role != 'shop' && name.isNotEmpty) row['name'] = name;
     row['email'] = email;
     await _enterRow(row);
   }
@@ -1134,7 +1169,9 @@ class OrderRepository {
       cartNotifier.value = <CartLine>[];
     }
     token = 'sb_$nextId';
-    userNotifier.value = SessionUser.fromJson(row);
+    var session = SessionUser.fromJson(row);
+    if (session.role == 'shop') session = _withShopId(session);
+    userNotifier.value = session;
     await loadFavs();
     await PayCards.load(email: user?.email, id: user?.id, phone: user?.phone);
     connectedNotifier.value = true;
@@ -1345,13 +1382,12 @@ class OrderRepository {
   bool get isShopRegistered {
     final u = user;
     if (u == null || u.role != 'shop') return false;
-    if (_isPlaceholderPhone(u.phone)) return false;
-    final sid = (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null') ? u.shopId! : (u.phone.isNotEmpty ? _shopIdFor(u.phone) : '');
+    final sid = _linkedShopId(u);
     if (sid.isEmpty || _isDemoShop(sid)) return false;
     for (final s in Catalog.shops) {
       if (s.id == sid) return true;
     }
-    if (!_catalogReady && (u.shopId != null && u.shopId!.isNotEmpty && u.shopId != 'null')) return true;
+    if (!_catalogReady) return true;
     return false;
   }
 
@@ -1730,8 +1766,8 @@ class OrderRepository {
     var list = shops.where((s) => !_isDemoShop(s.id) && !_isDemoShopName(s.name)).toList();
     final u = user;
     if (u != null && u.role == 'shop') {
-      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
-      list = list.where((s) => s.id == sid).toList();
+      final sid = _linkedShopId(u);
+      if (sid.isNotEmpty) list = list.where((s) => s.id == sid).toList();
     }
     return list;
   }
@@ -1740,8 +1776,8 @@ class OrderRepository {
     var list = items.where((i) => !_isDemoShop(i.shopId)).toList();
     final u = user;
     if (u != null && u.role == 'shop') {
-      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
-      list = list.where((i) => i.shopId == sid).toList();
+      final sid = _linkedShopId(u);
+      if (sid.isNotEmpty) list = list.where((i) => i.shopId == sid).toList();
     }
     return list;
   }
@@ -1768,8 +1804,8 @@ class OrderRepository {
       return p.isNotEmpty && mine.isNotEmpty && !_isPlaceholderPhone(mine) && (p == mine || _phoneKey(p) == _phoneKey(mine));
     }
     if (u.role == 'shop') {
-      final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
-      return o.shopId == sid;
+      final sid = _linkedShopId(u);
+      return sid.isNotEmpty && o.shopId == sid;
     }
     if (u.role == 'rider') {
       if (o.riderId == u.id || o.riderPhone == u.phone) return true;
@@ -1849,29 +1885,24 @@ class OrderRepository {
     final u = user;
     if (u == null || u.id.isEmpty) return;
     try {
-      final rows = await _sbGet('accounts?id=eq.${Uri.encodeComponent(u.id)}&select=*');
-      if (rows.isEmpty) {
-        userNotifier.value = null;
-        token = null;
-        await _persist();
-        return;
+      var rows = await _sbGet('accounts?id=eq.${Uri.encodeComponent(u.id)}&select=*');
+      if (rows.isEmpty && (u.email ?? '').contains('@')) {
+        try {
+          rows = await _sbGet('accounts?email=eq.${Uri.encodeComponent(u.email!.trim().toLowerCase())}&role=eq.${_roleTag(u.role)}&select=*');
+        } catch (_) {}
       }
+      if (rows.isEmpty) return;
       final m = Map<String, dynamic>.from(rows.first as Map);
-      if (_isDemoAccountMap(m)) {
-        userNotifier.value = null;
-        token = null;
-        await _persist();
-        return;
-      }
+      if (_isDemoAccountMap(m)) return;
       var next = SessionUser.fromJson(m);
       if (next.role == 'shop') {
         final accName = (next.shopName ?? '').trim();
         final prevName = (u.shopName ?? '').trim();
         String? keep;
-        if (accName.isNotEmpty && !_isOwnerLikeShopName(accName, next) && !_isDemoShopName(accName)) {
-          keep = accName;
-        } else if (prevName.isNotEmpty && !_isOwnerLikeShopName(prevName, next) && !_isDemoShopName(prevName)) {
+        if (prevName.isNotEmpty && prevName.toLowerCase() != 'my shop' && !_isDemoShopName(prevName)) {
           keep = prevName;
+        } else if (accName.isNotEmpty && accName.toLowerCase() != 'my shop' && !_isDemoShopName(accName)) {
+          keep = accName;
         }
         next = _withShopId(SessionUser(
           id: next.id,
@@ -1923,7 +1954,8 @@ class OrderRepository {
         return await _sbGet('orders?or=(${parts.join(',')})&select=*');
       }
       if (u.role == 'shop') {
-        final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
+        final sid = _linkedShopId(u);
+        if (sid.isEmpty) return <dynamic>[];
         return await _sbGet('orders?shop_id=eq.${Uri.encodeComponent(sid)}&select=*');
       }
       if (u.role == 'rider') {
@@ -1959,9 +1991,11 @@ class OrderRepository {
       var shopQ = 'shops?select=*&order=id.asc';
       var itemQ = 'menu_items?select=*&order=id.asc';
       if (u != null && u.role == 'shop') {
-        final sid = (u.shopId != null && u.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u.phone);
-        shopQ = 'shops?id=eq.${Uri.encodeComponent(sid)}&select=*';
-        itemQ = 'menu_items?shop_id=eq.${Uri.encodeComponent(sid)}&select=*';
+        final sid = _linkedShopId(u);
+        if (sid.isNotEmpty) {
+          shopQ = 'shops?id=eq.${Uri.encodeComponent(sid)}&select=*';
+          itemQ = 'menu_items?shop_id=eq.${Uri.encodeComponent(sid)}&select=*';
+        }
       }
       final shopRows = await _sbGet(shopQ);
       final itemRows = await _sbGet(itemQ);
@@ -2317,7 +2351,7 @@ class OrderRepository {
     final u = user;
     var sid = id;
     if (sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
-      sid = (u?.shopId != null && u!.shopId!.isNotEmpty) ? u.shopId! : _shopIdFor(u?.phone ?? '');
+      sid = u != null ? _linkedShopId(u) : '';
     }
     if (sid.isEmpty || _isDemoShop(sid)) throw Exception('Missing shop');
     Shop? prev;

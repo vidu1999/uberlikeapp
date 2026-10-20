@@ -464,13 +464,16 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (!mounted) return;
       if (widget.role == UserRole.shop && !OrderRepository.instance.isShopRegistered) {
-        OrderRepository.instance.pendingShop = {
-          ...?OrderRepository.instance.pendingShop,
-          'ownerName': acc.displayName ?? acc.email,
-          'email': acc.email,
-          if ((acc.photoUrl ?? '').isNotEmpty) 'photo': acc.photoUrl!,
-        };
-        await OrderRepository.instance.parkForRegister('shop');
+        final sid = OrderRepository.instance.user?.shopId;
+        if (sid == null || sid.isEmpty || sid == 'null') {
+          OrderRepository.instance.pendingShop = {
+            ...?OrderRepository.instance.pendingShop,
+            'ownerName': acc.displayName ?? acc.email,
+            'email': acc.email,
+            if ((acc.photoUrl ?? '').isNotEmpty) 'photo': acc.photoUrl!,
+          };
+          await OrderRepository.instance.parkForRegister('shop');
+        }
       }
       if (widget.role == UserRole.rider && !OrderRepository.instance.isRiderRegistered) {
         OrderRepository.instance.pendingRider = {

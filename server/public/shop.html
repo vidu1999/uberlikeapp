@@ -7,18 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19zb" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zb" />
-  <link rel="stylesheet" href="/css/track.css?v=19zb" />
+  <link rel="stylesheet" href="/css/app.css?v=19zc" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zc" />
+  <link rel="stylesheet" href="/css/track.css?v=19zc" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19zb"></script>
-  <script src="/js/api.js?v=19zb"></script>
-  <script src="/js/maps.js?v=19zb"></script>
-  <script src="/js/track-ui.js?v=19zb"></script>
-  <script src="/js/otp-login.js?v=19zb"></script>
+  <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="/js/live.js?v=19zc"></script>
+  <script src="/js/api.js?v=19zc"></script>
+  <script src="/js/maps.js?v=19zc"></script>
+  <script src="/js/track-ui.js?v=19zc"></script>
+  <script src="/js/otp-login.js?v=19zc"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -41,7 +43,10 @@
     ];
     function shopId() {
       if (API.user && API.user.shopId) return API.user.shopId;
-      if (API.user && API.user.phone && API.shopIdFor) return API.shopIdFor(API.user.phone);
+      if (API.user && API.user.phone && API.shopIdFor) {
+        if (API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone)) return '';
+        return API.shopIdFor(API.user.phone);
+      }
       return '';
     }
     function isRealWaPhone(p) {
@@ -89,7 +94,13 @@
       const s = API.shops.find((x) => x.id === sid) || {};
       return {
         id: sid,
-        name: s.name || (API.user && API.user.shopName) || 'My Shop',
+        name: (function () {
+          const fromShop = String(s.name || '').trim();
+          const fromUser = String((API.user && API.user.shopName) || '').trim();
+          const n = fromShop || fromUser;
+          if (!n || /^my shop$/i.test(n)) return fromShop || fromUser || 'Shop';
+          return n;
+        })(),
         category: s.category || 'Bakery',
         rating: Number(s.rating || 0) || 5,
         reviews: Number(s.reviews || 0),
@@ -691,10 +702,13 @@
       }
       killRegMap();
       if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
-        const fakePhone = API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone);
-        if (fakePhone || API._shopCatalogReady) {
-          goShopRegister();
-          return;
+        const linked = !!(API.user.shopId || API.user.shop_id);
+        if (!linked) {
+          const fakePhone = API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone);
+          if (fakePhone || API._shopCatalogReady) {
+            goShopRegister();
+            return;
+          }
         }
       }
       if (state.screen === 'chat' && state.orderId) {
@@ -905,7 +919,7 @@
           state.loginId = '';
           state.reg.phone = '';
           if (API.refresh) { try { await API.refresh(); } catch (_) {} }
-          if (API.isShopRegistered && !API.isShopRegistered()) {
+          if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
             goShopRegister();
             return;
           }
@@ -964,7 +978,7 @@
               state.fromReg = false;
               await API.signInPassword(id, pw, 'shop');
               if (API.refresh) { try { await API.refresh(); } catch (_) {} }
-              if (API.isShopRegistered && !API.isShopRegistered()) {
+              if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
                 goShopRegister();
                 return;
               }
@@ -1263,7 +1277,40 @@
       if (!API.user && document.querySelector('[data-otp-root], [data-shop-auth]')) return;
       render({ keepScroll: true });
     });
-    render();
+    async function consumeGoogleRedirect() {
+      const hash = String(location.hash || '').replace(/^#/, '');
+      const hp = new URLSearchParams(hash);
+      const qp = new URLSearchParams(location.search);
+      const access = hp.get('access_token') || qp.get('access_token');
+      const cred = hp.get('credential') || hp.get('id_token') || qp.get('id_token');
+      if (!access && !cred) return false;
+      try { history.replaceState({}, '', location.pathname); } catch (_) {}
+      try {
+        let profile = null;
+        if (cred && API.parseGoogleJwt) profile = API.parseGoogleJwt(cred);
+        if ((!profile || !profile.email) && access) {
+          const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + access } });
+          profile = await r.json();
+        }
+        await API.signInGoogle(profile);
+        if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+        if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id))) {
+          goShopRegister();
+          return true;
+        }
+        state.tab = 'dash';
+        state.auth = 'login';
+        render();
+        return true;
+      } catch (e) {
+        state.auth = 'login';
+        render();
+        const err = document.querySelector('[data-err]');
+        if (err) err.textContent = e.message || 'Google sign-in failed';
+        return true;
+      }
+    }
+    consumeGoogleRedirect().then((ok) => { if (!ok) render(); });
   </script>
 </body>
 </html>

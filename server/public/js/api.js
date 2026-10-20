@@ -450,7 +450,7 @@
       return false;
     }
     if (sameRole(me.role, 'shop')) {
-      const sid = me.shopId || me.shop_id || (me.phone && shopIdFor(me.phone)) || '';
+      const sid = linkedShopId(me);
       return !!(sid && String(o.shopId || o.shop_id || '') === String(sid));
     }
     if (sameRole(me.role, 'rider')) {
@@ -483,9 +483,11 @@
       return;
     }
     if (sameRole(me.role, 'shop')) {
-      const sid = me.shopId || me.shop_id || (me.phone && shopIdFor(me.phone)) || '';
-      API.shops = API.shops.filter((s) => s.id === sid);
-      API.items = API.items.filter((it) => it.shopId === sid);
+      const sid = linkedShopId(me);
+      if (sid) {
+        API.shops = API.shops.filter((s) => s.id === sid);
+        API.items = API.items.filter((it) => it.shopId === sid);
+      }
     }
     API.orders = API.orders.filter((o) => mineOrder(o, me));
     mergeKept();
@@ -668,13 +670,25 @@
     clearAccCache();
   }
 
+  function linkedShopId(user) {
+    if (!user || !sameRole(user.role, 'shop')) return '';
+    let sid = String(user.shopId || user.shop_id || '').trim();
+    if (sid === 'null' || isDemoShop(sid)) sid = '';
+    const phone = user.phone;
+    if (sid && isPlaceholderPhone(phone) && sid === shopIdFor(phone)) sid = '';
+    if (!sid && phone && !isPlaceholderPhone(phone)) sid = shopIdFor(phone);
+    return sid || '';
+  }
+
   function attachShopIdentity(user) {
     if (!user || !sameRole(user.role, 'shop')) return user;
-    let sid = user.shopId || user.shop_id || '';
-    if (!sid || isDemoShop(sid)) sid = user.phone ? shopIdFor(user.phone) : '';
+    const sid = linkedShopId(user);
     if (sid) {
       user.shopId = sid;
       user.shop_id = sid;
+    } else {
+      user.shopId = '';
+      user.shop_id = '';
     }
     return user;
   }
@@ -792,7 +806,7 @@
 
   async function repairShopPublicName(user) {
     if (!user || !sameRole(user.role, 'shop')) return user;
-    const sid = user.shopId || user.shop_id || (user.phone && shopIdFor(user.phone)) || '';
+    const sid = linkedShopId(user);
     if (!sid) return user;
     const shop = API.shops.find((s) => s.id === sid);
     const n = liveShopTitle(sid, shop && shop.name);
@@ -815,11 +829,12 @@
   API.isShopRegistered = function () {
     const u = API.user;
     if (!u || !sameRole(u.role, 'shop')) return false;
-    if (isPlaceholderPhone(u.phone)) return false;
-    const sid = u.shopId || u.shop_id || (u.phone && shopIdFor(u.phone)) || '';
+    const sid = linkedShopId(u);
     if (!sid || isDemoShop(sid)) return false;
     const shop = (API.shops || []).find((s) => s.id === sid);
-    return !!(shop && shop.id);
+    if (shop && shop.id) return true;
+    if (!API._shopCatalogReady) return true;
+    return false;
   };
 
   API.isRiderRegistered = function () {
@@ -849,9 +864,14 @@
   async function ensureShopRow(user, opts) {
     user = attachShopIdentity(user);
     if (!user || !sameRole(user.role, 'shop')) return user;
-    const sid = user.shopId;
-    if (!sid) throw new Error('Shop is not linked to this account.');
-    if (user.id && sbConfigured()) {
+    const sid = linkedShopId(user);
+    if (!sid) {
+      if (opts && opts.required) throw new Error('Shop is not linked to this account.');
+      return user;
+    }
+    user.shopId = sid;
+    user.shop_id = sid;
+    if (user.id && sbConfigured() && !(isPlaceholderPhone(user.phone) && sid === shopIdFor(user.phone))) {
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(user.id), 'PATCH', { shop_id: sid }); } catch (_) {}
     }
     let shop = null;
@@ -1282,30 +1302,32 @@
     const u = API.user;
     if (!u || !u.id || !sbConfigured()) return;
     try {
-      const rows = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(u.id) + '&select=*'));
+      let rows = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(u.id) + '&select=*'));
+      if (!rows[0] && u.email) {
+        try {
+          const byEmail = await lookupEmail(u.email, u.role);
+          if (byEmail) rows = [byEmail];
+        } catch (_) {}
+      }
       if (rows[0] && !isDemoAccount(rows[0])) {
         const mapped = mapAccount(rows[0]);
         const photo = mapped.photo || u.photo || '';
         const name = mapped.name || u.name || '';
         const email = mapped.email || u.email || '';
+        const prevShopId = u.shopId || u.shop_id || mapped.shopId || '';
+        const prevShopName = String(u.shopName || mapped.shopName || '').trim();
         API.user = Object.assign({}, u, mapped);
         if (photo) API.user.photo = photo;
         if (name) API.user.name = name;
         if (email) API.user.email = email;
         if (sameRole(API.user.role, 'shop')) {
+          if (prevShopId && !API.user.shopId) API.user.shopId = prevShopId;
           API.user = attachShopIdentity(API.user);
-          const keep = u.shopName || mapped.shopName || '';
-          if (keep && !isOwnerLikeShopName(keep, API.user) && !isDemoShopName(keep)) API.user.shopName = keep;
-          else if (isOwnerLikeShopName(API.user.shopName, API.user) || isDemoShopName(API.user.shopName)) API.user.shopName = '';
+          const keep = publicNameCandidate(prevShopName, API.user, API.user.shopId)
+            || publicNameCandidate(mapped.shopName, API.user, API.user.shopId)
+            || prevShopName;
+          if (keep && !isDemoShopName(keep) && String(keep).toLowerCase() !== 'my shop') API.user.shopName = keep;
         }
-      } else {
-        API.user = null;
-        API.token = null;
-        try {
-          sessionKeys(API.roleHint).forEach(storeDel);
-          cookieClear(API.roleHint);
-        } catch (_) {}
-        return;
       }
     } catch (_) {}
   }
@@ -1329,7 +1351,7 @@
         if (parts.length) tries.push('orders?or=(' + parts.join(',') + ')&select=*');
       }
     } else if (sameRole(me.role, 'shop')) {
-      const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
+      const sid = linkedShopId(me);
       if (sid) tries.push('orders?shop_id=eq.' + encodeURIComponent(sid) + '&select=*');
     } else if (sameRole(me.role, 'rider')) {
       const parts = ['and(status.eq.ready,rider_id.is.null)', 'status.eq.ready'];
@@ -1372,7 +1394,7 @@
     let shopQ = 'shops?select=*&order=id.asc';
     let itemQ = 'menu_items?select=*&order=id.asc';
     if (me && sameRole(me.role, 'shop')) {
-      const sid = me.shopId || me.shop_id || shopIdFor(me.phone);
+      const sid = linkedShopId(me);
       if (sid) {
         shopQ = 'shops?id=eq.' + encodeURIComponent(sid) + '&select=*';
         itemQ = 'menu_items?shop_id=eq.' + encodeURIComponent(sid) + '&select=*';
@@ -1972,19 +1994,42 @@
     email = String(email || '').trim().toLowerCase();
     if (!email || email.indexOf('@') < 0) return null;
     const want = roleTag(role || 'customer');
+    function hit(raw) {
+      if (!raw) return null;
+      const a = mapAccount(raw);
+      if (!a || !a.id || isDemoAccount(a)) return null;
+      if (String(a.email || '').toLowerCase() !== email) return null;
+      if (!sameRole(a.role, want)) return null;
+      return a;
+    }
     if (sbConfigured()) {
-      try {
-        const rows = asRows(await sbGet('accounts?email=ilike.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*'));
-        for (let i = 0; i < rows.length; i++) {
-          const a = mapAccount(rows[i]);
-          if (a && !isDemoAccount(a) && String(a.email || '').toLowerCase() === email) return a;
-        }
-      } catch (_) {}
+      const quoted = '"' + email.replace(/"/g, '') + '"';
+      const tries = [
+        'accounts?id=eq.' + encodeURIComponent(accountIdForEmail(email, want)) + '&select=*',
+        'accounts?email=eq.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*',
+        'accounts?email=eq.' + quoted + '&role=eq.' + encodeURIComponent(want) + '&select=*',
+        'accounts?email=ilike.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*',
+      ];
+      for (let t = 0; t < tries.length; t++) {
+        try {
+          const rows = asRows(await sbGet(tries[t]));
+          for (let i = 0; i < rows.length; i++) {
+            const a = hit(rows[i]);
+            if (a) return a;
+            if (t === 0 && rows[i]) {
+              const mapped = mapAccount(rows[i]);
+              if (mapped && mapped.id && sameRole(mapped.role, want) && !isDemoAccount(mapped)) return mapped;
+            }
+          }
+        } catch (_) {}
+      }
     }
     const list = await allAccounts();
-    return list.find(function (a) {
-      return String(a.email || '').toLowerCase() === email && sameRole(a.role, want) && !isDemoAccount(a);
-    }) || null;
+    const matches = list.filter(function (a) { return !!hit(a); });
+    if (!matches.length) return null;
+    const withShop = matches.find(function (a) { return !!(a.shopId || a.shop_id); });
+    const withWa = matches.find(function (a) { return !isPlaceholderPhone(a.phone); });
+    return withShop || withWa || matches[0];
   }
 
   function parseJwt(tok) {
@@ -2012,9 +2057,21 @@
       const byPhone = await lookupPhone(googlePhone(g.sub, email), role);
       if (byPhone && String(byPhone.email || '').toLowerCase() === email) row = byPhone;
     }
+    if (!row && role === 'shop') {
+      try {
+        const all = await allAccounts();
+        const shops = all.filter(function (a) {
+          return sameRole(a.role, 'shop') && String(a.email || '').toLowerCase() === email && !isDemoAccount(a);
+        });
+        row = shops.find(function (a) { return !!(a.shopId || a.shop_id); })
+          || shops.find(function (a) { return !isPlaceholderPhone(a.phone); })
+          || shops[0]
+          || null;
+      } catch (_) {}
+    }
     const photo = g.photo || (row && row.photo) || '';
     if (!row) {
-      row = await saveAccount({
+      const stub = {
         id: accountIdForEmail(email, role),
         name: name,
         phone: googlePhone(g.sub, email),
@@ -2023,18 +2080,41 @@
         role: role,
         address: 'Sri Lanka',
         vehicle: photo || null,
-      });
+      };
+      try {
+        row = await saveAccount(stub);
+      } catch (_) {
+        row = stub;
+      }
+      try {
+        const existing = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(stub.id) + '&select=*'));
+        if (existing[0] && !isDemoAccount(existing[0])) row = mapAccount(existing[0]);
+      } catch (_) {}
+      if (!row.email) row.email = email;
     } else {
       const patch = { email: email };
-      if (name) patch.name = name;
       if (photo) patch.vehicle = photo;
+      if (sameRole(role, 'shop')) {
+        if (name && isPlaceholderName(row.name)) patch.name = name;
+      } else if (name) {
+        patch.name = name;
+      }
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch); } catch (_) {}
       Object.assign(row, patch);
     }
     row.photo = photo || row.photo;
-    row.name = name || row.name;
+    if (!(sameRole(role, 'shop') && row.name && !isPlaceholderName(row.name))) {
+      row.name = name || row.name;
+    }
     row.email = email;
-    return enterMapped(row);
+    const user = enterMapped(row);
+    if (sameRole(role, 'shop')) {
+      API.user = attachShopIdentity(API.user);
+      try { API.user = await ensureShopRow(API.user); } catch (_) {}
+      try { API.user = await repairShopPublicName(API.user); } catch (_) {}
+      try { saveSession(); } catch (_) {}
+    }
+    return API.user || user;
   };
 
   function withWaPin(pin) {
@@ -2075,12 +2155,15 @@
     if (row && row.photo) next.photo = row.photo;
     if (row && row.email) next.email = row.email;
     if (row && row.name) next.name = row.name;
+    if (row && (row.shopId || row.shop_id)) next.shopId = row.shopId || row.shop_id;
+    if (row && (row.shopName || row.shop_name)) next.shopName = row.shopName || row.shop_name;
     if (!API.user || API.user.id !== next.id) {
       resetKept();
       API.orders = [];
       API.messages = {};
     }
     API.user = next;
+    if (sameRole(next.role, 'shop')) API.user = attachShopIdentity(API.user);
     API.token = 'sb_' + row.id;
     saveSession();
     notify(true);
@@ -2730,7 +2813,7 @@
   };
 
   API.saveShop = async function (shop) {
-    const id = (API.user && sameRole(API.user.role, 'shop') && (API.user.shopId || (API.user.phone && shopIdFor(API.user.phone))))
+    const id = (API.user && sameRole(API.user.role, 'shop') && linkedShopId(API.user))
       || shop.id || '';
     if (!id || isDemoShop(id)) throw new Error('Missing shop');
     const prev = API.shops.find((s) => s.id === id) || {};
@@ -2824,9 +2907,9 @@
       throw new Error('Register your shop first, then add items.');
     }
     if (!API.isShopRegistered()) throw new Error('Register your shop first, then add items.');
-    let sid = item.shopId || item.shop_id || (API.user && API.user.shopId) || '';
+    let sid = item.shopId || item.shop_id || linkedShopId(API.user) || '';
     if (!sid || isDemoShop(sid)) {
-      sid = (API.user && API.user.phone && shopIdFor(API.user.phone)) || '';
+      sid = linkedShopId(API.user) || '';
     }
     if (!sid) throw new Error('Shop is not in the database. Register the shop, then add items.');
     if (!String(item.name || '').trim()) throw new Error('Enter an item name.');

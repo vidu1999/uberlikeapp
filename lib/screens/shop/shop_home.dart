@@ -39,7 +39,10 @@ class _ShopHomeState extends State<ShopHome> {
     await OrderRepository.instance.refresh();
     if (!mounted) return;
     if (!OrderRepository.instance.isShopRegistered) {
-      await OrderRepository.instance.parkForRegister('shop');
+      final sid = OrderRepository.instance.user?.shopId;
+      if (sid == null || sid.isEmpty || sid == 'null') {
+        await OrderRepository.instance.parkForRegister('shop');
+      }
     }
   }
 
@@ -57,7 +60,9 @@ class _ShopHomeState extends State<ShopHome> {
     final id = u?.shopId;
     if (id != null && id.isNotEmpty && id != 'null') return id;
     final phone = u?.phone ?? '';
-    if (phone.isNotEmpty) return OrderRepository.instance.shopIdForPhone(phone);
+    if (phone.isNotEmpty && !RegExp(r'^(99|98)\d{8}$').hasMatch(phone.replaceAll(RegExp(r'\D'), ''))) {
+      return OrderRepository.instance.shopIdForPhone(phone);
+    }
     return '';
   }
 
