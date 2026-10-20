@@ -10,16 +10,16 @@
   <link rel="stylesheet" href="/css/app.css?v=19y" />
   <link rel="stylesheet" href="/css/ui.css?v=19y" />
   <link rel="stylesheet" href="/css/track.css?v=19y" />
-  <link rel="stylesheet" href="/css/qb.css?v=19y" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zg" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19zf"></script>
-  <script src="/js/api.js?v=19zf"></script>
-  <script src="/js/maps.js?v=19zf"></script>
-  <script src="/js/track-ui.js?v=19zf"></script>
+  <script src="/js/live.js?v=19zg"></script>
+  <script src="/js/api.js?v=19zg"></script>
+  <script src="/js/maps.js?v=19zg"></script>
+  <script src="/js/track-ui.js?v=19zg"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -88,6 +88,7 @@
       loginNote: '',
       reg: { name: '', phone: '', email: '', password: '' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'order' },
+      rateDraft: null,
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
@@ -514,16 +515,21 @@
       const liked = state.favs.includes(id);
       return `<button type="button" class="heart ${liked ? 'on' : ''}" data-fav="${id}" aria-label="${liked ? 'Remove favourite' : 'Add favourite'}">${liked ? SVG.heartOn : SVG.heart}</button>`;
     }
+    function shopRateText(s) {
+      if (API.rateLabel) return API.rateLabel(s.rating, s.reviews);
+      const n = Number(s.reviews) || 0;
+      if (n <= 0) return 'New';
+      return '★ ' + Number(s.rating || 0).toFixed(1) + ' (' + n + ')';
+    }
     function shopRow(s, asCard) {
       const km = distKm(s);
-      const rev = s.reviews >= 100 ? s.reviews + '+' : (s.reviews || 0);
       const cls = asCard ? 'shop-card' : 'shop-row';
       return `<div class="${cls}" data-shop="${s.id}">
         <img class="thumb" src="${shopImg(s)}" alt="" />
         <div class="grow">
           <div class="name-row"><div class="name">${esc((API.shopTitle && API.shopTitle(s)) || s.name)}</div>${heartBtn(s.id)}</div>
           <div class="meta">${esc(s.category || 'Shop')}</div>
-          <div class="rate"><span class="star">★</span> ${Number(s.rating || 0).toFixed(1)} <em>(${rev})</em> · ${km} km</div>
+          <div class="rate">${Number(s.reviews) > 0 ? `<span class="star">★</span> ${Number(s.rating || 0).toFixed(1)} <em>(${Number(s.reviews)})</em>` : 'New'} · ${km} km</div>
         </div>
       </div>`;
     }
@@ -533,7 +539,7 @@
         <img class="thumb" src="${itemImg(it)}" alt="" />
         <div class="grow">
           <div class="name">${esc(it.name)}</div>
-          <div class="meta">${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || 'Shop')}</div>
+          <div class="meta">${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || 'Shop')}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : ''}</div>
           <div class="price">${rs(it.price)}</div>
         </div>
         ${it.isAvailable === false ? `<span class="muted">Sold out</span>` : `<button class="add" data-add="${esc(it.id)}">Add</button>`}
@@ -722,7 +728,7 @@
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
           <div class="overlay">
             <div class="name-row"><h1>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name)}</h1>${heartBtn(shop.id)}</div>
-            <div>★ ${shop.rating} (${shop.reviews || 0}+) · ${distKm(shop)} km</div>
+            <div>${esc(shopRateText(shop))} · ${distKm(shop)} km</div>
             <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
             ${shop.address ? `<div>${esc(shop.address)}</div>` : ''}
           </div>
@@ -736,10 +742,10 @@
           <div class="menu-cats">${cats.map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
           ${list.map((it)=>`<div class="menu-row">
             <img src="${itemImg(it)}" alt="" />
-            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}</div></div>
+            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
             ${it.isAvailable ? `<button class="add" data-add="${it.id}">Add</button>` : `<span class="muted">Sold out</span>`}
           </div>`).join('')}
-        ` : state.menuTab==='reviews' ? `<div class="pad"><p>★ ${shop.rating} from ${shop.reviews || 0} reviews (from database).</p></div>`
+        ` : state.menuTab==='reviews' ? `<div class="pad"><p>${esc(shopRateText(shop))}${Number(shop.reviews) > 0 ? ' from customers after delivery.' : ' — ratings appear after delivered orders.'}</p></div>`
           : `<div class="pad"><p>${esc(shop.address)}</p><p class="muted">${esc(shop.hours)}</p></div>`}
       </div>${cartbar()}${nav()}`;
     }
@@ -873,12 +879,56 @@
       if (o.status === 'delivered') return doneView(o);
       return TrackUI.screen(o, 'customer');
     }
-    function doneView() {
-      return `<div class="qb-done">
+    function starsHtml(kind, value, itemKey, locked) {
+      let html = `<div class="qb-stars" data-rate="${esc(kind)}"${itemKey ? ` data-item="${esc(itemKey)}"` : ''}>`;
+      for (let i = 1; i <= 5; i++) {
+        html += `<button type="button" class="${i <= value ? 'on' : ''}" data-star="${i}" ${locked ? 'disabled' : ''} aria-label="${i} star">★</button>`;
+      }
+      return html + '</div>';
+    }
+    function doneView(o) {
+      o = o || API.orders.find((x) => x.id === state.trackId) || state.lastOrder;
+      if (!o) {
+        return `<div class="qb-done">
+          <div class="ok"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="m5 12 5 5 9-10"/></svg></div>
+          <h1>Order Delivered!</h1>
+          <p class="muted">Your food has been delivered successfully.</p>
+          <button class="btn-qb" data-done>Done</button>
+        </div>`;
+      }
+      const saved = o.ratings || {};
+      const clamp = API.clampStar || function (n) { n = Math.round(Number(n) || 0); return n < 1 || n > 5 ? 0 : n; };
+      if (!state.rateDraft || state.rateDraft.id !== o.id) {
+        const items = {};
+        Object.keys(saved.items || {}).forEach((k) => { items[k] = clamp(saved.items[k]); });
+        state.rateDraft = { id: o.id, shop: clamp(saved.shop), rider: clamp(saved.rider), items: items, err: '', busy: false };
+      }
+      const locked = !!(API.orderRated && API.orderRated(o));
+      const lines = (API.uniqueOrderItems && API.uniqueOrderItems(o)) || [];
+      const hasRider = !!(o.riderId || o.riderName);
+      const d = state.rateDraft;
+      return `<div class="qb-done" data-done-root="${esc(o.id)}" data-rated="${locked ? '1' : '0'}">
         <div class="ok"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6"><path d="m5 12 5 5 9-10"/></svg></div>
         <h1>Order Delivered!</h1>
         <p class="muted">Your food has been delivered successfully.</p>
         <img class="art" src="/img/delivered-hero.jpg" alt="" />
+        <div class="qb-rate">
+          <h3>${locked ? 'Thanks for rating' : 'Rate your order'}</h3>
+          <div class="qb-rate-row">
+            <div class="qb-rate-who"><b>Shop</b><span>${esc(o.shopName || 'Shop')}</span></div>
+            ${starsHtml('shop', d.shop, '', locked)}
+          </div>
+          ${lines.map((it) => `<div class="qb-rate-row">
+            <div class="qb-rate-who"><b>Item</b><span>${esc(it.name)}</span></div>
+            ${starsHtml('item', d.items[it.key] || 0, it.key, locked)}
+          </div>`).join('')}
+          ${hasRider ? `<div class="qb-rate-row">
+            <div class="qb-rate-who"><b>Rider</b><span>${esc(o.riderName || 'Rider')}</span></div>
+            ${starsHtml('rider', d.rider, '', locked)}
+          </div>` : ''}
+          ${d.err ? `<p class="err">${esc(d.err)}</p>` : ''}
+        </div>
+        ${locked ? '' : `<button class="btn-qb" data-rate-submit ${d.busy ? 'disabled' : ''}>${d.busy ? 'Saving…' : 'Submit ratings'}</button>`}
         <button class="btn-qb" data-done>Done</button>
         <button class="btn-ghost-qb" data-tab="orders">View Order Details</button>
       </div>`;
@@ -1180,7 +1230,17 @@
       if (state.screen === 'paymethods') { root.innerHTML = payMethodsView(); bindApp(); return; }
       if (state.screen === 'shop') { root.innerHTML = shopView(); bindApp(); return; }
       if (state.screen === 'search') { root.innerHTML = searchView(); bindApp(); return; }
-      if (state.screen === 'done') { root.innerHTML = doneView(); bindApp(); return; }
+      if (state.screen === 'done') {
+        const oDone = API.orders.find((x) => x.id === state.trackId) || state.lastOrder;
+        const rated = (API.orderRated && API.orderRated(oDone)) ? '1' : '0';
+        const existing = root.querySelector('[data-done-root]');
+        if (existing && oDone && existing.getAttribute('data-done-root') === oDone.id && existing.getAttribute('data-rated') === rated) {
+          return;
+        }
+        root.innerHTML = doneView(oDone);
+        bindApp();
+        return;
+      }
       if (state.screen === 'track') {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (o && o.status === 'delivered') {
@@ -1701,6 +1761,54 @@
       root.querySelectorAll('[data-back-track]').forEach((b) => b.onclick = () => { state.screen = 'track'; state.lockTrack = true; render(); });
       root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = leaveTrack);
       root.querySelectorAll('[data-done]').forEach((b) => b.onclick = leaveTrack);
+      function paintStars(el, n) {
+        if (!el) return;
+        el.querySelectorAll('[data-star]').forEach((btn) => {
+          btn.classList.toggle('on', Number(btn.dataset.star) <= n);
+        });
+      }
+      root.querySelectorAll('[data-star]').forEach((b) => {
+        b.onclick = () => {
+          if (b.disabled) return;
+          const wrap = b.closest('[data-rate]');
+          if (!wrap) return;
+          const n = Number(b.dataset.star);
+          if (!state.rateDraft) state.rateDraft = { id: state.trackId, shop: 0, rider: 0, items: {}, err: '' };
+          const kind = wrap.dataset.rate;
+          const item = wrap.dataset.item;
+          if (kind === 'shop') state.rateDraft.shop = n;
+          else if (kind === 'rider') state.rateDraft.rider = n;
+          else if (item) state.rateDraft.items[item] = n;
+          state.rateDraft.err = '';
+          paintStars(wrap, n);
+        };
+      });
+      const rateSubmit = root.querySelector('[data-rate-submit]');
+      if (rateSubmit) rateSubmit.onclick = async () => {
+        const o = API.orders.find((x) => x.id === state.trackId) || state.lastOrder;
+        if (!o || !API.rateOrder) return;
+        const d = state.rateDraft || { shop: 0, rider: 0, items: {} };
+        if (!(API.clampStar ? API.clampStar(d.shop) : d.shop)) {
+          d.err = 'Tap stars to rate the shop.';
+          state.rateDraft = Object.assign({ id: o.id, items: {} }, d);
+          render();
+          return;
+        }
+        d.busy = true; d.err = '';
+        state.rateDraft = Object.assign({ id: o.id }, d);
+        rateSubmit.disabled = true;
+        rateSubmit.textContent = 'Saving…';
+        try {
+          await API.rateOrder(o.id, { shop: d.shop, rider: d.rider, items: d.items });
+          state.rateDraft = null;
+          render();
+        } catch (e) {
+          d.busy = false;
+          d.err = (e && e.message) || 'Could not save ratings.';
+          state.rateDraft = Object.assign({ id: o.id }, d);
+          render();
+        }
+      };
       root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
         if (!state.mapHandle) return;
         if (b.dataset.zoom === 'in') state.mapHandle.zoomIn(); else state.mapHandle.zoomOut();

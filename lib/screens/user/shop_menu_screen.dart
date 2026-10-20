@@ -81,7 +81,7 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
                           ],
                         ),
                         Text(
-                          '★ ${widget.shop.rating} · ${UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, widget.shop.lat, widget.shop.lng, widget.shop.km)} km',
+                          '${widget.shop.rateLabel} · ${UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, widget.shop.lat, widget.shop.lng, widget.shop.km)} km',
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, shadows: [Shadow(blurRadius: 8, color: Colors.black54)]),
                         ),
                       ],
@@ -126,7 +126,11 @@ class _ShopMenuScreenState extends State<ShopMenuScreen> {
                             : Image.network(img, width: 64, height: 64, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(width: 64, height: 64, color: Brand.search)),
                       ),
                       title: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text('Rs. ${it.price.toStringAsFixed(0)}'),
+                      subtitle: Text(
+                        it.reviews > 0
+                            ? 'Rs. ${it.price.toStringAsFixed(0)} · ${it.rateLabel}'
+                            : 'Rs. ${it.price.toStringAsFixed(0)}',
+                      ),
                       trailing: it.isAvailable
                           ? FilledButton(
                               style: FilledButton.styleFrom(backgroundColor: Brand.green),

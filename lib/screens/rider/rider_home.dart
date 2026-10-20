@@ -227,9 +227,14 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   String _riderStarsLabel() {
-    final n = OrderRepository.instance.orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).length;
-    if (n == 0) return 'New rider';
-    return '$n deliveries';
+    final mine = OrderRepository.instance.orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).toList();
+    final rated = mine.where((o) => o.riderRating >= 1).toList();
+    if (rated.isNotEmpty) {
+      final avg = rated.fold<int>(0, (s, o) => s + o.riderRating) / rated.length;
+      return '★ ${avg.toStringAsFixed(1)} (${rated.length})';
+    }
+    if (mine.isEmpty) return 'New rider';
+    return '${mine.length} deliveries';
   }
 
   Widget _thumb(Order o, double size) {

@@ -334,7 +334,7 @@ class _CustomerHomeState extends State<CustomerHome> {
           ..._shops.map((s) {
             final liked = OrderRepository.instance.favs.contains(s.id);
             final km = _km(s);
-            final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews == 0 ? '120+' : s.reviews}';
+            final rev = s.rateLabel;
             return InkWell(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ShopMenuScreen(shop: s))),
               child: Padding(
@@ -361,9 +361,8 @@ class _CustomerHomeState extends State<CustomerHome> {
                           ),
                           Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
                           Row(children: [
-                            const Icon(Icons.star_rounded, color: Brand.star, size: 16),
-                            Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                            Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                            if (s.reviews > 0) const Icon(Icons.star_rounded, color: Brand.star, size: 16),
+                            Text(s.reviews > 0 ? ' $rev · $km km' : 'New · $km km', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                           ]),
                         ],
                       ),

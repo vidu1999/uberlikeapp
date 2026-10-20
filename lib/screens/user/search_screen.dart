@@ -125,7 +125,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget _shopCard(Shop s) {
     final liked = OrderRepository.instance.favs.contains(s.id);
     final km = UserPlace.kmLabel(UserPlace.instance.lat, UserPlace.instance.lng, s.lat, s.lng, s.km);
-    final rev = s.reviews >= 100 ? '${s.reviews}+' : '${s.reviews}';
+    final rev = s.rateLabel;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
@@ -159,9 +159,8 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                     Text(s.category.isEmpty ? 'Shop' : s.category, style: const TextStyle(color: Brand.muted, fontSize: 12)),
                     Row(children: [
-                      const Icon(Icons.star_rounded, color: Brand.star, size: 16),
-                      Text(' ${s.rating.toStringAsFixed(1)} ', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                      Text('($rev) · $km km', style: const TextStyle(color: Brand.soft, fontSize: 12)),
+                      if (s.reviews > 0) const Icon(Icons.star_rounded, color: Brand.star, size: 16),
+                      Text(s.reviews > 0 ? ' $rev · $km km' : 'New · $km km', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                     ]),
                   ],
                 ),

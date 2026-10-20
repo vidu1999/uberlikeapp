@@ -54,9 +54,9 @@
     const orders = (API.orders || []).map((o) =>
       [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng, o.paymentStatus || '', o.paid ? '1' : '0'].join(':')
     ).join('|');
-    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1')).join('|');
+    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1') + ':' + (i.rating || '') + ':' + (i.reviews || '')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
-    const shops = (API.shops || []).map((s) => (s && s.id) + ':' + (s && s.name || '')).join('|');
+    const shops = (API.shops || []).map((s) => (s && s.id) + ':' + (s && s.name || '') + ':' + (s && s.rating) + ':' + (s && s.reviews)).join('|');
     return [(API.user && API.user.id) || '', shops, items, orders, msgs].join('~');
   }
   function notify(force) {
@@ -350,8 +350,102 @@
     o.shopLng = finiteNum(d.shopLng != null ? d.shopLng : o.shopLng);
     o.shopAddress = d.shopAddress || o.shopAddress || o.shop_address || '';
     o.pickedUpAt = d.pickedUpAt || o.pickedUpAt || r.picked_up_at || null;
+    o.ratings = d.ratings || o.ratings || null;
     return o;
   }
+
+  function clampStar(n) {
+    n = Math.round(Number(n) || 0);
+    if (n < 1 || n > 5) return 0;
+    return n;
+  }
+  function itemRateKey(it) {
+    const id = String((it && (it.id || it.itemId)) || '').trim();
+    if (id) return id;
+    return String((it && it.name) || '').trim();
+  }
+  function uniqueOrderItems(o) {
+    const seen = {};
+    const out = [];
+    ((o && o.items) || []).forEach(function (it) {
+      const k = itemRateKey(it);
+      if (!k || seen[k]) return;
+      seen[k] = 1;
+      out.push({ key: k, name: String(it.name || k), id: it.id || '' });
+    });
+    return out;
+  }
+  function bagAvg(rec) {
+    if (!rec || !rec.n) return null;
+    return Math.round((Number(rec.sum) / Number(rec.n)) * 10) / 10;
+  }
+  function applyRatingOverlay() {
+    const bag = API.ratings;
+    if (!bag) return;
+    (API.shops || []).forEach(function (s) {
+      const rec = bag.shops && bag.shops[s.id];
+      if (rec && rec.n) {
+        s.rating = bagAvg(rec);
+        s.reviews = rec.n;
+      }
+    });
+    (API.items || []).forEach(function (it) {
+      const rec = (bag.items && (bag.items[it.id] || bag.items[it.name])) || null;
+      if (rec && rec.n) {
+        it.rating = bagAvg(rec);
+        it.reviews = rec.n;
+      }
+    });
+  }
+  async function loadRatingsBag() {
+    API.ratings = API.ratings || { shops: {}, riders: {}, items: {} };
+    try {
+      const rows = asRows(await sbGet('app_state?id=eq.qb_ratings&select=*'));
+      let p = rows[0] && rows[0].payload;
+      if (typeof p === 'string') {
+        try { p = JSON.parse(p); } catch (_) { p = null; }
+      }
+      if (p && typeof p === 'object') {
+        API.ratings = {
+          shops: p.shops && typeof p.shops === 'object' ? p.shops : {},
+          riders: p.riders && typeof p.riders === 'object' ? p.riders : {},
+          items: p.items && typeof p.items === 'object' ? p.items : {},
+        };
+      }
+    } catch (_) {}
+    applyRatingOverlay();
+    return API.ratings;
+  }
+  function bumpBag(group, key, stars) {
+    if (!key || !stars) return;
+    const bag = API.ratings[group] || (API.ratings[group] = {});
+    const cur = bag[key] || { sum: 0, n: 0 };
+    bag[key] = { sum: (Number(cur.sum) || 0) + stars, n: (Number(cur.n) || 0) + 1 };
+  }
+  async function saveRatingsBag() {
+    const payload = API.ratings || { shops: {}, riders: {}, items: {} };
+    try {
+      await sbPutRow('app_state', { id: 'qb_ratings', payload: payload });
+    } catch (_) {
+      try { await sbSend('app_state?id=eq.qb_ratings', 'PATCH', { payload: payload }); } catch (_) {}
+    }
+  }
+  API.orderRated = function (o) {
+    return !!(o && o.ratings && clampStar(o.ratings.shop));
+  };
+  API.rateLabel = function (rating, reviews) {
+    const n = Number(reviews) || 0;
+    const r = Number(rating) || 0;
+    if (n <= 0) return 'New';
+    return '★ ' + r.toFixed(1) + ' (' + n + ')';
+  };
+  API.itemRateOf = function (id) {
+    const rec = API.ratings && API.ratings.items && (API.ratings.items[id]);
+    if (!rec || !rec.n) return null;
+    return { rating: bagAvg(rec), reviews: rec.n };
+  };
+  API.uniqueOrderItems = uniqueOrderItems;
+  API.clampStar = clampStar;
 
   const DEMO_SHOP_IDS = ['SHOP_1','SHOP_2','SHOP_3','SHOP_4','SHOP_5','SHOP_6','SHOP_7','SHOP_8','SHOP_9','SHOP_10','SHOP_11'];
   const DEMO_ACCOUNT_IDS = ['USER_1','USER_2','SHOP_STAFF','RIDER_77'];
@@ -1448,8 +1542,10 @@
     API.orders = asRows(orderRows).map(mapOrder).map((o) => {
       const p = prevById[o.id];
       if (p) o.status = mergeStatus(p.status, o.status);
+      if (p && p.ratings && !o.ratings) o.ratings = p.ratings;
       return o;
     });
+    try { await loadRatingsBag(); } catch (_) { applyRatingOverlay(); }
     scopeData();
     API._shopCatalogReady = true;
     if (API.user && sameRole(API.user.role, 'shop')) {
@@ -2808,6 +2904,60 @@
       delete _locPend[id];
     }
     return enqueuePatch(id, function () { return writePatch(id, body); });
+  };
+
+  API.rateOrder = async function (id, input) {
+    input = input || {};
+    const o = API.orders.find(function (x) { return x.id === id; });
+    if (!o || o.status !== 'delivered') throw new Error('Rate after the order is delivered.');
+    if (API.orderRated(o)) return o;
+    const shopStars = clampStar(input.shop);
+    if (!shopStars) throw new Error('Tap stars to rate the shop.');
+    const riderStars = clampStar(input.rider);
+    const itemsIn = input.items && typeof input.items === 'object' ? input.items : {};
+    const itemMap = {};
+    uniqueOrderItems(o).forEach(function (it) {
+      const s = clampStar(itemsIn[it.key] != null ? itemsIn[it.key] : itemsIn[it.id]);
+      if (s) itemMap[it.key] = s;
+    });
+    const ratings = {
+      shop: shopStars,
+      rider: riderStars || 0,
+      items: itemMap,
+      at: new Date().toISOString(),
+      by: (API.user && API.user.id) || '',
+    };
+    await API.patch(id, { ratings: ratings });
+    const bag = await loadRatingsBag();
+    const sid = o.shopId;
+    if (sid && bag.shops && !bag.shops[sid]) {
+      const shop = (API.shops || []).find(function (s) { return s.id === sid; });
+      if (shop && Number(shop.reviews) > 0) {
+        bag.shops[sid] = { sum: Number(shop.rating || 0) * Number(shop.reviews), n: Number(shop.reviews) };
+      }
+    }
+    bumpBag('shops', sid, shopStars);
+    if (o.riderId && riderStars) bumpBag('riders', o.riderId, riderStars);
+    Object.keys(itemMap).forEach(function (k) { bumpBag('items', k, itemMap[k]); });
+    await saveRatingsBag();
+    applyRatingOverlay();
+    const shopRec = API.ratings.shops && API.ratings.shops[sid];
+    if (sid && shopRec) {
+      const rating = bagAvg(shopRec);
+      const reviews = shopRec.n;
+      const shop = (API.shops || []).find(function (s) { return s.id === sid; });
+      if (shop) { shop.rating = rating; shop.reviews = reviews; }
+      try { await sbSend('shops?id=eq.' + encodeURIComponent(sid), 'PATCH', { rating: rating, reviews: reviews }); } catch (_) {}
+    }
+    if (o.riderId && riderStars) {
+      const rec = API.ratings.riders && API.ratings.riders[o.riderId];
+      const rating = bagAvg(rec);
+      if (rating != null) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(o.riderId), 'PATCH', { rating: rating }); } catch (_) {}
+      }
+    }
+    notify(true);
+    return API.orders.find(function (x) { return x.id === id; }) || o;
   };
 
   API.claimOrder = async function (id) {

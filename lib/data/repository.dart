@@ -22,6 +22,7 @@ class OrderRepository {
   final ValueNotifier<List<CartLine>> cartNotifier = ValueNotifier<List<CartLine>>(<CartLine>[]);
   final ValueNotifier<Set<String>> favsNotifier = ValueNotifier<Set<String>>(<String>{});
   final Map<String, List<ChatMessage>> messages = {};
+  Map<String, dynamic> _rateBag = const {'shops': <String, dynamic>{}, 'riders': <String, dynamic>{}, 'items': <String, dynamic>{}};
 
   Timer? _poll;
   bool _started = false;
@@ -1854,7 +1855,11 @@ class OrderRepository {
       final p = prev[o.id];
       if (p == null) return o;
       final status = OrderStatusX.later(o.status, p.status);
-      return status == o.status ? o : o.copyWith(status: status);
+      var next = status == o.status ? o : o.copyWith(status: status);
+      if (!next.rated && p.rated) {
+        next = next.copyWith(shopRating: p.shopRating, riderRating: p.riderRating, itemRatings: p.itemRatings);
+      }
+      return next;
     }).toList();
   }
 
@@ -2012,13 +2017,16 @@ class OrderRepository {
       final shopRows = await _sbGet(shopQ);
       final itemRows = await _sbGet(itemQ);
       final orderRows = await _fetchMyOrderRows();
+      try {
+        await _loadRateBag();
+      } catch (_) {}
       var shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
       shops = shops.map((s) {
         final want = (_persistedNames[s.id] ?? '').trim();
-        if (want.isNotEmpty && want != s.name) return _shopWithName(s, want);
-        return s;
+        final named = (want.isNotEmpty && want != s.name) ? _shopWithName(s, want) : s;
+        return _shopWithRates(named);
       }).toList();
-      final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map))));
+      final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))).map(_itemWithRates).toList();
       Catalog.set(shops, items);
       _catalogReady = true;
       ordersNotifier.value = _retainStatus(
@@ -2200,7 +2208,7 @@ class OrderRepository {
       userId: u?.id ?? '',
       shopId: cart.first.shopId,
       status: OrderStatus.pending,
-      items: cart.map((e) => DeliveryItem(name: e.name, qty: e.qty, price: e.price)).toList(),
+      items: cart.map((e) => DeliveryItem(id: e.id, name: e.name, qty: e.qty, price: e.price)).toList(),
       totalAmount: cartTotal + fee,
       deliveryLat: dlat,
       deliveryLng: dlng,
@@ -2489,6 +2497,184 @@ class OrderRepository {
     await refresh();
   }
 
+  Map<String, dynamic> _rateGroup(String key) {
+    final raw = _rateBag[key];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return <String, dynamic>{};
+  }
+
+  ({double rating, int n})? _bagAvg(String group, String id) {
+    if (id.isEmpty) return null;
+    final rec = _rateGroup(group)[id];
+    if (rec is! Map) return null;
+    final n = (rec['n'] as num?)?.toInt() ?? 0;
+    final sum = (rec['sum'] as num?)?.toDouble() ?? 0;
+    if (n <= 0) return null;
+    return (rating: (sum / n * 10).round() / 10, n: n);
+  }
+
+  ({double rating, int n})? itemRateOf(String id) => _bagAvg('items', id);
+
+  void _bumpBag(String group, String id, int stars) {
+    if (id.isEmpty || stars < 1) return;
+    final bag = Map<String, dynamic>.from(_rateGroup(group));
+    final rec = bag[id];
+    final n = rec is Map ? ((rec['n'] as num?)?.toInt() ?? 0) : 0;
+    final sum = rec is Map ? ((rec['sum'] as num?)?.toDouble() ?? 0) : 0;
+    bag[id] = {'sum': sum + stars, 'n': n + 1};
+    _rateBag = {
+      'shops': group == 'shops' ? bag : _rateGroup('shops'),
+      'riders': group == 'riders' ? bag : _rateGroup('riders'),
+      'items': group == 'items' ? bag : _rateGroup('items'),
+    };
+  }
+
+  Future<void> _loadRateBag() async {
+    try {
+      for (final raw in await _sbGet('app_state?id=eq.qb_ratings&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        dynamic p = m['payload'];
+        if (p is String) {
+          try {
+            p = jsonDecode(p);
+          } catch (_) {
+            p = null;
+          }
+        }
+        if (p is! Map) continue;
+        final map = Map<String, dynamic>.from(p);
+        _rateBag = {
+          'shops': Map<String, dynamic>.from(map['shops'] as Map? ?? const {}),
+          'riders': Map<String, dynamic>.from(map['riders'] as Map? ?? const {}),
+          'items': Map<String, dynamic>.from(map['items'] as Map? ?? const {}),
+        };
+        return;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveRateBag() async {
+    try {
+      await _sbUpsert('app_state', [
+        {'id': 'qb_ratings', 'payload': _rateBag},
+      ]);
+    } catch (_) {
+      try {
+        await _sbWrite('app_state?id=eq.qb_ratings', 'PATCH', {'payload': _rateBag});
+      } catch (_) {}
+    }
+  }
+
+  Shop _shopWithRates(Shop s) {
+    final rec = _bagAvg('shops', s.id);
+    if (rec == null) return s;
+    return Shop(
+      id: s.id,
+      name: s.name,
+      category: s.category,
+      rating: rec.rating,
+      isOpen: s.isOpen,
+      lat: s.lat,
+      lng: s.lng,
+      image: s.image,
+      km: s.km,
+      reviews: rec.n,
+      hours: s.hours,
+      address: s.address,
+      promo: s.promo,
+    );
+  }
+
+  CatalogItem _itemWithRates(CatalogItem i) {
+    final rec = itemRateOf(i.id) ?? itemRateOf(i.name);
+    if (rec == null) return i;
+    return CatalogItem(
+      id: i.id,
+      shopId: i.shopId,
+      name: i.name,
+      category: i.category,
+      price: i.price,
+      isAvailable: i.isAvailable,
+      desc: i.desc,
+      image: i.image,
+      rating: rec.rating,
+      reviews: rec.n,
+    );
+  }
+
+  Future<void> rateOrder({
+    required String orderId,
+    required int shopStars,
+    int riderStars = 0,
+    Map<String, int> itemStars = const <String, int>{},
+  }) async {
+    shopStars = orderStar(shopStars);
+    riderStars = orderStar(riderStars);
+    if (shopStars < 1) throw Exception('Tap stars to rate the shop.');
+    final o = byId(orderId);
+    if (o == null || o.status != OrderStatus.delivered) {
+      throw Exception('Rate after the order is delivered.');
+    }
+    if (o.rated) return;
+    final cleanItems = <String, int>{};
+    for (final it in o.items) {
+      final k = it.rateKey;
+      if (k.isEmpty || cleanItems.containsKey(k)) continue;
+      final s = orderStar(itemStars[k] ?? itemStars[it.id] ?? itemStars[it.name]);
+      if (s >= 1) cleanItems[k] = s;
+    }
+    final next = o.copyWith(shopRating: shopStars, riderRating: riderStars, itemRatings: cleanItems);
+    final list = List<Order>.of(orders);
+    final i = list.indexWhere((x) => x.id == orderId);
+    if (i >= 0) list[i] = next;
+    _keptOrders[orderId] = next;
+    ordersNotifier.value = list;
+    try {
+      await _sbWrite('orders?id=eq.$orderId', 'PATCH', _orderRow(next));
+    } catch (_) {}
+    await _loadRateBag();
+    final sid = next.shopId;
+    if (sid.isNotEmpty && _bagAvg('shops', sid) == null) {
+      Shop? shop;
+      for (final s in Catalog.shops) {
+        if (s.id == sid) {
+          shop = s;
+          break;
+        }
+      }
+      if (shop != null && shop.reviews > 0) {
+        _bumpBag('shops', sid, 0);
+        final bag = Map<String, dynamic>.from(_rateGroup('shops'));
+        bag[sid] = {'sum': shop.rating * shop.reviews, 'n': shop.reviews};
+        _rateBag = {'shops': bag, 'riders': _rateGroup('riders'), 'items': _rateGroup('items')};
+      }
+    }
+    _bumpBag('shops', sid, shopStars);
+    if ((next.riderId ?? '').isNotEmpty && riderStars >= 1) {
+      _bumpBag('riders', next.riderId!, riderStars);
+    }
+    cleanItems.forEach((k, s) => _bumpBag('items', k, s));
+    await _saveRateBag();
+    final shopRec = _bagAvg('shops', sid);
+    if (sid.isNotEmpty && shopRec != null) {
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {
+          'rating': shopRec.rating,
+          'reviews': shopRec.n,
+        });
+      } catch (_) {}
+    }
+    final rid = next.riderId ?? '';
+    final riderRec = _bagAvg('riders', rid);
+    if (rid.isNotEmpty && riderRec != null) {
+      try {
+        await _sbWrite('accounts?id=eq.${Uri.encodeComponent(rid)}', 'PATCH', {'rating': riderRec.rating});
+      } catch (_) {}
+    }
+    await refresh();
+  }
+
   Future<void> _pushOrder(Order o) async {
     try {
       await _sbUpsert('orders', [_orderRow(o)]);
@@ -2513,6 +2699,23 @@ class OrderRepository {
     final i = list.indexWhere((o) => o.id == id);
     if (i < 0) return;
     final cur = list[i];
+    int? shopRating;
+    int? riderRating;
+    Map<String, int>? itemRatings;
+    final rawRates = body['ratings'];
+    if (rawRates is Map) {
+      shopRating = orderStar(rawRates['shop']);
+      riderRating = orderStar(rawRates['rider']);
+      final itemMap = <String, int>{};
+      final items = rawRates['items'];
+      if (items is Map) {
+        items.forEach((k, v) {
+          final s = orderStar(v);
+          if (s >= 1) itemMap['$k'] = s;
+        });
+      }
+      itemRatings = itemMap;
+    }
     var next = cur.copyWith(
       status: body['status'] != null ? OrderStatusX.fromApi(body['status']?.toString()) : cur.status,
       riderId: body['riderId']?.toString() ?? cur.riderId,
@@ -2520,6 +2723,9 @@ class OrderRepository {
       riderPhone: body['riderPhone']?.toString() ?? cur.riderPhone,
       riderLat: (body['riderLat'] as num?)?.toDouble() ?? cur.riderLat,
       riderLng: (body['riderLng'] as num?)?.toDouble() ?? cur.riderLng,
+      shopRating: shopRating,
+      riderRating: riderRating,
+      itemRatings: itemRatings,
     );
     next = next.copyWith(status: OrderStatusX.later(cur.status, next.status));
     if (cur.status == OrderStatus.delivered) {

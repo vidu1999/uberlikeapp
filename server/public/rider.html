@@ -14,11 +14,11 @@
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19zf"></script>
-  <script src="/js/api.js?v=19zf"></script>
-  <script src="/js/maps.js?v=19zf"></script>
-  <script src="/js/track-ui.js?v=19zf"></script>
-  <script src="/js/otp-login.js?v=19zf"></script>
+  <script src="/js/live.js?v=19zg"></script>
+  <script src="/js/api.js?v=19zg"></script>
+  <script src="/js/maps.js?v=19zg"></script>
+  <script src="/js/track-ui.js?v=19zg"></script>
+  <script src="/js/otp-login.js?v=19zg"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
@@ -181,6 +181,11 @@
       return { title, plate, type: 'Motorcycle', set: true };
     }
     function riderStars() {
+      const rated = (API.orders || []).filter((o) => isMine(o) && o.ratings && Number(o.ratings.rider) > 0);
+      if (rated.length) {
+        const avg = rated.reduce((s, o) => s + Number(o.ratings.rider), 0) / rated.length;
+        return '★ ' + avg.toFixed(1) + ' (' + rated.length + ')';
+      }
       const n = done().length;
       const r = Number(me().rating);
       if (Number.isFinite(r) && r > 0 && n) return '★ ' + r.toFixed(1) + ' (' + n + ')';

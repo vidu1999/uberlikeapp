@@ -48,7 +48,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           }
           if (order.status == OrderStatus.delivered) {
             UserPlace.instance.unfreeze();
-            return const DeliveredScreen();
+            return DeliveredScreen(key: ValueKey(order.id), order: order);
           }
           final current = order;
           _destLat ??= current.deliveryLat;

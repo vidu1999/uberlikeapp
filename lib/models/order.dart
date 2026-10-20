@@ -111,17 +111,31 @@ extension OrderStatusX on OrderStatus {
   }
 }
 
+int orderStar(dynamic v) {
+  final n = v is num ? v.round() : int.tryParse('$v') ?? 0;
+  if (n < 1 || n > 5) return 0;
+  return n;
+}
+
 class DeliveryItem {
+  final String id;
   final String name;
   final int qty;
   final double price;
-  const DeliveryItem({required this.name, required this.qty, required this.price});
+  const DeliveryItem({this.id = '', required this.name, required this.qty, required this.price});
 
   double get total => price * qty;
+  String get rateKey => id.isNotEmpty ? id : name;
 
-  Map<String, dynamic> toJson() => {'name': name, 'qty': qty, 'price': price};
+  Map<String, dynamic> toJson() => {
+        if (id.isNotEmpty) 'id': id,
+        'name': name,
+        'qty': qty,
+        'price': price,
+      };
 
   factory DeliveryItem.fromJson(Map<String, dynamic> j) => DeliveryItem(
+        id: '${j['id'] ?? ''}',
         name: '${j['name']}',
         qty: (j['qty'] as num?)?.toInt() ?? 1,
         price: (j['price'] as num?)?.toDouble() ?? 0,
@@ -157,6 +171,9 @@ class Order {
   final String? paymentId;
   final double shopCredit;
   final double riderCredit;
+  final int shopRating;
+  final int riderRating;
+  final Map<String, int> itemRatings;
 
   const Order({
     required this.id,
@@ -187,7 +204,12 @@ class Order {
     this.paymentId,
     this.shopCredit = 0,
     this.riderCredit = 0,
+    this.shopRating = 0,
+    this.riderRating = 0,
+    this.itemRatings = const <String, int>{},
   });
+
+  bool get rated => shopRating >= 1;
 
   bool get cardCaptured {
     if (status == OrderStatus.cancelled || paymentStatus == 'refunded') return false;
@@ -218,6 +240,9 @@ class Order {
     String? riderName,
     String? riderPhone,
     String? shopName,
+    int? shopRating,
+    int? riderRating,
+    Map<String, int>? itemRatings,
   }) {
     return Order(
       id: id,
@@ -248,6 +273,9 @@ class Order {
       paymentId: paymentId,
       shopCredit: shopCredit,
       riderCredit: riderCredit,
+      shopRating: shopRating ?? this.shopRating,
+      riderRating: riderRating ?? this.riderRating,
+      itemRatings: itemRatings ?? this.itemRatings,
     );
   }
 
@@ -280,6 +308,12 @@ class Order {
         'paymentId': paymentId,
         'shopCredit': shopCredit,
         'riderCredit': riderCredit,
+        if (shopRating >= 1)
+          'ratings': {
+            'shop': shopRating,
+            'rider': riderRating,
+            'items': itemRatings,
+          },
       };
 
   factory Order.fromJson(Map<String, dynamic> j) {
@@ -296,6 +330,16 @@ class Order {
       j = {...j, ...Map<String, dynamic>.from(data)};
     }
     final itemsRaw = (j['items'] as List?) ?? const [];
+    final ratingsRaw = j['ratings'];
+    final ratings = ratingsRaw is Map ? Map<String, dynamic>.from(ratingsRaw) : const <String, dynamic>{};
+    final itemRateRaw = ratings['items'];
+    final itemRate = <String, int>{};
+    if (itemRateRaw is Map) {
+      itemRateRaw.forEach((k, v) {
+        final s = orderStar(v);
+        if (s >= 1) itemRate['$k'] = s;
+      });
+    }
     return Order(
       id: '${j['id']}',
       userId: '${j['userId'] ?? j['user_id'] ?? ''}',
@@ -327,6 +371,9 @@ class Order {
       paymentId: j['paymentId']?.toString(),
       shopCredit: (j['shopCredit'] as num?)?.toDouble() ?? 0,
       riderCredit: (j['riderCredit'] as num?)?.toDouble() ?? 0,
+      shopRating: orderStar(ratings['shop'] ?? j['shopRating']),
+      riderRating: orderStar(ratings['rider'] ?? j['riderRating']),
+      itemRatings: itemRate,
     );
   }
 }

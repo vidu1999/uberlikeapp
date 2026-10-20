@@ -16,11 +16,11 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zf"></script>
-  <script src="/js/api.js?v=19zf"></script>
-  <script src="/js/maps.js?v=19zf"></script>
-  <script src="/js/track-ui.js?v=19zf"></script>
-  <script src="/js/otp-login.js?v=19zf"></script>
+  <script src="/js/live.js?v=19zg"></script>
+  <script src="/js/api.js?v=19zg"></script>
+  <script src="/js/maps.js?v=19zg"></script>
+  <script src="/js/track-ui.js?v=19zg"></script>
+  <script src="/js/otp-login.js?v=19zg"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -102,7 +102,7 @@
           return n;
         })(),
         category: s.category || 'Bakery',
-        rating: Number(s.rating || 0) || 5,
+        rating: Number(s.rating || 0),
         reviews: Number(s.reviews || 0),
         hours: s.hours || '08:00 AM – 10:00 PM',
         image: s.image || '/img/shop-bakery.jpg',
@@ -508,7 +508,7 @@
       const ordersN = today.length;
       const revenue = sales;
       const wallet = shopWalletBal();
-      const rating = s.rating || 4.8;
+      const rating = Number(s.reviews) > 0 ? Number(s.rating || 0) : 0;
       return `<div class="scroll sp-prof">
         <div class="sp-prof-hero"><img src="${esc(s.image)}" alt="" /></div>
         <div class="sp-prof-card">
@@ -516,7 +516,7 @@
           <h2>${esc(s.name)}</h2>
           ${API.user && API.user.email ? `<div class="tags">${esc(API.user.email)}</div>` : ''}
           <div class="tags">${esc(shopTags(s))}</div>
-          <div class="stars">★ ${rating.toFixed(1)} <span>(${s.reviews || 0}+)</span></div>
+          <div class="stars">${Number(s.reviews) > 0 ? '★ ' + rating.toFixed(1) + ' <span>(' + Number(s.reviews) + ')</span>' : 'New'}</div>
           <div class="sp-prof-hours">${s.isOpen ? '● Open' : '● Closed'} ${esc(s.hours)}</div>
           <div class="sp-prof-actions">
             <button type="button" class="ed" data-edit-shop>Edit Profile</button>
@@ -576,7 +576,7 @@
         <div class="hero"><img src="${esc(s.image)}" alt="" /></div>
         <div class="pad">
           <h2>${esc(s.name)}</h2>
-          <p class="muted">${esc(shopTags(s))} · ★ ${Number(s.rating||0).toFixed(1)}</p>
+          <p class="muted">${esc(shopTags(s))} · ${Number(s.reviews) > 0 ? '★ ' + Number(s.rating||0).toFixed(1) : 'New'}</p>
           <p>${esc(shopAbout(s))}</p>
         </div>
         ${items.map((it) => `<div class="mi-row">

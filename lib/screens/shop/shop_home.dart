@@ -529,7 +529,7 @@ class _ShopHomeState extends State<ShopHome> {
         final ordersN = mine.length;
         final revenue = sales;
         final cardWallet = mine.fold<double>(0, (n, o) => n + o.shopShare);
-        final rating = shop.rating == 0 ? 4.8 : shop.rating;
+        final ratingLabel = shop.rateLabel;
         final hero = (shop.image != null && shop.image!.isNotEmpty) ? _url(shop.image!) : _url('/img/shop-bakery.jpg');
         return ListView(
           padding: EdgeInsets.zero,
@@ -560,7 +560,7 @@ class _ShopHomeState extends State<ShopHome> {
                       Text(shopTitle, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Brand.ink)),
                       Text(shopTags, style: const TextStyle(color: Brand.muted, fontSize: 13)),
                       const SizedBox(height: 4),
-                      Text('★ ${rating.toStringAsFixed(1)}  (${shop.reviews}+)', style: const TextStyle(color: Color(0xFFF5B400), fontWeight: FontWeight.w700)),
+                      Text(ratingLabel, style: const TextStyle(color: Color(0xFFF5B400), fontWeight: FontWeight.w700)),
                       const SizedBox(height: 6),
                       Text('${shop.isOpen ? '● Open' : '● Closed'} ${shop.hours ?? '08:00 AM – 10:00 PM'}', style: const TextStyle(color: Brand.green, fontWeight: FontWeight.w700, fontSize: 13)),
                       const SizedBox(height: 14),

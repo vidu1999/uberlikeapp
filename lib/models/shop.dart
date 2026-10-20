@@ -28,6 +28,8 @@ class Shop {
     this.promo,
   });
 
+  String get rateLabel => reviews <= 0 ? 'New' : '★ ${rating.toStringAsFixed(1)} ($reviews)';
+
   factory Shop.fromJson(Map<String, dynamic> j) => Shop(
         id: '${j['id']}',
         name: '${j['name']}',
@@ -54,6 +56,8 @@ class CatalogItem {
   final bool isAvailable;
   final String desc;
   final String? image;
+  final double rating;
+  final int reviews;
   const CatalogItem({
     required this.id,
     required this.shopId,
@@ -63,7 +67,11 @@ class CatalogItem {
     this.isAvailable = true,
     this.desc = '',
     this.image,
+    this.rating = 0,
+    this.reviews = 0,
   });
+
+  String get rateLabel => reviews <= 0 ? '' : '★ ${rating.toStringAsFixed(1)}';
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) => CatalogItem(
         id: '${j['id']}',
@@ -74,5 +82,7 @@ class CatalogItem {
         isAvailable: j['isAvailable'] != false && j['is_available'] != false,
         desc: '${j['desc'] ?? j['description'] ?? ''}',
         image: j['image']?.toString(),
+        rating: (j['rating'] as num?)?.toDouble() ?? 0,
+        reviews: (j['reviews'] as num?)?.toInt() ?? 0,
       );
 }
