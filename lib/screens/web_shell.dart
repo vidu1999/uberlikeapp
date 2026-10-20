@@ -55,7 +55,9 @@ class _WebShellState extends State<WebShell> {
   @override
   void initState() {
     super.initState();
-    _boot();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 80), _boot);
+    });
   }
 
   @override
@@ -154,20 +156,7 @@ class _WebShellState extends State<WebShell> {
   }
 
   Widget _webView() {
-    final c = _controller!;
-    try {
-      final platform = c.platform;
-      if (platform is AndroidWebViewController) {
-        return WebViewWidget.fromPlatformCreationParams(
-          params: AndroidWebViewWidgetCreationParams(
-            key: const ValueKey('qb-web'),
-            controller: platform,
-            displayWithHybridComposition: true,
-          ),
-        );
-      }
-    } catch (_) {}
-    return WebViewWidget(controller: c);
+    return WebViewWidget(controller: _controller!);
   }
 
   bool _isAppPage(String url) {
