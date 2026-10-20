@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -24,7 +25,9 @@ class WebShell extends StatefulWidget {
 class _WebShellState extends State<WebShell> {
   WebViewController? _controller;
   bool _loading = true;
+  bool _pageOk = false;
   String? _error;
+  Timer? _timeout;
 
   String get _path {
     switch (widget.role) {
@@ -55,34 +58,40 @@ class _WebShellState extends State<WebShell> {
     _boot();
   }
 
+  @override
+  void dispose() {
+    _timeout?.cancel();
+    super.dispose();
+  }
+
   Future<void> _boot() async {
     try {
       final p = await SharedPreferences.getInstance();
       final saved = (p.getString('qb_site') ?? '').trim();
       if (saved.isNotEmpty) AppConfig.baseUrl = AppConfig.normalize(saved);
     } catch (_) {}
+
     try {
-      await Geolocator.requestPermission();
-    } catch (_) {}
-    try {
-      await _buildController();
+      await _attachWebView();
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = 'Could not start QuickBite.';
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not start QuickBite. Update Android System WebView, then try again.';
+        _loading = false;
+      });
+      return;
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadHome();
+      _askLocation();
+    });
   }
 
-  Future<void> _buildController() async {
+  Future<void> _attachWebView() async {
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(_bg)
-      ..setUserAgent(
-        'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 QuickBiteApp/1.0',
-      )
       ..addJavaScriptChannel(
         'QuickBiteNative',
         onMessageReceived: (msg) {
@@ -91,22 +100,24 @@ class _WebShellState extends State<WebShell> {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
-          onPageStarted: (_) {
-            if (mounted) setState(() => _loading = true);
+          onPageStarted: (url) {
+            if (!mounted) return;
+            if (_isAppPage(url)) {
+              setState(() {
+                _loading = !_pageOk;
+                if (!_pageOk) _error = null;
+              });
+            }
           },
-          onPageFinished: (_) {
-            if (mounted) setState(() { _loading = false; _error = null; });
-          },
-          onWebResourceError: (err) {
-            if (err.errorType == WebResourceErrorType.hostLookup ||
-                err.errorType == WebResourceErrorType.timeout ||
-                err.errorType == WebResourceErrorType.connect) {
-              if (mounted) {
-                setState(() {
-                  _loading = false;
-                  _error = 'Could not load the QuickBite site.';
-                });
-              }
+          onPageFinished: (url) {
+            _timeout?.cancel();
+            if (!mounted) return;
+            if (_isAppPage(url) || url.isEmpty) {
+              setState(() {
+                _pageOk = true;
+                _loading = false;
+                _error = null;
+              });
             }
           },
           onNavigationRequest: (req) {
@@ -115,31 +126,74 @@ class _WebShellState extends State<WebShell> {
           },
         ),
       );
+
     if (controller.platform is AndroidWebViewController) {
       final android = controller.platform as AndroidWebViewController;
-      android.setOnPlatformPermissionRequest((request) {
-        request.grant();
-      });
-      await android.setGeolocationPermissionsPromptCallbacks(
-        onShowPrompt: (request) async {
-          return const GeolocationPermissionsResponse(allow: true, retain: true);
-        },
-      );
-      android.setMediaPlaybackRequiresUserGesture(false);
-      android.setOnShowFileSelector(_pickFiles);
-    }
-    try {
-      await controller.loadRequest(Uri.parse(_startUrl));
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Could not open $_startUrl';
-          _loading = false;
+      try {
+        android.setOnPlatformPermissionRequest((request) {
+          request.grant();
         });
-      }
+      } catch (_) {}
+      try {
+        await android.setGeolocationPermissionsPromptCallbacks(
+          onShowPrompt: (request) async {
+            return const GeolocationPermissionsResponse(allow: true, retain: true);
+          },
+        );
+      } catch (_) {}
+      try {
+        android.setMediaPlaybackRequiresUserGesture(false);
+      } catch (_) {}
+      try {
+        android.setOnShowFileSelector(_pickFiles);
+      } catch (_) {}
     }
+
     if (!mounted) return;
     setState(() => _controller = controller);
+  }
+
+  bool _isAppPage(String url) {
+    if (url.isEmpty || url == 'about:blank') return false;
+    final host = Uri.tryParse(url)?.host ?? '';
+    final mine = Uri.tryParse(AppConfig.normalize(AppConfig.baseUrl))?.host ?? '';
+    if (mine.isNotEmpty && host == mine) return true;
+    return url.contains('user.html') || url.contains('shop.html') || url.contains('rider.html');
+  }
+
+  Future<void> _loadHome() async {
+    final c = _controller;
+    if (c == null) return;
+    _timeout?.cancel();
+    _timeout = Timer(const Duration(seconds: 20), () {
+      if (!mounted || _pageOk) return;
+      setState(() {
+        _loading = false;
+        _error = 'Could not open QuickBite. Check internet, then tap Retry.\n$_startUrl';
+      });
+    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      await c.loadRequest(Uri.parse(_startUrl));
+    } catch (_) {
+      _timeout?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Could not open $_startUrl';
+      });
+    }
+  }
+
+  Future<void> _askLocation() async {
+    try {
+      await Geolocator.requestPermission();
+    } catch (_) {}
   }
 
   Future<List<String>> _pickFiles(FileSelectorParams params) async {
@@ -213,12 +267,9 @@ class _WebShellState extends State<WebShell> {
     setState(() {
       _error = null;
       _loading = true;
+      _pageOk = false;
     });
-    try {
-      await _controller?.loadRequest(Uri.parse(_startUrl));
-    } catch (_) {
-      if (mounted) setState(() { _error = 'Could not open $_startUrl'; _loading = false; });
-    }
+    await _loadHome();
   }
 
   Future<void> _editUrl() async {
@@ -287,7 +338,7 @@ class _WebShellState extends State<WebShell> {
                   child: const Center(child: CircularProgressIndicator(color: Brand.green)),
                 ),
               ),
-            if (_error != null)
+            if (_error != null && !_pageOk)
               Positioned.fill(
                 child: ColoredBox(
                   color: _bg,
@@ -297,7 +348,14 @@ class _WebShellState extends State<WebShell> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: widget.role == UserRole.customer ? Brand.ink : Colors.white, fontWeight: FontWeight.w700)),
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: widget.role == UserRole.customer ? Brand.ink : Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                           const SizedBox(height: 16),
                           FilledButton(
                             style: FilledButton.styleFrom(backgroundColor: Brand.green),
