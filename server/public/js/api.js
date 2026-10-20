@@ -2026,46 +2026,44 @@
     return { email: email, name: name, sub: sub, photo: isHttpUrl(photo) ? photo : '' };
   }
 
+  function pickEmailAccount(matches) {
+    const list = (matches || []).filter(function (a) { return a && a.id; });
+    if (!list.length) return null;
+    const byId = {};
+    list.forEach(function (a) { byId[a.id] = a; });
+    const uniq = Object.keys(byId).map(function (k) { return byId[k]; });
+    return uniq.find(function (a) { return !!(a.shopId || a.shop_id); })
+      || uniq.find(function (a) { return !isPlaceholderPhone(a.phone); })
+      || uniq[0];
+  }
+
   async function lookupEmail(email, role) {
     email = String(email || '').trim().toLowerCase();
     if (!email || email.indexOf('@') < 0) return null;
     const want = roleTag(role || 'customer');
-    function hit(raw) {
-      if (!raw) return null;
+    const matches = [];
+    function add(raw) {
+      if (!raw) return;
       const a = mapAccount(raw);
-      if (!a || !a.id || isDemoAccount(a)) return null;
-      if (String(a.email || '').toLowerCase() !== email) return null;
-      if (!sameRole(a.role, want)) return null;
-      return a;
+      if (!a || !a.id || isDemoAccount(a)) return;
+      if (!emailsEqual(a.email, email)) return;
+      if (!sameRole(a.role, want)) return;
+      matches.push(a);
     }
     if (sbConfigured()) {
       const quoted = '"' + email.replace(/"/g, '') + '"';
       const tries = [
-        'accounts?id=eq.' + encodeURIComponent(accountIdForEmail(email, want)) + '&select=*',
         'accounts?email=eq.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*',
         'accounts?email=eq.' + quoted + '&role=eq.' + encodeURIComponent(want) + '&select=*',
         'accounts?email=ilike.' + encodeURIComponent(email) + '&role=eq.' + encodeURIComponent(want) + '&select=*',
+        'accounts?id=eq.' + encodeURIComponent(accountIdForEmail(email, want)) + '&select=*',
       ];
       for (let t = 0; t < tries.length; t++) {
-        try {
-          const rows = asRows(await sbGet(tries[t]));
-          for (let i = 0; i < rows.length; i++) {
-            const a = hit(rows[i]);
-            if (a) return a;
-            if (t === 0 && rows[i]) {
-              const mapped = mapAccount(rows[i]);
-              if (mapped && mapped.id && sameRole(mapped.role, want) && !isDemoAccount(mapped)) return mapped;
-            }
-          }
-        } catch (_) {}
+        try { asRows(await sbGet(tries[t])).forEach(add); } catch (_) {}
       }
     }
-    const list = await allAccounts();
-    const matches = list.filter(function (a) { return !!hit(a); });
-    if (!matches.length) return null;
-    const withShop = matches.find(function (a) { return !!(a.shopId || a.shop_id); });
-    const withWa = matches.find(function (a) { return !isPlaceholderPhone(a.phone); });
-    return withShop || withWa || matches[0];
+    try { (await allAccounts()).forEach(add); } catch (_) {}
+    return pickEmailAccount(matches);
   }
 
   function parseJwt(tok) {
@@ -2091,19 +2089,7 @@
     let row = await lookupEmail(email, role);
     if (!row && g.sub) {
       const byPhone = await lookupPhone(googlePhone(g.sub, email), role);
-      if (byPhone && String(byPhone.email || '').toLowerCase() === email) row = byPhone;
-    }
-    if (!row && role === 'shop') {
-      try {
-        const all = await allAccounts();
-        const shops = all.filter(function (a) {
-          return sameRole(a.role, 'shop') && String(a.email || '').toLowerCase() === email && !isDemoAccount(a);
-        });
-        row = shops.find(function (a) { return !!(a.shopId || a.shop_id); })
-          || shops.find(function (a) { return !isPlaceholderPhone(a.phone); })
-          || shops[0]
-          || null;
-      } catch (_) {}
+      if (byPhone && emailsEqual(byPhone.email, email)) row = byPhone;
     }
     const photo = g.photo || (row && row.photo) || '';
     if (!row) {
@@ -2156,6 +2142,7 @@
       try { API.user = await repairShopPublicName(API.user); } catch (_) {}
       try { saveSession(); } catch (_) {}
     }
+    try { await API.refresh(); } catch (_) {}
     return API.user || user;
   };
 

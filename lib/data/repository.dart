@@ -1062,33 +1062,33 @@ class OrderRepository {
     bool matches(Map<String, dynamic> m) {
       return '${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m);
     }
-    try {
-      for (final raw in await _sbGet('accounts?id=eq.${Uri.encodeComponent(_accountIdForEmail(email, role))}&select=*')) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        if (matches(m)) { row = m; break; }
-      }
-    } catch (_) {}
-    if (row == null) {
+    final hits = <String, Map<String, dynamic>>{};
+    Future<void> collect(String q) async {
       try {
-        for (final raw in await _sbGet('accounts?email=eq.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
+        for (final raw in await _sbGet(q)) {
           final m = Map<String, dynamic>.from(raw as Map);
-          if (matches(m)) { row = m; break; }
+          if (!matches(m) || '${m['id']}'.isEmpty) continue;
+          hits['${m['id']}'] = m;
         }
       } catch (_) {}
     }
-    if (row == null) {
-      final list = await _allAccounts();
-      final hits = list.where(matches).toList();
-      for (final m in hits) {
-        if ('${m['shop_id'] ?? m['shopId'] ?? ''}'.isNotEmpty) { row = m; break; }
+    await collect('accounts?email=eq.${Uri.encodeComponent(email)}&role=eq.$role&select=*');
+    await collect('accounts?id=eq.${Uri.encodeComponent(_accountIdForEmail(email, role))}&select=*');
+    try {
+      for (final m in await _allAccounts()) {
+        if (matches(m) && '${m['id']}'.isNotEmpty) hits['${m['id']}'] = m;
       }
-      if (row == null) {
-        for (final m in hits) {
-          if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) { row = m; break; }
-        }
-      }
-      row ??= hits.isNotEmpty ? hits.first : null;
+    } catch (_) {}
+    final list = hits.values.toList();
+    for (final m in list) {
+      if ('${m['shop_id'] ?? m['shopId'] ?? ''}'.isNotEmpty) { row = m; break; }
     }
+    if (row == null) {
+      for (final m in list) {
+        if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) { row = m; break; }
+      }
+    }
+    row ??= list.isNotEmpty ? list.first : null;
     if (row == null && sub.isNotEmpty) {
       final byPhone = await _lookupPhone(_googlePhone(sub, email), role);
       if (byPhone != null && '${byPhone['email'] ?? ''}'.toLowerCase() == email) row = byPhone;

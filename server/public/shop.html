@@ -16,11 +16,11 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19ze"></script>
-  <script src="/js/api.js?v=19ze"></script>
-  <script src="/js/maps.js?v=19ze"></script>
-  <script src="/js/track-ui.js?v=19ze"></script>
-  <script src="/js/otp-login.js?v=19ze"></script>
+  <script src="/js/live.js?v=19zf"></script>
+  <script src="/js/api.js?v=19zf"></script>
+  <script src="/js/maps.js?v=19zf"></script>
+  <script src="/js/track-ui.js?v=19zf"></script>
+  <script src="/js/otp-login.js?v=19zf"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -514,6 +514,7 @@
         <div class="sp-prof-card">
           <div class="sp-prof-ico">🏪</div>
           <h2>${esc(s.name)}</h2>
+          ${API.user && API.user.email ? `<div class="tags">${esc(API.user.email)}</div>` : ''}
           <div class="tags">${esc(shopTags(s))}</div>
           <div class="stars">★ ${rating.toFixed(1)} <span>(${s.reviews || 0}+)</span></div>
           <div class="sp-prof-hours">${s.isOpen ? '● Open' : '● Closed'} ${esc(s.hours)}</div>
