@@ -60,7 +60,23 @@ for p in pathlib.Path("android").rglob("AndroidManifest.xml"):
     n = t.replace('android:label="uberlikeapp"', f'android:label="{label}"')
     n = n.replace('android:label="@string/app_name"', f'android:label="{label}"')
     if "usesCleartextTraffic" not in n:
-        n = re.sub(r"<application\b", '<application android:usesCleartextTraffic="true"', n, count=1)
+        n = re.sub(
+            r"<application\b",
+            '<application android:usesCleartextTraffic="true" android:hardwareAccelerated="true" android:extractNativeLibs="true"',
+            n,
+            count=1,
+        )
+    else:
+        if "extractNativeLibs" not in n:
+            n = n.replace("<application", '<application android:extractNativeLibs="true"', 1)
+        if "hardwareAccelerated" not in n:
+            n = n.replace("<application", '<application android:hardwareAccelerated="true"', 1)
+    if "EnableImpeller" not in n:
+        n = n.replace(
+            "</application>",
+            '        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    </application>',
+            1,
+        )
     if "ACCESS_FINE_LOCATION" not in n:
         n = re.sub(
             r"(<manifest[^>]*>)",
@@ -70,5 +86,18 @@ for p in pathlib.Path("android").rglob("AndroidManifest.xml"):
         )
     if n != t:
         p.write_text(n, encoding="utf-8")
+
+pr = pathlib.Path("android/app/proguard-rules.pro")
+pr.write_text(
+    "\n".join([
+        "-keep class io.flutter.plugins.** { *; }",
+        "-keep class io.flutter.plugin.** { *; }",
+        "-keep class android.webkit.** { *; }",
+        "-keep class com.google.android.gms.** { *; }",
+        "-dontwarn android.webkit.**",
+        "",
+    ]),
+    encoding="utf-8",
+)
 
 print("patched", ROLE, app_id, label)

@@ -79,13 +79,7 @@ class _WebShellState extends State<WebShell> {
         _error = 'Could not start QuickBite. Update Android System WebView, then try again.';
         _loading = false;
       });
-      return;
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadHome();
-      _askLocation();
-    });
   }
 
   Future<void> _attachWebView() async {
@@ -127,30 +121,53 @@ class _WebShellState extends State<WebShell> {
         ),
       );
 
-    if (controller.platform is AndroidWebViewController) {
-      final android = controller.platform as AndroidWebViewController;
-      try {
-        android.setOnPlatformPermissionRequest((request) {
-          request.grant();
-        });
-      } catch (_) {}
-      try {
-        await android.setGeolocationPermissionsPromptCallbacks(
-          onShowPrompt: (request) async {
-            return const GeolocationPermissionsResponse(allow: true, retain: true);
-          },
-        );
-      } catch (_) {}
-      try {
-        android.setMediaPlaybackRequiresUserGesture(false);
-      } catch (_) {}
-      try {
-        android.setOnShowFileSelector(_pickFiles);
-      } catch (_) {}
-    }
-
     if (!mounted) return;
     setState(() => _controller = controller);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tuneAndroid(controller);
+      _loadHome();
+      _askLocation();
+    });
+  }
+
+  Future<void> _tuneAndroid(WebViewController controller) async {
+    if (controller.platform is! AndroidWebViewController) return;
+    final android = controller.platform as AndroidWebViewController;
+    try {
+      android.setOnPlatformPermissionRequest((request) {
+        request.grant();
+      });
+    } catch (_) {}
+    try {
+      await android.setGeolocationPermissionsPromptCallbacks(
+        onShowPrompt: (request) async {
+          return const GeolocationPermissionsResponse(allow: true, retain: true);
+        },
+      );
+    } catch (_) {}
+    try {
+      android.setMediaPlaybackRequiresUserGesture(false);
+    } catch (_) {}
+    try {
+      android.setOnShowFileSelector(_pickFiles);
+    } catch (_) {}
+  }
+
+  Widget _webView() {
+    final c = _controller!;
+    try {
+      final platform = c.platform;
+      if (platform is AndroidWebViewController) {
+        return WebViewWidget.fromPlatformCreationParams(
+          params: AndroidWebViewWidgetCreationParams(
+            key: const ValueKey('qb-web'),
+            controller: platform,
+            displayWithHybridComposition: true,
+          ),
+        );
+      }
+    } catch (_) {}
+    return WebViewWidget(controller: c);
   }
 
   bool _isAppPage(String url) {
@@ -330,7 +347,7 @@ class _WebShellState extends State<WebShell> {
         backgroundColor: _bg,
         body: Stack(
           children: [
-            if (_controller != null) Positioned.fill(child: WebViewWidget(controller: _controller!)),
+            if (_controller != null) Positioned.fill(child: _webView()),
             if (_loading)
               Positioned.fill(
                 child: ColoredBox(

@@ -1,7 +1,4 @@
-import 'package:flutter/material.dart';
 import 'app.dart';
+import 'boot.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const LiveTrackingApp(defaultRole: UserRole.shop));
-}
+void main() => bootApp(UserRole.shop);
