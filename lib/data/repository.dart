@@ -1128,10 +1128,14 @@ class OrderRepository {
       } catch (_) {}
       row.addAll(patch);
     }
-    if (photo.isNotEmpty) row['photo'] = photo;
-    if (role != 'shop' && name.isNotEmpty) row['name'] = name;
-    row['email'] = email;
-    await _enterRow(row);
+    final acc = row;
+    if (acc == null || '${acc['id']}'.isEmpty) {
+      throw Exception('Could not open this Google account.');
+    }
+    if (photo.isNotEmpty) acc['photo'] = photo;
+    if (role != 'shop' && name.isNotEmpty) acc['name'] = name;
+    acc['email'] = email;
+    await _enterRow(acc);
   }
 
   String _passwordPhone(String email) {
