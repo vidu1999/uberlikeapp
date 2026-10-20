@@ -571,19 +571,11 @@ class OrderRepository {
       add(m);
     }
     if (byId.isEmpty) return null;
-    final keep = byId[id] ?? byId.values.first;
-    final keepEmail = '${keep['email'] ?? ''}'.trim().toLowerCase();
-    for (final extra in byId.values) {
-      if ('${extra['id']}' == '${keep['id']}') continue;
-      final extraEmail = '${extra['email'] ?? ''}'.trim().toLowerCase();
-      if (keepEmail.isNotEmpty && extraEmail.isNotEmpty && keepEmail != extraEmail) continue;
-      if (_isPlaceholderPhone('${keep['phone'] ?? ''}') || _isPlaceholderPhone('${extra['phone'] ?? ''}')) continue;
-      if ('${extra['id']}'.contains('_e_') && extraEmail.isNotEmpty && extraEmail != keepEmail) continue;
-      try {
-        await _sbDelete('accounts?id=eq.${extra['id']}');
-      } catch (_) {}
+    if (byId[id] != null) return byId[id];
+    for (final m in byId.values) {
+      if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) return m;
     }
-    return keep;
+    return byId.values.first;
   }
 
   Future<Map<String, dynamic>?> findAccount(String role, String id) async {
@@ -1339,11 +1331,6 @@ class OrderRepository {
       try {
         await _sbWrite('accounts?id=eq.${taken['id']}', 'PATCH', patch);
       } catch (_) {}
-      if (_isPlaceholderPhone(u.phone)) {
-        try {
-          await _sbWrite('accounts?id=eq.${u.id}', 'DELETE');
-        } catch (_) {}
-      }
       taken.addAll(patch);
       await _enterRow(taken);
       return;
@@ -1418,33 +1405,28 @@ class OrderRepository {
 
   Future<void> parkForRegister(String role) async {
     final u = user;
-    final phone = u?.phone ?? verifiedPhone ?? '';
-    final gName = u?.name ?? '';
-    final gEmail = u?.email ?? '';
-    final gPhoto = u?.photo ?? '';
-    userNotifier.value = null;
-    token = null;
-    if (role == 'shop') promptShopRegister = true;
-    if (phone.isNotEmpty && !_isPlaceholderPhone(phone)) {
-      verifiedPhone = phone;
+    if (u == null) {
+      if (role == 'shop') promptShopRegister = true;
       needsShopRegister = role == 'shop';
       needsRiderRegister = role == 'rider';
-      await _persistVerified(role, phone);
-    } else {
-      verifiedPhone = null;
-      needsShopRegister = role == 'shop';
-      needsRiderRegister = role == 'rider';
-      try {
-        final p = await SharedPreferences.getInstance();
-        await p.remove(_verifiedKey);
-      } catch (_) {}
+      return;
     }
+    if (role == 'shop') promptShopRegister = true;
+    needsShopRegister = role == 'shop' && !isShopRegistered;
+    needsRiderRegister = role == 'rider' && !isRiderRegistered;
     if (role == 'shop') {
       pendingShop = {
         ...?pendingShop,
-        if (gName.isNotEmpty) 'ownerName': gName,
-        if (gEmail.isNotEmpty) 'email': gEmail,
-        if (gPhoto.isNotEmpty) 'photo': gPhoto,
+        if (u.name.isNotEmpty) 'ownerName': u.name,
+        if ((u.email ?? '').isNotEmpty) 'email': u.email!,
+        if ((u.photo ?? '').isNotEmpty) 'photo': u.photo!,
+      };
+    }
+    if (role == 'rider') {
+      pendingRider = {
+        ...?pendingRider,
+        if (u.name.isNotEmpty) 'name': u.name,
+        if ((u.email ?? '').isNotEmpty) 'email': u.email!,
       };
     }
     await _persist();
@@ -1558,18 +1540,7 @@ class OrderRepository {
       final p = await SharedPreferences.getInstance();
       const gen = '19y';
       if (p.getString('qb_gen') != gen) {
-        await p.remove(_sessionKey);
-        await p.remove(_verifiedKey);
-        for (final k in p.getKeys()) {
-          if (k.startsWith('sd_') || k.startsWith('qb_')) await p.remove(k);
-        }
         await p.setString('qb_gen', gen);
-        userNotifier.value = null;
-        token = null;
-        verifiedPhone = null;
-        needsShopRegister = false;
-        needsRiderRegister = false;
-        return;
       }
       final vraw = p.getString(_verifiedKey);
       if (vraw != null && vraw.isNotEmpty) {
@@ -1721,6 +1692,10 @@ class OrderRepository {
   bool _wipedAll = false;
   Future<void> _oneShotEmptyDb() async {
     if (_wipedAll) return;
+    if (user != null) {
+      _wipedAll = true;
+      return;
+    }
     const gen = '19y';
     try {
       for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
@@ -1732,7 +1707,21 @@ class OrderRepository {
         }
       }
     } catch (_) {}
-    logout();
+    try {
+      final accs = await _sbGet('accounts?select=id&limit=1');
+      if (accs.isNotEmpty) {
+        _wipedAll = true;
+        try {
+          await _sbWrite('app_state', 'POST', [
+            {'id': 'qb_empty', 'payload': {'v': gen, 'at': DateTime.now().millisecondsSinceEpoch}},
+          ]);
+        } catch (_) {}
+        return;
+      }
+    } catch (_) {
+      _wipedAll = true;
+      return;
+    }
     const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
     for (var attempt = 0; attempt < 6; attempt++) {
       for (final t in tables) {

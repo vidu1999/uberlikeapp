@@ -854,18 +854,21 @@
 
   API.parkForRegister = function (role) {
     const u = API.user;
-    const phone = (u && u.phone && !isPlaceholderPhone(u.phone)) ? u.phone : '';
-    API.user = null;
-    API.token = null;
-    try {
-      sessionKeys(role).forEach(storeDel);
-      sessionKeys(API.roleHint).forEach(storeDel);
-      cookieClear(role);
-      cookieClear(API.roleHint);
-    } catch (_) {}
-    if (phone && !isPlaceholderPhone(phone)) persistVerified({ role: roleTag(role), phone: normalizePhone(phone) });
-    else {
-      try { clearVerified(role); } catch (_) {}
+    if (!u) return;
+    if (sameRole(role, 'shop') || sameRole(u.role, 'shop')) {
+      const prev = pendingShop() || {};
+      API.setPendingShop(Object.assign({}, prev, {
+        ownerName: prev.ownerName || u.name || '',
+        email: u.email || prev.email || '',
+        photo: u.photo || prev.photo || '',
+      }));
+    }
+    if (sameRole(role, 'rider') || sameRole(u.role, 'rider')) {
+      const prev = pendingRider() || {};
+      API.setPendingRider(Object.assign({}, prev, {
+        name: prev.name || u.name || '',
+        email: u.email || prev.email || '',
+      }));
     }
   };
   API.isPlaceholderPhone = isPlaceholderPhone;
@@ -1120,13 +1123,19 @@
 
   async function oneShotEmptyDb() {
     if (!sbConfigured()) return;
+    if (API.user) return;
     const GEN = '19y';
     try {
       const rows = asRows(await sbGet('app_state?id=eq.qb_empty&select=*'));
       const p = rows && rows[0] && rows[0].payload;
       if (p && String(p.v || '') === GEN) return;
     } catch (_) {}
-    try { clearAllLocalAuth(); } catch (_) {}
+    let accLeft = 0;
+    try { accLeft = await countTable('accounts'); } catch (_) { accLeft = 1; }
+    if (accLeft) {
+      try { await sbSend('app_state', 'POST', [{ id: 'qb_empty', payload: { v: GEN, at: Date.now() } }]); } catch (_) {}
+      return;
+    }
     API._wipedAll = false;
     const ok = await wipeAllData();
     if (!ok) return;
@@ -1240,17 +1249,7 @@
     (await allAccounts()).forEach(add);
     const list = Object.keys(byId).map(function (k) { return byId[k]; });
     if (!list.length) return null;
-    const keep = byId[id] || list[0];
-    const keepEmail = String(keep.email || '').trim().toLowerCase();
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].id === keep.id) continue;
-      const extraEmail = String(list[i].email || '').trim().toLowerCase();
-      if (keepEmail && extraEmail && keepEmail !== extraEmail) continue;
-      if (isPlaceholderPhone(keep.phone) || isPlaceholderPhone(list[i].phone)) continue;
-      if (String(list[i].id).indexOf('_e_') >= 0 && extraEmail && extraEmail !== keepEmail) continue;
-      try { await sbSend('accounts?id=eq.' + encodeURIComponent(list[i].id), 'DELETE'); } catch (_) {}
-    }
-    if (list.length > 1) clearAccCache();
+    const keep = byId[id] || list.find(function (a) { return !isPlaceholderPhone(a.phone); }) || list[0];
     return keep;
   }
 
@@ -2286,9 +2285,6 @@
       if (u.name && (!taken.name || taken.name === 'Guest')) patch.name = u.name;
       if (u.shopId && !taken.shopId) patch.shop_id = u.shopId;
       try { await sbSend('accounts?id=eq.' + encodeURIComponent(taken.id), 'PATCH', patch); } catch (_) {}
-      if (isPlaceholderPhone(u.phone) && u.id) {
-        try { await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'DELETE'); } catch (_) {}
-      }
       Object.assign(taken, patch, { email: taken.email || u.email });
       return enterMapped(taken);
     }
@@ -3194,7 +3190,6 @@
     try { g = localStorage.getItem('qb_gen') || sessionStorage.getItem('qb_gen') || ''; } catch (_) {}
     const first = g !== GEN;
     if (first) {
-      try { clearAllLocalAuth(); } catch (_) {}
       try {
         localStorage.setItem('qb_gen', GEN);
         sessionStorage.setItem('qb_gen', GEN);
@@ -3207,7 +3202,7 @@
         });
       }
     } catch (_) {}
-    if (!first) API.restore();
+    API.restore();
   })();
   try {
     const w = new URLSearchParams(location.search || '').get('wipe');

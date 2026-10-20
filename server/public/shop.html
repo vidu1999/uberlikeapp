@@ -16,11 +16,11 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zd"></script>
-  <script src="/js/api.js?v=19zd"></script>
-  <script src="/js/maps.js?v=19zd"></script>
-  <script src="/js/track-ui.js?v=19zd"></script>
-  <script src="/js/otp-login.js?v=19zd"></script>
+  <script src="/js/live.js?v=19ze"></script>
+  <script src="/js/api.js?v=19ze"></script>
+  <script src="/js/maps.js?v=19ze"></script>
+  <script src="/js/track-ui.js?v=19ze"></script>
+  <script src="/js/otp-login.js?v=19ze"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -656,6 +656,13 @@
       if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
       if (keep && state.screen === 'edit-shop' && root.querySelector('[data-save-shop]')) return;
       try {
+      if (API.user && state.auth === 'register' && API.isShopRegistered && !API.isShopRegistered()) {
+        killRegMap();
+        root.innerHTML = registerView();
+        bindAuth();
+        bindRegMap();
+        return;
+      }
       if (!API.user) {
         if (keep && root.querySelector('[data-shop-auth], [data-otp-root]')) return;
         if (state.auth === 'register') {
@@ -705,11 +712,15 @@
         const linked = !!(API.user.shopId || API.user.shop_id);
         const realWa = isRealWaPhone(API.user.phone);
         if (!linked && !realWa) {
-          const fakePhone = API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone);
-          if (fakePhone || API._shopCatalogReady) {
-            goShopRegister();
-            return;
-          }
+          state.auth = 'register';
+          state.fromReg = true;
+          if (!state.reg.email && API.user.email) state.reg.email = API.user.email;
+          if (!state.reg.ownerName && API.user.name) state.reg.ownerName = API.user.name;
+          killRegMap();
+          root.innerHTML = registerView();
+          bindAuth();
+          bindRegMap();
+          return;
         }
       }
       if (state.screen === 'chat' && state.orderId) {

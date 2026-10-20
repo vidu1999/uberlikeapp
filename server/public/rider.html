@@ -14,11 +14,11 @@
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/live.js?v=19zd"></script>
-  <script src="/js/api.js?v=19zd"></script>
-  <script src="/js/maps.js?v=19zd"></script>
-  <script src="/js/track-ui.js?v=19zd"></script>
-  <script src="/js/otp-login.js?v=19zd"></script>
+  <script src="/js/live.js?v=19ze"></script>
+  <script src="/js/api.js?v=19ze"></script>
+  <script src="/js/maps.js?v=19ze"></script>
+  <script src="/js/track-ui.js?v=19ze"></script>
+  <script src="/js/otp-login.js?v=19ze"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk';
@@ -1192,7 +1192,11 @@
           return;
         }
         if (API.isRiderRegistered && !API.isRiderRegistered()) {
-          goRiderRegister();
+          if (API.user && API.user.name && !state.reg.name) state.reg.name = API.user.name;
+          if (API.user && API.user.email && !state.reg.email) state.reg.email = API.user.email;
+          killMap();
+          root.innerHTML = registerView();
+          bindAuth();
           return;
         }
         startRiderGps();

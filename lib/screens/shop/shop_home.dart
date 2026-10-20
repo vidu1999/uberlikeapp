@@ -44,6 +44,7 @@ class _ShopHomeState extends State<ShopHome> {
       final phone = u?.phone ?? '';
       final realWa = RegExp(r'^07\d{8}$').hasMatch(phone.replaceAll(RegExp(r'\D'), ''));
       if ((sid == null || sid.isEmpty || sid == 'null') && !realWa) {
+        OrderRepository.instance.promptShopRegister = true;
         await OrderRepository.instance.parkForRegister('shop');
       }
     }

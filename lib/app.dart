@@ -4,6 +4,7 @@ import 'models/message.dart';
 import 'screens/welcome_flow.dart';
 import 'screens/user/customer_home.dart';
 import 'screens/user/location_allow.dart';
+import 'screens/login_screen.dart';
 import 'screens/shop/shop_home.dart';
 import 'screens/rider/rider_home.dart';
 import 'theme.dart';
@@ -40,6 +41,19 @@ class AuthGate extends StatelessWidget {
       valueListenable: OrderRepository.instance.userNotifier,
       builder: (context, user, _) {
         if (user == null) return WelcomeFlow(role: role);
+        final repo = OrderRepository.instance;
+        if (role == UserRole.shop && !repo.isShopRegistered) {
+          final sid = user.shopId;
+          final digits = user.phone.replaceAll(RegExp(r'\D'), '');
+          final realWa = RegExp(r'^07\d{8}$').hasMatch(digits);
+          if ((sid == null || sid.isEmpty || sid == 'null') && !realWa) {
+            repo.promptShopRegister = true;
+            return LoginScreen(role: role);
+          }
+        }
+        if (role == UserRole.rider && !repo.isRiderRegistered) {
+          return LoginScreen(role: role);
+        }
         return MainShell(initialRole: role);
       },
     );
