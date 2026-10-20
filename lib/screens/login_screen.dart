@@ -132,6 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'name': _name.text.trim(),
           'phone': _phone.text.trim(),
           'email': _email.text.trim(),
+          if (_pw.text.trim().length >= 4) 'password': _pw.text.trim(),
         };
         await OrderRepository.instance.completeRiderRegister();
         if (!mounted) return;
@@ -178,7 +179,47 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
       if (widget.role == UserRole.rider && !register) {
-        final acc = await OrderRepository.instance.findAccount('rider', _phone.text);
+        final id = _phone.text.trim();
+        final pw = _pw.text;
+        if (id.contains('@') || pw.trim().isNotEmpty) {
+          if (id.contains('@')) {
+            final acc = await OrderRepository.instance.findAccount('rider', id);
+            if (!mounted) return;
+            if (acc == null) {
+              setState(() {
+                busy = false;
+                register = true;
+                fromRegister = true;
+                _email.text = id;
+                error = 'This email is not registered. Create a rider account, then sign in with email and password.';
+              });
+              return;
+            }
+          }
+          if (pw.trim().isEmpty) {
+            setState(() {
+              busy = false;
+              error = 'This email is registered. Enter your password to sign in.';
+            });
+            return;
+          }
+          await OrderRepository.instance.signInPassword(id, pw, role: 'rider');
+          if (!mounted) return;
+          if (!OrderRepository.instance.isRiderRegistered) {
+            await OrderRepository.instance.parkForRegister('rider');
+            if (!mounted) return;
+            setState(() {
+              busy = false;
+              register = true;
+              fromRegister = true;
+              error = 'Register as a rider to continue.';
+            });
+            return;
+          }
+          setState(() => busy = false);
+          return;
+        }
+        final acc = await OrderRepository.instance.findAccount('rider', id);
         if (!mounted) return;
         if (acc == null) {
           setState(() {
@@ -203,6 +244,7 @@ class _LoginScreenState extends State<LoginScreen> {
           'name': _name.text.trim(),
           'phone': _phone.text.trim(),
           'email': _email.text.trim(),
+          if (_pw.text.trim().length >= 4) 'password': _pw.text.trim(),
         };
       }
       if (widget.role == UserRole.shop && register) {
@@ -430,10 +472,25 @@ class _LoginScreenState extends State<LoginScreen> {
         };
         await OrderRepository.instance.parkForRegister('shop');
       }
+      if (widget.role == UserRole.rider && !OrderRepository.instance.isRiderRegistered) {
+        OrderRepository.instance.pendingRider = {
+          ...?OrderRepository.instance.pendingRider,
+          'name': acc.displayName ?? acc.email,
+          'email': acc.email,
+        };
+        await OrderRepository.instance.parkForRegister('rider');
+      }
       if (!mounted) return;
       setState(() {
         busy = false;
         if (widget.role == UserRole.shop && OrderRepository.instance.promptShopRegister) {
+          register = true;
+          fromRegister = true;
+          _name.text = acc.displayName ?? _name.text;
+          _email.text = acc.email;
+          if (_isFakePhone(_phone.text)) _phone.text = '';
+        }
+        if (widget.role == UserRole.rider && OrderRepository.instance.needsRiderRegister) {
           register = true;
           fromRegister = true;
           _name.text = acc.displayName ?? _name.text;
@@ -854,10 +911,13 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 18),
           _field(_phone, 'Phone Number', Icons.phone_outlined, keyboard: TextInputType.phone),
           const SizedBox(height: 10),
-          _field(_pw, 'Password', Icons.lock_outline),
+          _field(_pw, 'Password', Icons.lock_outline, obscure: true),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(onPressed: () {}, child: const Text('Forgot Password?', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700))),
+            child: TextButton(
+              onPressed: () => setState(() => error = 'Use Continue with WhatsApp or Google to get back in.'),
+              child: const Text('Forgot Password?', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w700)),
+            ),
           ),
           if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFFCA5A5))),
           const SizedBox(height: 8),
@@ -942,7 +1002,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 10),
           _lightField(_email, 'Email Address'),
           const SizedBox(height: 10),
-          _lightField(_pw, 'Password'),
+          _lightField(_pw, 'Password', obscure: true),
           if (error != null) ...[
             const SizedBox(height: 10),
             Text(error!, style: const TextStyle(color: Color(0xFFB91C1C))),

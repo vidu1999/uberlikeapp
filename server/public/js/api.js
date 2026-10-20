@@ -1247,6 +1247,33 @@
     return (await lookupPhone(orig, row.role)) || row;
   }
 
+  API.saveProfile = async function (fields) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    const patch = {};
+    if (fields && fields.name != null) {
+      const name = String(fields.name).trim();
+      if (!name) throw new Error('Enter your name.');
+      patch.name = name;
+    }
+    if (fields && fields.email != null) {
+      const email = String(fields.email).trim().toLowerCase();
+      patch.email = email || null;
+    }
+    if (fields && fields.vehicle != null) {
+      const v = String(fields.vehicle).trim();
+      if (v && !/^https?:/i.test(v)) patch.vehicle = v;
+    }
+    if (!Object.keys(patch).length) return u;
+    try { await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch); } catch (_) {}
+    Object.assign(u, patch);
+    if (patch.email === null) u.email = '';
+    API.user = u;
+    saveSession();
+    notify(true);
+    return u;
+  };
+
   function nextOrderId() {
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
@@ -1701,29 +1728,40 @@
     }
     if (row && role === 'rider') {
       const pr = pendingRider() || {};
+      const patch = {};
       if (pr.name && !isPlaceholderName(pr.name)) {
         row.name = String(pr.name).trim();
-        if (pr.email) row.email = pr.email;
-        try {
-          await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', { name: row.name, email: row.email || null });
-        } catch (_) {}
+        patch.name = row.name;
+      }
+      if (pr.email) {
+        row.email = pr.email;
+        patch.email = pr.email;
+      }
+      const pw = String(pr.password || '').trim();
+      if (pw.length >= 4) {
+        patch.pin = 'p:' + pw + '|wa';
+        row.pin = patch.pin;
+      }
+      if (Object.keys(patch).length) {
+        try { await sbSend('accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch); } catch (_) {}
       }
       API.setPendingRider(null);
     }
     if (!row && role === 'rider') {
       const pr = pendingRider() || {};
       if (isPlaceholderName(pr.name)) throw new Error('Register as a rider first.');
+      const pw = String(pr.password || '').trim();
+      const veh = String(pr.vehicle || '').trim();
       row = {
         id: accountIdFor(phone, 'rider'),
         name: String(pr.name).trim(),
         phone,
         email: pr.email || '',
-        pin: 'otp',
+        pin: pw.length >= 4 ? ('p:' + pw + '|wa') : 'otp',
         role: 'rider',
         address: 'Sri Lanka',
-        vehicle: pr.vehicle || 'Honda Dio · BDX 1234',
-        rating: 5,
       };
+      if (veh && !/^https?:/i.test(veh)) row.vehicle = veh;
       API.setPendingRider(null);
       row = await saveAccount(row);
     }

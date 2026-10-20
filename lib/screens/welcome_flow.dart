@@ -62,6 +62,7 @@ class _WelcomeFlowState extends State<WelcomeFlow> {
   }
 
   Widget _splash() {
+    if (widget.role == UserRole.rider) return _riderSplash();
     return Scaffold(
       backgroundColor: const Color(0xFF07140F),
       body: Stack(
@@ -111,6 +112,56 @@ class _WelcomeFlowState extends State<WelcomeFlow> {
                   decoration: BoxDecoration(color: Brand.green, borderRadius: BorderRadius.circular(8)),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _riderSplash() {
+    final url = _img('/img/splash-rider.jpg?v=19z');
+    return Scaffold(
+      backgroundColor: const Color(0xFF04150E),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (url != null)
+            Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.expand()),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x8C020C08), Color(0x26020C08), Color(0xF0020806)],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 36, 22, 28),
+              child: Column(
+                children: [
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      color: Brand.green,
+                      borderRadius: BorderRadius.circular(36),
+                      boxShadow: const [BoxShadow(color: Color(0x7300C853), blurRadius: 24)],
+                    ),
+                    child: const Icon(Icons.location_on, color: Colors.white, size: 36),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('QuickBite', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -0.6)),
+                  const SizedBox(height: 8),
+                  const Text('Delivering Happiness', style: TextStyle(color: Color(0xFF9FE7B8), fontWeight: FontWeight.w700, fontSize: 15)),
+                  const Spacer(),
+                  const Text('Rider App', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  const Text('Fast · Safe · Reliable', style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600)),
+                ],
+              ),
             ),
           ),
         ],

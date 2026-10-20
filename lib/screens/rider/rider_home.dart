@@ -32,6 +32,8 @@ class _RiderHomeState extends State<RiderHome> {
   double? lat;
   double? lng;
   StreamSubscription<Position>? _gps;
+  final _editName = TextEditingController();
+  final _editEmail = TextEditingController();
 
   @override
   void initState() {
@@ -51,6 +53,8 @@ class _RiderHomeState extends State<RiderHome> {
   @override
   void dispose() {
     _gps?.cancel();
+    _editName.dispose();
+    _editEmail.dispose();
     super.dispose();
   }
 
@@ -187,6 +191,45 @@ class _RiderHomeState extends State<RiderHome> {
     final u = _url(path);
     if (u == null) return null;
     return NetworkImage(u);
+  }
+
+  String _photoPath() {
+    final p = OrderRepository.instance.user?.photo ?? '';
+    if (p.startsWith('http') || p.startsWith('/img/')) return p;
+    return '/img/avatar-rider.jpg';
+  }
+
+  bool _vehicleSet() {
+    final raw = (OrderRepository.instance.user?.vehicle ?? '').trim();
+    return raw.isNotEmpty && !raw.startsWith('http');
+  }
+
+  String _vehicleTitle() {
+    final raw = (OrderRepository.instance.user?.vehicle ?? '').trim();
+    if (raw.isEmpty || raw.startsWith('http')) return 'Motorcycle';
+    final bits = raw.split(RegExp(r'\s*[·|,]\s*')).where((s) => s.trim().isNotEmpty).toList();
+    if (bits.isEmpty) return 'Motorcycle';
+    if (bits.length == 1 && RegExp(r'^[A-Z]{1,3}[\s-]*\d{3,4}$', caseSensitive: false).hasMatch(bits.first)) {
+      return 'Motorcycle';
+    }
+    return bits.first;
+  }
+
+  String _vehiclePlate() {
+    final raw = (OrderRepository.instance.user?.vehicle ?? '').trim();
+    if (raw.isEmpty || raw.startsWith('http')) return '—';
+    final bits = raw.split(RegExp(r'\s*[·|,]\s*')).where((s) => s.trim().isNotEmpty).toList();
+    if (bits.length >= 2) return bits[1];
+    if (bits.length == 1 && RegExp(r'^[A-Z]{1,3}[\s-]*\d{3,4}$', caseSensitive: false).hasMatch(bits.first)) {
+      return bits.first;
+    }
+    return '—';
+  }
+
+  String _riderStarsLabel() {
+    final n = OrderRepository.instance.orders.where((o) => _mine(o) && o.status == OrderStatus.delivered).length;
+    if (n == 0) return 'New rider';
+    return '$n deliveries';
   }
 
   Widget _thumb(Order o, double size) {
@@ -331,6 +374,8 @@ class _RiderHomeState extends State<RiderHome> {
               body = _vehicle();
             } else if (page == 'help') {
               body = _help();
+            } else if (page == 'edit') {
+              body = _edit();
             } else if (tab == 1) {
               body = _orders(orders);
             } else if (tab == 2) {
@@ -347,7 +392,7 @@ class _RiderHomeState extends State<RiderHome> {
             } else {
               body = _home(orders);
             }
-            final hideNav = page == 'details' || page == 'live' || page == 'delivered' || page == 'docs' || page == 'vehicle' || page == 'help';
+            final hideNav = page == 'details' || page == 'live' || page == 'delivered' || page == 'docs' || page == 'vehicle' || page == 'help' || page == 'edit';
             return Column(
               children: [
                 Expanded(child: body),
@@ -404,14 +449,14 @@ class _RiderHomeState extends State<RiderHome> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: online ? const Color(0xFF123D28) : Brand.navy3,
+                      color: online ? Brand.green : Brand.navy3,
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Text(online ? '●  Online' : '○  Offline', style: TextStyle(color: online ? Brand.green : Brand.soft, fontWeight: FontWeight.w800, fontSize: 12)),
+                    child: Text(online ? '●  Online' : '○  Offline', style: TextStyle(color: online ? Colors.white : Brand.soft, fontWeight: FontWeight.w800, fontSize: 12)),
                   ),
                 ),
                 const SizedBox(width: 8),
-                CircleAvatar(radius: 22, backgroundImage: _img('/img/avatar-rider.jpg'), backgroundColor: Brand.navy3),
+                CircleAvatar(radius: 22, backgroundImage: _img(_photoPath()), backgroundColor: Brand.navy3),
               ],
             ),
           ),
@@ -480,9 +525,9 @@ class _RiderHomeState extends State<RiderHome> {
         child: Column(
           children: [
             Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(16)),
+              width: 52,
+              height: 52,
+              decoration: const BoxDecoration(color: Color(0xFF123D28), shape: BoxShape.circle),
               child: Icon(icon, color: Brand.green),
             ),
             const SizedBox(height: 6),
@@ -724,7 +769,7 @@ class _RiderHomeState extends State<RiderHome> {
     for (final s in Catalog.shops) {
       if (s.id == o.shopId) shop = s;
     }
-    final avatar = _url('/img/avatar-rider.jpg');
+    final avatar = _url(_photoPath());
     final name = OrderRepository.instance.user?.name ?? o.riderName ?? 'Rider';
     return Stack(
       children: [
@@ -788,7 +833,7 @@ class _RiderHomeState extends State<RiderHome> {
                         children: [
                           Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                           const Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
-                          const Text('★ 4.9  (120+)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                          Text(_riderStarsLabel(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -889,7 +934,7 @@ class _RiderHomeState extends State<RiderHome> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(color: const Color(0xFFE8F8EE), borderRadius: BorderRadius.circular(28)),
-              child: const Center(child: Text('📦', style: TextStyle(fontSize: 48))),
+              child: const Center(child: Icon(Icons.inventory_2_outlined, size: 56, color: Brand.green)),
             ),
             const SizedBox(height: 18),
             const Text('Order Delivered!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.white)),
@@ -1044,11 +1089,23 @@ class _RiderHomeState extends State<RiderHome> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         children: [
-          CircleAvatar(radius: 44, backgroundImage: _img('/img/avatar-rider.jpg'), backgroundColor: Brand.navy3),
+          CircleAvatar(radius: 44, backgroundImage: _img(_photoPath()), backgroundColor: Brand.navy3),
           const SizedBox(height: 8),
           Text(u?.name ?? 'Rider', textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           const Text('Delivery Partner', textAlign: TextAlign.center, style: TextStyle(color: Brand.soft)),
-          const Text('★ 4.9 (120+)', textAlign: TextAlign.center, style: TextStyle(color: Brand.star, fontWeight: FontWeight.w800)),
+          Text(_riderStarsLabel(), textAlign: TextAlign.center, style: const TextStyle(color: Brand.star, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Center(
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Brand.green, shape: const StadiumBorder()),
+              onPressed: () {
+                _editName.text = u?.name ?? '';
+                _editEmail.text = u?.email ?? '';
+                setState(() => page = 'edit');
+              },
+              child: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -1060,11 +1117,11 @@ class _RiderHomeState extends State<RiderHome> {
             ],
           ),
           const SizedBox(height: 12),
-          _menu('My Documents', () => setState(() => page = 'docs')),
-          _menu('Vehicle Information', () => setState(() => page = 'vehicle')),
-          _menu('Bank Account', () => setState(() => page = 'wallet')),
-          _menu('Settings', () {}),
-          _menu('Help & Support', () => setState(() => page = 'help')),
+          _menu('My Documents', () => setState(() => page = 'docs'), icon: Icons.badge_outlined),
+          _menu('Vehicle Information', () => setState(() => page = 'vehicle'), icon: Icons.two_wheeler),
+          _menu('Bank Account', () => setState(() => page = 'wallet'), icon: Icons.account_balance_outlined),
+          _menu('Settings', () {}, icon: Icons.settings_outlined),
+          _menu('Help & Support', () => setState(() => page = 'help'), icon: Icons.help_outline),
           const SizedBox(height: 8),
           const SettingsButton(),
           const SizedBox(height: 12),
@@ -1077,21 +1134,102 @@ class _RiderHomeState extends State<RiderHome> {
     );
   }
 
-  Widget _menu(String label, VoidCallback onTap) {
+  Widget _menu(String label, VoidCallback onTap, {IconData? icon}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         onTap: onTap,
         tileColor: Brand.navy2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        leading: icon == null
+            ? null
+            : Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, color: Brand.green, size: 20),
+              ),
         title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
         trailing: const Icon(Icons.chevron_right, color: Brand.soft),
       ),
     );
   }
 
+  Widget _edit() {
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(children: [
+            IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.navy2), onPressed: () => setState(() => page = ''), icon: const Icon(Icons.arrow_back, color: Colors.white)),
+            const SizedBox(width: 10),
+            const Text('Edit Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _editName,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: 'Full Name',
+              labelStyle: const TextStyle(color: Brand.soft),
+              filled: true,
+              fillColor: Brand.navy2,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _editEmail,
+            style: const TextStyle(color: Colors.white),
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              labelText: 'Email',
+              labelStyle: const TextStyle(color: Brand.soft),
+              filled: true,
+              fillColor: Brand.navy2,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 12),
+          InputDecorator(
+            decoration: InputDecoration(
+              labelText: 'Phone',
+              labelStyle: const TextStyle(color: Brand.soft),
+              filled: true,
+              fillColor: Brand.navy2,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            ),
+            child: Text(OrderRepository.instance.user?.phone ?? '—', style: const TextStyle(color: Brand.soft)),
+          ),
+          const SizedBox(height: 18),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52), shape: const StadiumBorder()),
+            onPressed: () async {
+              try {
+                await OrderRepository.instance.saveProfile(name: _editName.text, email: _editEmail.text);
+                if (!mounted) return;
+                setState(() => page = '');
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'.replaceFirst('Exception: ', ''))));
+              }
+            },
+            child: const Text('Save', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _docs() {
-    const rows = ['NIC / ID Card', 'Driving License', 'Vehicle Registration', 'Profile Photo'];
+    final photoOk = (OrderRepository.instance.user?.photo ?? '').isNotEmpty;
+    final vehOk = _vehicleSet();
+    final rows = [
+      ('NIC / ID Card', Icons.badge_outlined, false),
+      ('Driving License', Icons.credit_card, false),
+      ('Vehicle Registration', Icons.two_wheeler, vehOk),
+      ('Profile Photo', Icons.photo_camera_outlined, photoOk),
+    ];
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(16),
@@ -1106,7 +1244,17 @@ class _RiderHomeState extends State<RiderHome> {
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(color: Brand.navy2, borderRadius: BorderRadius.circular(14)),
-                child: Row(children: [Expanded(child: Text(r, style: const TextStyle(fontWeight: FontWeight.w700))), const Text('Verified  ✓', style: TextStyle(color: Brand.green, fontWeight: FontWeight.w800))]),
+                child: Row(children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(color: const Color(0xFF123D28), borderRadius: BorderRadius.circular(12)),
+                    child: Icon(r.$2, color: Brand.green, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  Text(r.$3 ? 'Verified  ✓' : 'Pending', style: TextStyle(color: r.$3 ? Brand.green : Brand.soft, fontWeight: FontWeight.w800, fontSize: 12)),
+                ]),
               )),
         ],
       ),
@@ -1114,7 +1262,6 @@ class _RiderHomeState extends State<RiderHome> {
   }
 
   Widget _vehicle() {
-    final v = OrderRepository.instance.user?.vehicle ?? 'Honda Dio · BDX 1234';
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(16),
@@ -1131,12 +1278,25 @@ class _RiderHomeState extends State<RiderHome> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(v, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _img('/img/rider-moto.jpg?v=19z') == null
+                      ? Container(height: 160, width: double.infinity, color: Brand.navy3)
+                      : Image(
+                          image: _img('/img/rider-moto.jpg?v=19z')!,
+                          height: 160,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(height: 160, color: Brand.navy3),
+                        ),
+                ),
+                const SizedBox(height: 12),
+                Text(_vehicleTitle(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                 const Divider(color: Color(0xFF1F2937)),
-                _kv('License Plate', 'BDX 1234'),
+                _kv('License Plate', _vehiclePlate()),
                 _kv('Vehicle Type', 'Motorcycle'),
-                _kv('Insurance', 'Valid (2026)'),
-                _kv('RC Book', 'Verified'),
+                _kv('Insurance', _vehicleSet() ? 'On file' : '—'),
+                _kv('RC Book', _vehicleSet() ? 'On file' : '—'),
               ],
             ),
           ),
@@ -1163,10 +1323,10 @@ class _RiderHomeState extends State<RiderHome> {
             const Text('Help & Support', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 12),
-          _menu('FAQs', () {}),
-          _menu('Contact Support', () {}),
-          _menu('Live Chat', () {}),
-          _menu('Report an Issue', () {}),
+          _menu('FAQs', () {}, icon: Icons.help_outline),
+          _menu('Contact Support', () {}, icon: Icons.phone_outlined),
+          _menu('Live Chat', () {}, icon: Icons.chat_bubble_outline),
+          _menu('Report an Issue', () {}, icon: Icons.report_outlined),
           Container(
             margin: const EdgeInsets.only(top: 8),
             padding: const EdgeInsets.all(16),

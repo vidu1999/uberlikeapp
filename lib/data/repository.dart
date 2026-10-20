@@ -733,11 +733,23 @@ class OrderRepository {
     if (user != null && role == 'rider') {
       final pr = pendingRider;
       final name = (pr?['name'] ?? '').trim();
+      final patch = <String, dynamic>{};
       if (name.isNotEmpty && !_isPlaceholderName(name)) {
         user['name'] = name;
-        if ((pr?['email'] ?? '').isNotEmpty) user['email'] = pr!['email'];
+        patch['name'] = name;
+      }
+      if ((pr?['email'] ?? '').isNotEmpty) {
+        user['email'] = pr!['email'];
+        patch['email'] = pr['email'];
+      }
+      final pw = (pr?['password'] ?? '').toString().trim();
+      if (pw.length >= 4) {
+        patch['pin'] = 'p:$pw|wa';
+        user['pin'] = patch['pin'];
+      }
+      if (patch.isNotEmpty) {
         try {
-          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', {'name': name, 'email': user['email']});
+          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', patch);
         } catch (_) {}
       }
       pendingRider = null;
@@ -746,17 +758,18 @@ class OrderRepository {
       final pr = pendingRider;
       final name = (pr?['name'] ?? '').trim();
       if (_isPlaceholderName(name)) throw Exception('Register as a rider first.');
+      final pw = (pr?['password'] ?? '').toString().trim();
+      final veh = (pr?['vehicle'] ?? '').toString().trim();
       user = {
         'id': _accountIdFor(phone, 'rider'),
         'name': name,
         'phone': phone,
         'email': pr?['email'] ?? '',
         'role': 'rider',
-        'pin': 'otp',
+        'pin': pw.length >= 4 ? 'p:$pw|wa' : 'otp',
         'address': 'Sri Lanka',
-        'vehicle': pr?['vehicle'] ?? 'Honda Dio · BDX 1234',
-        'rating': 5,
       };
+      if (veh.isNotEmpty && !veh.startsWith('http')) user!['vehicle'] = veh;
       pendingRider = null;
       try {
         await _sbWrite('accounts', 'POST', [user]);
@@ -1123,6 +1136,36 @@ class OrderRepository {
     connectedNotifier.value = true;
     await _persist();
     await refresh();
+  }
+
+  Future<void> saveProfile({String? name, String? email}) async {
+    final u = user;
+    if (u == null) throw Exception('Sign in first');
+    final patch = <String, dynamic>{};
+    if (name != null) {
+      final n = name.trim();
+      if (n.isEmpty) throw Exception('Enter your name.');
+      patch['name'] = n;
+    }
+    if (email != null) patch['email'] = email.trim().toLowerCase();
+    if (patch.isEmpty) return;
+    try {
+      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', patch);
+    } catch (_) {}
+    userNotifier.value = SessionUser(
+      id: u.id,
+      name: (patch['name'] as String?) ?? u.name,
+      phone: u.phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: u.shopId,
+      shopName: u.shopName,
+      email: patch.containsKey('email') ? patch['email'] as String : u.email,
+      pin: u.pin,
+      photo: u.photo,
+    );
+    await _persist();
   }
 
   Map<String, dynamic>? _pendingPassword;

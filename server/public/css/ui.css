@@ -952,25 +952,29 @@ html[data-role="rider"] .field input {
 /* ===== RIDER APP ===== */
 .rd-splash {
   min-height: 100%; color: #fff; text-align: center;
-  background: #04150e url('/img/splash-rider.jpg') center/cover no-repeat;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
-  padding: 28px 22px 40px; position: relative;
+  background: #04150e url('/img/splash-rider.jpg?v=19z') center/cover no-repeat;
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: calc(48px + env(safe-area-inset-top, 0px)) 22px calc(36px + env(safe-area-inset-bottom, 0px));
+  position: relative;
 }
 .rd-splash::before {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(2,18,12,.2) 0%, rgba(2,12,8,.55) 42%, rgba(2,8,6,.94) 100%);
+  background: linear-gradient(180deg, rgba(2,18,12,.55) 0%, rgba(2,12,8,.12) 38%, rgba(2,8,6,.92) 100%);
 }
 .rd-splash > * { position: relative; z-index: 1; }
+.rd-splash-top, .rd-splash-bot { display: flex; flex-direction: column; align-items: center; }
 .rd-splash .mark {
   width: 72px; height: 72px; border-radius: 50%; background: #00C853;
   display: grid; place-items: center; margin-bottom: 12px;
-  box-shadow: 0 12px 28px rgba(0,200,83,.4);
+  box-shadow: 0 12px 28px rgba(0,200,83,.45);
 }
 .rd-splash h1 { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.6px; }
 .rd-splash h1 em { color: #00C853; font-style: normal; }
-.rd-splash .tag { color: #9FE7B8; font-weight: 700; margin: 6px 0 18px; }
+.rd-splash .tag { color: #9FE7B8; font-weight: 700; margin: 8px 0 0; font-size: 15px; }
 .rd-splash .hero { font-size: 22px; font-weight: 800; margin: 0 0 18px; max-width: 240px; line-height: 1.25; }
-.rd-splash .meta { color: #9CA3AF; font-size: 13px; font-weight: 600; }
+.rd-splash .meta { color: #E5E7EB; font-size: 14px; font-weight: 700; }
+.rd-splash .meta b { display: block; font-size: 16px; margin-bottom: 4px; }
+.rd-splash .meta span { color: #9CA3AF; font-weight: 600; font-size: 13px; }
 .rd-splash .bar { width: 110px; height: 5px; border-radius: 99px; background: rgba(255,255,255,.3); margin-top: 22px; }
 
 .rd-auth {
@@ -991,6 +995,14 @@ html[data-role="rider"] .field input {
   width: 100%; border: 1px solid #1F2937; background: #0e1c18; color: #fff;
   border-radius: 14px; padding: 13px 14px; font-size: 15px;
 }
+.rd-auth .rd-field, .rd-reg .rd-field {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid #1F2937; background: #0e1c18; border-radius: 16px; padding: 0 14px;
+}
+.rd-auth .rd-field input {
+  border: 0; background: transparent; padding: 14px 0; border-radius: 0;
+}
+.rd-auth .rd-field svg, .rd-reg .rd-field svg { flex: none; }
 .rd-auth .forgot { border: 0; background: 0; color: #00C853; font-weight: 700; font-size: 13px; margin: 8px 0 10px auto; display: block; cursor: pointer; }
 .rd-auth .btn-green {
   width: 100%; margin-top: 8px; background: #00C853; color: #fff; border: 0;
@@ -1028,6 +1040,10 @@ html[data-role="rider"] .field input {
 .rd-reg input {
   width: 100%; border: 1px solid #E5E7EB; background: #F9FAFB; border-radius: 14px; padding: 12px 14px; font-size: 15px;
 }
+.rd-reg .rd-field {
+  border: 1px solid #E5E7EB; background: #F9FAFB;
+}
+.rd-reg .rd-field input { border: 0; background: transparent; padding: 12px 0; }
 .rd-reg .btn-green {
   width: 100%; margin-top: 16px; background: #00C853; color: #fff; border: 0;
   border-radius: 28px; padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer;
@@ -1050,8 +1066,8 @@ html[data-role="rider"] .field input {
 }
 .rd-online {
   display: flex; align-items: center; gap: 8px;
-  background: #123D28; color: #00C853; border: 0; border-radius: 999px;
-  padding: 8px 12px; font-weight: 800; font-size: 12px; cursor: pointer;
+  background: #00C853; color: #fff; border: 0; border-radius: 999px;
+  padding: 8px 14px; font-weight: 800; font-size: 12px; cursor: pointer;
 }
 .rd-online.off { background: #1F2937; color: #9CA3AF; }
 .rd-online i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: block; }
@@ -1070,7 +1086,7 @@ html[data-role="rider"] .field input {
   display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
 }
 .rd-short .ico {
-  width: 48px; height: 48px; border-radius: 16px; background: var(--navy2);
+  width: 52px; height: 52px; border-radius: 50%; background: #123D28;
   display: grid; place-items: center; color: #00C853;
 }
 
@@ -1142,7 +1158,9 @@ html[data-role="rider"] .field input {
 .rd-done .box {
   width: 120px; height: 120px; border-radius: 28px; background: #E8F8EE;
   display: grid; place-items: center; font-size: 48px; margin-bottom: 18px;
+  color: #00C853;
 }
+.rd-done .box svg { width: 64px; height: 64px; }
 .rd-done h1 { font-size: 26px; font-weight: 800; margin: 0 0 8px; }
 .rd-done p { color: #6B7280; margin: 0 0 18px; }
 .rd-done .pay {
@@ -1194,7 +1212,12 @@ html[data-role="rider"] .field input {
 .rd-prof .ava { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; margin: 8px auto 8px; display: block; }
 .rd-prof h2 { margin: 0; font-size: 22px; font-weight: 800; }
 .rd-prof .role { color: #9CA3AF; font-size: 13px; }
-.rd-prof .stars { color: #F5B400; font-weight: 800; margin: 6px 0 12px; }
+.rd-prof .stars { color: #F5B400; font-weight: 800; margin: 6px 0 8px; }
+.rd-edit {
+  border: 0; background: #00C853; color: #fff; font-weight: 800;
+  border-radius: 999px; padding: 10px 22px; margin: 4px auto 16px;
+  display: inline-block; cursor: pointer;
+}
 .rd-prof-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 16px 16px; text-align: center; }
 .rd-prof-stats div { background: var(--navy2); border-radius: 14px; padding: 12px; }
 .rd-prof-stats b { display: block; font-size: 18px; }
@@ -1206,6 +1229,10 @@ html[data-role="rider"] .field input {
   padding: 14px; margin-bottom: 8px; font-weight: 700; cursor: pointer; text-align: left;
 }
 .rd-menu-list button span { margin-left: auto; color: #6B7280; }
+.rd-menu-list button .mi {
+  width: 38px; height: 38px; border-radius: 12px; background: #123D28;
+  display: grid; place-items: center; flex: none; margin-left: 0;
+}
 .rd-out {
   margin: 8px 16px 24px; width: calc(100% - 32px);
   background: transparent; border: 1px solid #374151; color: #FCA5A5;
@@ -1217,11 +1244,16 @@ html[data-role="rider"] .field input {
   margin: 0 16px 8px; background: var(--navy2); border-radius: 14px; padding: 14px;
   display: flex; align-items: center; gap: 12px;
 }
-.rd-row .ok { color: #00C853; margin-left: auto; font-weight: 800; }
+.rd-row .mi {
+  width: 40px; height: 40px; border-radius: 12px; background: #123D28;
+  display: grid; place-items: center; flex: none;
+}
+.rd-row .ok { color: #00C853; margin-left: auto; font-weight: 800; font-size: 12px; }
+.rd-row .wait { color: #9CA3AF; margin-left: auto; font-weight: 700; font-size: 12px; }
 .rd-help-card {
   margin: 16px; background: #123D28; border-radius: 18px; padding: 16px; color: #fff;
 }
-.rd-veh img { width: 100%; height: 160px; object-fit: contain; display: block; margin: 8px 0 12px; }
+.rd-veh img { width: 100%; height: 180px; object-fit: cover; display: block; margin: 8px 0 12px; border-radius: 16px; background: #0e1c18; }
 .rd-veh .kv { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #1F2937; }
 .rd-veh .kv span { color: #9CA3AF; }
 
