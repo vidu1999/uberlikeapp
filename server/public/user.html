@@ -7,19 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19y" />
-  <link rel="stylesheet" href="/css/ui.css?v=19y" />
-  <link rel="stylesheet" href="/css/track.css?v=19y" />
+  <link rel="stylesheet" href="/css/app.css?v=19zi" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zi" />
+  <link rel="stylesheet" href="/css/track.css?v=19zi" />
   <link rel="stylesheet" href="/css/qb.css?v=19zg" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
-  <script src="/js/live.js?v=19zh"></script>
-  <script src="/js/api.js?v=19zh"></script>
-  <script src="/js/maps.js?v=19zh"></script>
-  <script src="/js/track-ui.js?v=19zh"></script>
+  <script src="/js/live.js?v=19zi"></script>
+  <script src="/js/api.js?v=19zi"></script>
+  <script src="/js/maps.js?v=19zi"></script>
+  <script src="/js/track-ui.js?v=19zi"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const APK = {
@@ -413,9 +413,13 @@
       return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
     }
     function addToCart(item) {
+      if (API.itemOnSale && !API.itemOnSale(item)) return;
       if (state.cart.length && state.cart[0].shopId !== item.shopId) state.cart = [];
       const hit = state.cart.find((c) => c.id === item.id);
-      if (hit) hit.qty += 1;
+      const next = (hit ? hit.qty : 0) + 1;
+      const st = API.itemStock && API.itemStock(item);
+      if (st && !st.unlimited && next > st.stock) return;
+      if (hit) hit.qty = next;
       else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1, image: item.image });
       saveCart();
       render({ keepScroll: true });
@@ -423,10 +427,24 @@
     function setQty(id, d) {
       const hit = state.cart.find((c) => c.id === id);
       if (!hit) return;
+      if (d > 0) {
+        const it = (API.items || []).find((i) => i.id === id) || hit;
+        if (API.itemOnSale && !API.itemOnSale(it)) return;
+        const st = API.itemStock && API.itemStock(it);
+        if (st && !st.unlimited && hit.qty + d > st.stock) return;
+      }
       hit.qty += d;
       if (hit.qty <= 0) state.cart = state.cart.filter((c) => c.id !== id);
       saveCart();
       render({ keepScroll: true });
+    }
+    function itemSaleLabel(it) {
+      if (API.itemOnSale && !API.itemOnSale(it)) return `<span class="muted">Sold out</span>`;
+      const st = API.itemStock && API.itemStock(it);
+      const left = (st && !st.unlimited && st.stock > 0 && st.stock <= 5)
+        ? `<span class="muted">Only ${st.stock} left</span>`
+        : '';
+      return `<span class="sale-side">${left}<button class="add" data-add="${esc(it.id)}">Add</button></span>`;
     }
 
     const SVG = {
@@ -504,7 +522,7 @@
     function filteredItems() {
       const q = state.query.trim().toLowerCase();
       return (API.items || []).filter((it) => {
-        if (it.isAvailable === false) return false;
+        if (API.itemOnSale ? !API.itemOnSale(it) : it.isAvailable === false) return false;
         if (!itemMatchesCat(it)) return false;
         if (!q) return state.category !== 'All';
         const shop = API.shopOf(it.shopId);
@@ -542,7 +560,7 @@
           <div class="meta">${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || 'Shop')}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : ''}</div>
           <div class="price">${rs(it.price)}</div>
         </div>
-        ${it.isAvailable === false ? `<span class="muted">Sold out</span>` : `<button class="add" data-add="${esc(it.id)}">Add</button>`}
+        ${itemSaleLabel(it)}
       </div>`;
     }
 
@@ -743,7 +761,7 @@
           ${list.map((it)=>`<div class="menu-row">
             <img src="${itemImg(it)}" alt="" />
             <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
-            ${it.isAvailable ? `<button class="add" data-add="${it.id}">Add</button>` : `<span class="muted">Sold out</span>`}
+            ${itemSaleLabel(it)}
           </div>`).join('')}
         ` : state.menuTab==='reviews' ? `<div class="pad"><p>${esc(shopRateText(shop))}${Number(shop.reviews) > 0 ? ' from customers after delivery.' : ' — ratings appear after delivered orders.'}</p></div>`
           : `<div class="pad"><p>${esc(shop.address)}</p><p class="muted">${esc(shop.hours)}</p></div>`}
@@ -1690,6 +1708,20 @@
         }
         if (!API.isWhatsAppVerified || !API.isWhatsAppVerified()) {
           state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '', mode: 'order' };
+          render({ keepScroll: true });
+          return;
+        }
+        try {
+          (state.cart || []).forEach((c) => {
+            const it = (API.items || []).find((x) => x.id === c.id) || c;
+            if (API.itemOnSale && !API.itemOnSale(it)) throw new Error((it.name || 'Item') + ' is unavailable.');
+            const st = API.itemStock && API.itemStock(it);
+            if (st && !st.unlimited && Number(c.qty || 1) > st.stock) {
+              throw new Error((it.name || 'Item') + ' only has ' + st.stock + ' left.');
+            }
+          });
+        } catch (e) {
+          state.cardErr = e.message || 'Item is unavailable.';
           render({ keepScroll: true });
           return;
         }

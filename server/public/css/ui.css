@@ -415,6 +415,39 @@ html[data-role="shop"] .add { background: var(--g); }
   padding: 14px 18px; font-weight: 800; font-size: 15px; cursor: pointer;
   box-shadow: 0 10px 24px rgba(0,200,83,.35); z-index: 6;
 }
+.mi-head { justify-content: space-between; }
+.mi-stock-btn {
+  border: 0; background: #ECFDF3; color: #00C853; font-weight: 800; font-size: 13px;
+  padding: 8px 14px; border-radius: 999px; cursor: pointer;
+}
+.st-page { background: #fff; color: #111; min-height: 100%; padding-bottom: 96px; }
+.st-row {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  border-bottom: 1px solid #F3F4F6; background: #fff;
+}
+.st-row img { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; background: #eee; flex: none; }
+.st-row b { display: block; font-size: 15px; }
+.st-row .pr { color: #6B7280; font-weight: 700; font-size: 13px; margin-top: 4px; }
+.st-unl { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; font-weight: 700; color: #6B7280; cursor: pointer; }
+.st-unl input { accent-color: #00C853; }
+.st-step {
+  display: flex; align-items: center; gap: 8px; flex: none;
+}
+.st-step button {
+  width: 32px; height: 32px; border: 0; border-radius: 10px; background: #F3F4F6;
+  font-size: 18px; font-weight: 800; cursor: pointer; color: #111;
+}
+.st-step b { min-width: 28px; text-align: center; font-size: 16px; }
+.st-step.off { opacity: .35; pointer-events: none; }
+.st-save {
+  margin: 18px 16px 24px; height: 52px; border-radius: 16px; font-size: 16px;
+}
+html[data-role="shop"] .st-page,
+html[data-role="shop"] .st-row { color: #111; background: #fff; }
+.sale-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.ie-unl { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #374151; margin: 14px 0 8px; }
+.ie-unl input { accent-color: #00C853; width: 18px; height: 18px; }
+#itemStockWrap.hidden { display: none; }
 
 .ie-photo {
   width: 120px; height: 120px; margin: 8px auto 18px; border-radius: 18px;

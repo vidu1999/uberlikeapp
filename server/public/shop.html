@@ -7,20 +7,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=19zc" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zc" />
-  <link rel="stylesheet" href="/css/track.css?v=19zc" />
+  <link rel="stylesheet" href="/css/app.css?v=19zi" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zi" />
+  <link rel="stylesheet" href="/css/track.css?v=19zi" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="/js/live.js?v=19zh"></script>
-  <script src="/js/api.js?v=19zh"></script>
-  <script src="/js/maps.js?v=19zh"></script>
-  <script src="/js/track-ui.js?v=19zh"></script>
-  <script src="/js/otp-login.js?v=19zh"></script>
+  <script src="/js/live.js?v=19zi"></script>
+  <script src="/js/api.js?v=19zi"></script>
+  <script src="/js/maps.js?v=19zi"></script>
+  <script src="/js/track-ui.js?v=19zi"></script>
+  <script src="/js/otp-login.js?v=19zi"></script>
   <script>
     const state = {
       tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
@@ -61,6 +61,17 @@
       return a === b;
     }
     function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }
+    function stockInfo(it) {
+      if (API.itemStock) return API.itemStock(it);
+      if (it && it.stockUnlimited === false) return { unlimited: false, stock: Math.max(0, Number(it.stock) || 0) };
+      return { unlimited: true, stock: 0 };
+    }
+    function stockLine(it) {
+      const st = stockInfo(it);
+      if (st.unlimited) return 'Unlimited';
+      if (st.stock <= 0) return 'Sold out';
+      return 'Stock: ' + st.stock;
+    }
     function menuBucket(cat) {
       const c = String(cat || '').toLowerCase();
       if (/drink|beverage|coffee|juice|tea|ice/.test(c)) return 'Drinks';
@@ -399,19 +410,45 @@
         return true;
       });
       return `<div class="scroll mi-page">
-        <div class="mi-head"><h1>Menu Items</h1></div>
+        <div class="mi-head"><h1>Menu Items</h1><button type="button" class="mi-stock-btn" data-open-stock>Stock</button></div>
         <div class="mi-cats">
           ${['All','Food','Drinks','Desserts'].map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${c}">${c}</button>`).join('')}
         </div>
         <div class="mi-search">🔍 <input id="menuQ" placeholder="Search menu items…" value="${esc(state.menuQ)}" /></div>
         ${list.map((it) => `<div class="mi-row" data-edit-item="${esc(it.id)}">
           <img src="${itemImg(it)}" alt="" />
-          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)}</div></div>
+          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)} · ${esc(stockLine(it))}</div></div>
           <label class="sw" data-stop><input type="checkbox" data-toggle="${esc(it.id)}" data-on="${it.isAvailable?0:1}" ${it.isAvailable?'checked':''} /><i></i></label>
         </div>`).join('') || '<div class="pad muted">No items match. Tap Add Item.</div>'}
       </div>
       <button class="mi-add" type="button" data-add-item>+ Add Item</button>
       ${nav()}`;
+    }
+    function stockView() {
+      const list = shopItems();
+      return `<div class="scroll st-page">
+        <div class="ie-head"><button class="back" type="button" data-close-stock>←</button><h1>Stock Management</h1></div>
+        ${list.map((it) => {
+          const d = (state.stockDraft && state.stockDraft[it.id]) || stockInfo(it);
+          const sold = !d.unlimited && Number(d.stock || 0) <= 0;
+          const lab = d.unlimited ? 'Unlimited' : (sold ? 'Sold out' : 'Stock: ' + (d.stock || 0));
+          return `<div class="st-row">
+            <img src="${itemImg(it)}" alt="" />
+            <div class="grow">
+              <b>${esc(it.name)}</b>
+              <div class="pr" data-st-lab="${esc(it.id)}">${esc(lab)}</div>
+              <label class="st-unl"><input type="checkbox" data-st-unl="${esc(it.id)}" ${d.unlimited ? 'checked' : ''} /> Unlimited</label>
+            </div>
+            <div class="st-step ${d.unlimited ? 'off' : ''}" data-st-step="${esc(it.id)}">
+              <button type="button" data-st-d="${esc(it.id)}" data-n="-1">−</button>
+              <b data-st-n="${esc(it.id)}">${d.unlimited ? '∞' : (d.stock || 0)}</b>
+              <button type="button" data-st-d="${esc(it.id)}" data-n="1">+</button>
+            </div>
+          </div>`;
+        }).join('') || '<div class="pad muted">Add menu items first, then set stock.</div>'}
+        ${list.length ? `<button class="btn full st-save" type="button" data-save-stock>Update Stock</button>` : ''}
+        <p class="err" data-stock-err></p>
+      </div>`;
     }
     function itemEditView() {
       const it = state.itemDraft || {};
@@ -433,6 +470,12 @@
           </select>
           <label>Description</label>
           <textarea id="itemDesc" placeholder="e.g. Rich chocolate cake with cream">${esc(it.desc || it.description || '')}</textarea>
+          <label class="ie-unl"><input type="checkbox" id="itemUnl" ${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'checked' : ''} /> Unlimited stock</label>
+          <div id="itemStockWrap" class="${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'hidden' : ''}">
+            <label>Stock quantity</label>
+            <input id="itemStock" inputmode="numeric" placeholder="e.g. 15" value="${it.stockUnlimited === false ? esc(it.stock != null ? it.stock : 0) : ''}" />
+            <p class="muted" style="margin:6px 0 0;font-size:12px">When stock hits 0 this item becomes unavailable automatically.</p>
+          </div>
           <p class="err" data-item-err></p>
           <button class="btn full ie-save" type="button" data-save-item>Save Item</button>
         </div>
@@ -655,6 +698,7 @@
       const sc0 = root.querySelector('.scroll');
       const y = keep && sc0 ? sc0.scrollTop : 0;
       if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
+      if (keep && state.screen === 'stock' && root.querySelector('[data-save-stock]')) return;
       if (keep && state.screen === 'edit-shop' && root.querySelector('[data-save-shop]')) return;
       try {
       if (API.user && state.auth === 'register' && API.isShopRegistered && !API.isShopRegistered()) {
@@ -777,6 +821,7 @@
       if (state.screen === 'order') root.innerHTML = orderDetailsView();
       else if (state.screen === 'wallet') root.innerHTML = walletView();
       else if (state.screen === 'item') root.innerHTML = itemEditView();
+      else if (state.screen === 'stock') root.innerHTML = stockView();
       else if (state.screen === 'edit-shop') root.innerHTML = editShopView();
       else if (state.screen === 'store') root.innerHTML = storeView();
       else if (state.tab === 'menu') root.innerHTML = menuView();
@@ -1143,8 +1188,80 @@
       root.querySelectorAll('[data-close-order]').forEach((b) => b.onclick = () => { state.screen = ''; state.orderId = null; render(); });
       root.querySelectorAll('[data-add-item]').forEach((b) => b.onclick = () => {
         if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
-        state.itemId = null; state.itemDraft = { category: 'Food', isAvailable: true }; state.screen = 'item'; render();
+        state.itemId = null; state.itemDraft = { category: 'Food', isAvailable: true, stockUnlimited: true }; state.screen = 'item'; render();
       });
+      root.querySelectorAll('[data-open-stock]').forEach((b) => b.onclick = () => {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
+        const draft = {};
+        shopItems().forEach((it) => {
+          const st = stockInfo(it);
+          draft[it.id] = { unlimited: st.unlimited, stock: st.unlimited ? 0 : st.stock };
+        });
+        state.stockDraft = draft;
+        state.screen = 'stock';
+        render();
+      });
+      root.querySelectorAll('[data-close-stock]').forEach((b) => b.onclick = () => {
+        state.screen = ''; state.stockDraft = null; state.tab = 'menu'; render();
+      });
+      function paintStockRow(id) {
+        const d = (state.stockDraft || {})[id];
+        if (!d) return;
+        const lab = root.querySelector('[data-st-lab="' + id + '"]');
+        const num = root.querySelector('[data-st-n="' + id + '"]');
+        const step = root.querySelector('[data-st-step="' + id + '"]');
+        const sold = !d.unlimited && Number(d.stock || 0) <= 0;
+        if (lab) lab.textContent = d.unlimited ? 'Unlimited' : (sold ? 'Sold out' : 'Stock: ' + (d.stock || 0));
+        if (num) num.textContent = d.unlimited ? '∞' : String(d.stock || 0);
+        if (step) step.classList.toggle('off', !!d.unlimited);
+      }
+      root.querySelectorAll('[data-st-d]').forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const id = b.dataset.stD;
+        if (!state.stockDraft) state.stockDraft = {};
+        if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
+        const d = state.stockDraft[id];
+        if (d.unlimited) return;
+        d.stock = Math.max(0, Number(d.stock || 0) + Number(b.dataset.n || 0));
+        paintStockRow(id);
+      });
+      root.querySelectorAll('[data-st-unl]').forEach((el) => el.onchange = () => {
+        const id = el.dataset.stUnl;
+        if (!state.stockDraft) state.stockDraft = {};
+        if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
+        state.stockDraft[id].unlimited = !!el.checked;
+        paintStockRow(id);
+      });
+      const saveStock = root.querySelector('[data-save-stock]');
+      if (saveStock) saveStock.onclick = async () => {
+        saveStock.disabled = true; saveStock.textContent = 'Updating…';
+        const err = root.querySelector('[data-stock-err]');
+        try {
+          const ids = Object.keys(state.stockDraft || {});
+          for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const it = API.items.find((x) => x.id === id);
+            if (!it) continue;
+            const d = state.stockDraft[id];
+            let available = it.isAvailable !== false;
+            if (!d.unlimited && Number(d.stock || 0) <= 0) available = false;
+            else if (!d.unlimited && Number(d.stock || 0) > 0) available = true;
+            await API.saveItem(Object.assign({}, it, {
+              shopId: shopId(),
+              stockUnlimited: !!d.unlimited,
+              stock: d.unlimited ? null : Math.max(0, Number(d.stock) || 0),
+              isAvailable: available,
+              desc: it.desc || it.description || '',
+            }), { silent: true });
+          }
+          try { await API.refresh(); } catch (_) {}
+          state.screen = ''; state.stockDraft = null; state.tab = 'menu';
+          render();
+        } catch (e) {
+          if (err) err.textContent = e.message || 'Could not update stock.';
+          saveStock.disabled = false; saveStock.textContent = 'Update Stock';
+        }
+      };
       root.querySelectorAll('[data-edit-item]').forEach((b) => b.onclick = () => {
         const it = API.items.find((i) => i.id === b.dataset.editItem);
         state.itemId = it && it.id; state.itemDraft = it ? Object.assign({}, it) : { category: 'Food' }; state.screen = 'item'; render();
@@ -1172,6 +1289,9 @@
         };
         r.readAsDataURL(f);
       };
+      const unl = document.getElementById('itemUnl');
+      const wrap = document.getElementById('itemStockWrap');
+      if (unl && wrap) unl.onchange = () => { wrap.classList.toggle('hidden', unl.checked); };
       const save = root.querySelector('[data-save-item]');
       if (save) save.onclick = async () => {
         if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
@@ -1294,12 +1414,18 @@
       const price = document.getElementById('itemPrice');
       const cat = document.getElementById('itemCat');
       const desc = document.getElementById('itemDesc');
+      const unl = document.getElementById('itemUnl');
+      const stock = document.getElementById('itemStock');
       if (name) d.name = name.value.trim();
       if (price) d.price = Number(price.value || 0);
       if (cat) d.category = cat.value;
       if (desc) d.desc = desc.value.trim();
+      if (unl) d.stockUnlimited = !!unl.checked;
+      if (d.stockUnlimited) d.stock = null;
+      else if (stock) d.stock = Math.max(0, Math.round(Number(stock.value || 0)));
       d.shopId = shopId();
       d.isAvailable = d.isAvailable !== false;
+      if (d.stockUnlimited === false && Number(d.stock || 0) <= 0) d.isAvailable = false;
       if (state.itemId) d.id = state.itemId;
       return d;
     }

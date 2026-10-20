@@ -54,7 +54,7 @@
     const orders = (API.orders || []).map((o) =>
       [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng, o.paymentStatus || '', o.paid ? '1' : '0'].join(':')
     ).join('|');
-    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1') + ':' + (i.rating || '') + ':' + (i.reviews || '')).join('|');
+    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1') + ':' + (i.stockUnlimited ? 'U' : String(i.stock != null ? i.stock : '')) + ':' + (i.rating || '') + ':' + (i.reviews || '')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
     const shops = (API.shops || []).map((s) => (s && s.id) + ':' + (s && s.name || '') + ':' + (s && s.rating) + ':' + (s && s.reviews)).join('|');
     return [(API.user && API.user.id) || '', shops, items, orders, msgs].join('~');
@@ -99,16 +99,48 @@
       promo: r.promo,
     };
   }
+  function unpackDesc(raw) {
+    const text = String(raw || '');
+    const m = text.match(/^\[\[QB\|(U|\d+)\]\]\n?/);
+    if (!m) return { unlimited: true, stock: null, desc: text };
+    if (m[1] === 'U') return { unlimited: true, stock: null, desc: text.slice(m[0].length) };
+    return { unlimited: false, stock: Math.max(0, parseInt(m[1], 10) || 0), desc: text.slice(m[0].length) };
+  }
+  function packDesc(desc, unlimited, stock) {
+    const text = String(desc || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
+    if (unlimited) return '[[QB|U]]' + (text ? '\n' + text : '');
+    const n = Math.max(0, Math.round(Number(stock) || 0));
+    return '[[QB|' + n + ']]' + (text ? '\n' + text : '');
+  }
+  function itemStockOf(it) {
+    if (!it) return { unlimited: true, stock: 0 };
+    if (it.stockUnlimited === false) return { unlimited: false, stock: Math.max(0, Math.round(Number(it.stock) || 0)) };
+    return { unlimited: true, stock: 0 };
+  }
+  function itemOnSale(it) {
+    if (!it) return false;
+    const st = itemStockOf(it);
+    if (!st.unlimited && st.stock <= 0) return false;
+    return it.isAvailable !== false;
+  }
+  API.itemStock = itemStockOf;
+  API.itemOnSale = itemOnSale;
+
   function mapItem(r) {
+    const packed = unpackDesc(r.description || r.desc || '');
+    const soldOut = !packed.unlimited && packed.stock <= 0;
     return {
       id: r.id,
       shopId: r.shop_id || r.shopId,
       name: r.name,
       category: r.category,
       price: Number(r.price || 0),
-      isAvailable: r.is_available !== false && r.isAvailable !== false,
-      desc: r.description || r.desc || '',
+      isAvailable: soldOut ? false : (r.is_available !== false && r.isAvailable !== false),
+      desc: packed.desc,
+      description: packed.desc,
       image: r.image,
+      stockUnlimited: packed.unlimited,
+      stock: packed.unlimited ? null : packed.stock,
     };
   }
 
@@ -351,6 +383,7 @@
     o.shopAddress = d.shopAddress || o.shopAddress || o.shop_address || '';
     o.pickedUpAt = d.pickedUpAt || o.pickedUpAt || r.picked_up_at || null;
     o.ratings = d.ratings || o.ratings || null;
+    o.stockApplied = !!(d.stockApplied || o.stockApplied);
     return o;
   }
 
@@ -2712,12 +2745,68 @@
     };
   };
 
+  function groupedLines(items) {
+    const g = {};
+    (items || []).forEach(function (it) {
+      const id = String((it && it.id) || '');
+      if (!id) return;
+      if (!g[id]) g[id] = { id: id, name: String((it && it.name) || 'Item'), qty: 0 };
+      g[id].qty += Number((it && it.qty) || 1);
+    });
+    return Object.keys(g).map(function (k) { return g[k]; });
+  }
+  function assertOrderStock(items) {
+    groupedLines(items).forEach(function (line) {
+      const it = (API.items || []).find(function (x) { return x.id === line.id; });
+      if (!it) return;
+      if (!itemOnSale(it)) throw new Error(it.name + ' is unavailable.');
+      const st = itemStockOf(it);
+      if (!st.unlimited && line.qty > st.stock) {
+        throw new Error(it.name + ' only has ' + st.stock + ' left.');
+      }
+    });
+  }
+  async function persistItemStock(it) {
+    if (!it || !it.id) return;
+    const st = itemStockOf(it);
+    const plain = String(it.desc || it.description || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
+    const available = (!st.unlimited && st.stock <= 0) ? false : (it.isAvailable !== false);
+    it.isAvailable = available;
+    it.stock = st.unlimited ? null : st.stock;
+    it.stockUnlimited = st.unlimited;
+    if (sbConfigured()) {
+      await sbSend('menu_items?id=eq.' + encodeURIComponent(it.id), 'PATCH', {
+        description: packDesc(plain, st.unlimited, st.stock),
+        is_available: available,
+      });
+    }
+  }
+  async function shiftStock(lines, reverse) {
+    const grouped = groupedLines(lines);
+    for (let i = 0; i < grouped.length; i++) {
+      const line = grouped[i];
+      const it = (API.items || []).find(function (x) { return x.id === line.id; });
+      if (!it) continue;
+      const st = itemStockOf(it);
+      if (st.unlimited) continue;
+      const next = reverse ? st.stock + line.qty : Math.max(0, st.stock - line.qty);
+      it.stock = next;
+      it.stockUnlimited = false;
+      it.isAvailable = next > 0;
+      try {
+        await persistItemStock(it);
+      } catch (_) {}
+    }
+    notify(true);
+  }
+
   API.placeOrder = async function (payload) {
     if (!API.isWhatsAppVerified()) {
       const err = new Error('Verify WhatsApp before placing an order.');
       err.code = 'WHATSAPP_REQUIRED';
       throw err;
     }
+    assertOrderStock(payload && payload.items);
     if (API.user) {
       payload = Object.assign({}, payload, {
         customerPhone: API.user.phone || payload.customerPhone,
@@ -2796,6 +2885,12 @@
     }
     order.shopAddress = order.shopAddress || shopPin.address || '';
     if (shopPin.name && (!order.shopName || order.shopName === 'Shop')) order.shopName = shopPin.name;
+    if (!order.stockApplied) {
+      try {
+        await shiftStock(order.items, false);
+        order.stockApplied = true;
+      } catch (_) {}
+    }
     if (sbConfigured()) {
       try {
         await sbPutRow('orders', orderRow(order));
@@ -2913,7 +3008,22 @@
       body = Object.assign({}, _locPend[id], body);
       delete _locPend[id];
     }
-    return enqueuePatch(id, function () { return writePatch(id, body); });
+    const before = API.orders.find(function (o) { return o.id === id; });
+    return enqueuePatch(id, function () { return writePatch(id, body); }).then(function (out) {
+      try {
+        if (body.status === 'cancelled' && before && before.status !== 'cancelled' && before.stockApplied) {
+          shiftStock(before.items, true).then(function () {
+            const o = API.orders.find(function (x) { return x.id === id; }) || before;
+            o.stockApplied = false;
+            keepOrder(o);
+            if (sbConfigured()) {
+              sbSend('orders?id=eq.' + encodeURIComponent(id), 'PATCH', orderRow(o)).catch(function () {});
+            }
+          }).catch(function () {});
+        }
+      } catch (_) {}
+      return out;
+    });
   };
 
   API.rateOrder = async function (id, input) {
@@ -2980,6 +3090,9 @@
   };
 
   API.toggleItem = async function (id, isAvailable) {
+    const hit = API.items.find((i) => i.id === id);
+    const st = itemStockOf(hit);
+    if (isAvailable && !st.unlimited && st.stock <= 0) isAvailable = false;
     try {
       await getJSON('/api/items/' + encodeURIComponent(id), {
         method: 'PATCH',
@@ -2990,7 +3103,6 @@
     if (sbConfigured()) {
       await sbSend('menu_items?id=eq.' + encodeURIComponent(id), 'PATCH', { is_available: isAvailable });
     }
-    const hit = API.items.find((i) => i.id === id);
     if (hit) hit.isAvailable = !!isAvailable;
     notify(true);
     return API.refresh();
@@ -3080,7 +3192,7 @@
     return mapped;
   };
 
-  API.saveItem = async function (item) {
+  API.saveItem = async function (item, opts) {
     if (!API.user || !sameRole(API.user.role, 'shop')) {
       throw new Error('Register as a shop owner first, then add items.');
     }
@@ -3098,14 +3210,19 @@
     if (!sid) throw new Error('Shop is not in the database. Register the shop, then add items.');
     if (!String(item.name || '').trim()) throw new Error('Enter an item name.');
     const id = item.id || ('ITM_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    const st = itemStockOf(item);
+    const plain = String(item.desc || item.description || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
+    let available = item.isAvailable !== false;
+    if (!st.unlimited && st.stock <= 0) available = false;
+    if (!st.unlimited && st.stock > 0 && item.stockUnlimited === false) available = item.isAvailable !== false;
     const row = {
       id,
       shop_id: sid,
       name: String(item.name).trim(),
       category: item.category || 'Food',
       price: Number(item.price || 0),
-      is_available: item.isAvailable !== false,
-      description: item.desc || item.description || '',
+      is_available: available,
+      description: packDesc(plain, st.unlimited, st.stock),
       image: item.image || '/img/shop-bakery.jpg',
     };
     let mapped = mapItem(row);
@@ -3123,9 +3240,11 @@
     if (i >= 0) API.items[i] = mapped;
     else API.items.push(mapped);
     notify(true);
-    try { await API.refresh(); } catch (_) {}
-    if (!API.items.some((x) => x.id === id)) API.items.push(mapped);
-    notify(true);
+    if (!(opts && opts.silent)) {
+      try { await API.refresh(); } catch (_) {}
+      if (!API.items.some((x) => x.id === id)) API.items.push(mapped);
+      notify(true);
+    }
     return mapped;
   };
 
