@@ -138,16 +138,32 @@
     return typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
   }
 
+  function realRate(rating, reviews) {
+    const r = Number(rating);
+    const n = Number(String(reviews == null ? '' : reviews).replace(/[^\d]/g, ''));
+    if (!Number.isFinite(r) || r <= 0) return { rating: '', reviews: '' };
+    if (!Number.isFinite(n) || n <= 0) return { rating: '', reviews: '' };
+    return { rating: r.toFixed(1), reviews: n >= 100 ? n + '+' : String(n) };
+  }
+
+  function riderPhoto() {
+    const u = typeof API !== 'undefined' ? API.user : null;
+    const p = u && u.photo ? String(u.photo) : '';
+    if (/^https?:\/\//i.test(p) || p.indexOf('/img/') === 0) return p;
+    return '/img/avatar-rider.jpg';
+  }
+
   function person(order, viewer) {
     if (viewer === 'rider') {
+      const name = order.riderName || (typeof API !== 'undefined' && API.user && API.user.name) || 'Rider';
       return {
-        name: order.riderName || (typeof API !== 'undefined' && API.user && API.user.name) || 'Rider',
+        name,
         role: 'Delivery Partner',
         phone: order.customerPhone,
-        photo: '/img/avatar-rider.jpg',
-        rating: '4.9',
-        reviews: '120+',
-        initials: initials(order.riderName || 'KP'),
+        photo: riderPhoto(),
+        rating: '',
+        reviews: '',
+        initials: initials(name),
         side: 'bike',
       };
     }
@@ -155,26 +171,28 @@
       const shop = shopOf(order) || {};
       const name = (window.API && API.shopTitle && API.shopTitle(shop)) || shop.name || order.shopName || 'Shop';
       const bits = [shop.category, shop.address].filter(Boolean);
+      const rate = realRate(shop.rating, shop.reviews);
       return {
         name,
         role: bits.length ? bits.join(' · ') : 'Waiting for confirm',
         phone: null,
         photo: shop.image || '/img/shop-bakery.jpg',
-        rating: Number(shop.rating || 0).toFixed(1),
-        reviews: shop.reviews >= 100 ? shop.reviews + '+' : String(shop.reviews || 0),
+        rating: rate.rating,
+        reviews: rate.reviews,
         initials: initials(name),
         side: 'shop',
       };
     }
     if (order.riderName || riderOnJob(order)) {
+      const name = order.riderName || 'Rider';
       return {
-        name: order.riderName || 'Rider',
+        name,
         role: goingToShop(order) ? 'Heading to the shop' : (order.status === 'picked_up' || order.status === 'on_the_way' ? 'On the way to you' : 'Delivery Partner'),
         phone: order.riderPhone,
         photo: '/img/avatar-rider.jpg',
-        rating: '4.9',
-        reviews: '120+',
-        initials: initials(order.riderName || 'Rider'),
+        rating: '',
+        reviews: '',
+        initials: initials(name),
         side: 'bike',
       };
     }
@@ -183,9 +201,9 @@
       role: order.shopName || 'Waiting for confirm',
       phone: null,
       photo: '/img/shop-bakery.jpg',
-      rating: '5.0',
-      reviews: 'New',
-      initials: 'SH',
+      rating: '',
+      reviews: '',
+      initials: initials(order.shopName || 'Shop'),
       side: 'shop',
     };
   }
@@ -244,7 +262,7 @@
           <div class="grow">
             <b data-rider>${esc(p.name)}</b>
             <div class="role" data-sub>${esc(p.role)}</div>
-            <div class="rate"><span class="star">★</span> ${esc(p.rating)} <span style="color:#9CA3AF;font-weight:600">(${esc(p.reviews)})</span></div>
+            <div class="rate ${p.rating ? '' : 'hidden'}" data-rate><span class="star">★</span> ${esc(p.rating || '')} <span style="color:#9CA3AF;font-weight:600">${p.reviews ? '(' + esc(p.reviews) + ')' : ''}</span></div>
           </div>
           <div class="rd-scooter" data-side-ico>${sideHtml(p)}</div>
         </div>
@@ -278,6 +296,11 @@
     if (name) name.textContent = p.name;
     const sub = root.querySelector('[data-sub]');
     if (sub) sub.textContent = p.role || '';
+    const rate = root.querySelector('[data-rate]');
+    if (rate) {
+      rate.classList.toggle('hidden', !p.rating);
+      if (p.rating) rate.innerHTML = '<span class="star">★</span> ' + esc(p.rating) + (p.reviews ? ' <span style="color:#9CA3AF;font-weight:600">(' + esc(p.reviews) + ')</span>' : '');
+    }
     const avatar = root.querySelector('[data-avatar]');
     if (avatar && p.photo) avatar.src = p.photo;
     const side = root.querySelector('[data-side-ico]');

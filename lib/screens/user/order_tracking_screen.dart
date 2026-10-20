@@ -183,12 +183,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   subtitle,
                                   style: const TextStyle(color: Brand.soft, fontSize: 12),
                                 ),
-                                Text(
-                                  hasRider
-                                      ? '★ 4.9  (120+)'
-                                      : '★ ${(shop?.rating ?? 0).toStringAsFixed(1)}  (${shop?.reviews ?? 0})',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
-                                ),
+                                if (!hasRider && shop != null && shop.rating > 0 && shop.reviews > 0)
+                                  Text(
+                                    '★ ${shop.rating.toStringAsFixed(1)}  (${shop.reviews})',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
+                                  ),
                               ],
                             ),
                           ),

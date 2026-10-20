@@ -810,8 +810,13 @@ class _RiderHomeState extends State<RiderHome> {
       return Center(child: TextButton(onPressed: () => setState(() => page = ''), child: const Text('Back')));
     }
     final claimed = _mine(o) || (o.riderId != null && o.riderId!.isNotEmpty);
+    final showAccept = !claimed && o.status == OrderStatus.ready;
+    final showNav = _mine(o) && o.status != OrderStatus.delivered;
     return SafeArea(
-      child: ListView(
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           Row(
@@ -925,20 +930,21 @@ class _RiderHomeState extends State<RiderHome> {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          if (!claimed && o.status == OrderStatus.ready)
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
-              onPressed: () => _accept(o),
-              child: const Text('Accept', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        ],
             ),
-          if (_mine(o) && o.status != OrderStatus.delivered)
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(52)),
-              onPressed: () => _navigate(o),
-              child: Text(
-                o.status.headingToCustomer ? 'Navigate to customer' : 'Navigate to shop',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          if (showAccept || showNav)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Brand.green, minimumSize: const Size.fromHeight(54)),
+                onPressed: () => showAccept ? _accept(o) : _navigate(o),
+                child: Text(
+                  showAccept
+                      ? 'Accept'
+                      : (o.status.headingToCustomer ? 'Navigate to customer' : 'Navigate to shop'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
               ),
             ),
         ],
@@ -1016,7 +1022,6 @@ class _RiderHomeState extends State<RiderHome> {
                         children: [
                           Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
                           const Text('Delivery Partner', style: TextStyle(color: Brand.soft, fontSize: 12)),
-                          Text(_riderStarsLabel(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                         ],
                       ),
                     ),

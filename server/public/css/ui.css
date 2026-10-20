@@ -1149,6 +1149,18 @@ html[data-role="rider"] .field input {
   background: #00C853; color: #fff; border: 0; border-radius: 28px;
   padding: 16px; font-weight: 800; font-size: 16px; cursor: pointer;
 }
+html[data-role="rider"] .scroll.rd-details {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+.rd-details .rd-navbtn {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  width: auto;
+  margin: 0;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  z-index: 6;
+}
 
 .rd-done {
   min-height: 100%; background: #fff; color: #111;
