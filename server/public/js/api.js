@@ -2033,6 +2033,58 @@
     return { ok: true, phone, smsToken, channel: 'whatsapp', expiresIn: 300 };
   };
 
+  API.needsDeliveryPin = function (o) {
+    if (!o || o.status === 'delivered' || o.status === 'cancelled') return false;
+    if (o.paymentStatus === 'refunded') return false;
+    if (API.isCashMethod(o.paymentMethod)) return false;
+    return !!(o.paid || API.isCardMethod(o.paymentMethod));
+  };
+  API.sendDeliveryPin = async function (orderId) {
+    const o = (API.orders || []).find(function (x) { return x && x.id === orderId; });
+    if (!o) throw new Error('Order not found.');
+    if (!API.needsDeliveryPin(o)) throw new Error('Delivery code is only for card orders.');
+    const phone = normalizePhone(o.customerPhone);
+    if (!phone) throw new Error('Customer WhatsApp number is missing.');
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const label = '#' + String(o.id || '').replace('_', '-');
+    const text = 'QuickBite delivery code for order ' + label + ' is ' + code + '. Tell this 4-digit code to the rider to confirm delivery. This is not a login code.';
+    API._deliverPin = { orderId: orderId, phone: phone, code: code, expires: Date.now() + 30 * 60 * 1000 };
+    if (sbConfigured()) {
+      const rowId = 'del_' + String(orderId);
+      try { await sbSend('otp_codes?id=eq.' + encodeURIComponent(rowId), 'DELETE'); } catch (_) {}
+      try {
+        await sbSend('otp_codes', 'POST', [{
+          id: rowId,
+          phone: phone,
+          role: 'deliver',
+          code: code,
+          body: text,
+          expires_at: new Date(API._deliverPin.expires).toISOString(),
+          attempts: 0,
+        }]);
+      } catch (_) {}
+    }
+    await sendWhatsApp(phone, text);
+    return { ok: true, phone: phone };
+  };
+  API.verifyDeliveryPin = async function (orderId, code) {
+    code = String(code || '').replace(/\D/g, '');
+    if (code.length !== 4) return false;
+    const mem = API._deliverPin;
+    if (mem && mem.orderId === orderId && mem.code === code && Date.now() < Number(mem.expires || 0)) return true;
+    if (sbConfigured()) {
+      try {
+        const rows = await sbGet('otp_codes?id=eq.' + encodeURIComponent('del_' + String(orderId)) + '&select=code,role,expires_at,phone');
+        const row = rows && rows[0];
+        if (row && row.role === 'deliver' && String(row.code) === code) {
+          const exp = Date.parse(row.expires_at || '') || 0;
+          if (!exp || exp > Date.now()) return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  };
+
   API.readSms = async function (smsToken) {
     if (API._otp && API._otp.id === smsToken) {
       return { from: 'QuickBite', body: API._otp.body, phone: API._otp.phone, channel: 'whatsapp' };
@@ -3144,6 +3196,14 @@
       }
     }
     assertRiderClose(id, body);
+    if (API.user && sameRole(API.user.role, 'rider') && body.status === 'delivered') {
+      const cur = (API.orders || []).find(function (x) { return x && x.id === id; });
+      if (API.needsDeliveryPin(cur) && !body.deliveryConfirmed) {
+        const err = new Error('Enter the 4-digit WhatsApp delivery code.');
+        err.code = 'DELIVERY_PIN';
+        throw err;
+      }
+    }
     if (locOnlyBody(body)) {
       const local = applyLocalOrder(id, body);
       if (local && (local.status === 'delivered' || local.status === 'cancelled')) return local;
