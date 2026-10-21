@@ -52,13 +52,40 @@
     return 2 * R * Math.asin(Math.sqrt(s));
   }
 
+  const SHOP_SVG =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg>';
+
+  function htmlEsc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
   function shopIcon() {
     return L.divIcon({
       className: 'pin-shop-wrap',
       html:
-        '<div class="pin-lab"><div class="pin-shop-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div><span>Shop</span></div>',
+        '<div class="pin-lab"><div class="pin-shop-ico">' + SHOP_SVG + '</div><span>Shop</span></div>',
       iconSize: [72, 58],
       iconAnchor: [36, 58],
+    });
+  }
+
+  function shopOverviewIcon(name, hot) {
+    let raw = String(name || 'Shop').trim() || 'Shop';
+    if (raw.length > 18) raw = raw.slice(0, 17) + '…';
+    const label = htmlEsc(raw);
+    return L.divIcon({
+      className: 'pin-shop-wrap' + (hot ? ' pin-shop-hot' : ''),
+      html:
+        '<div class="pin-lab"><div class="pin-shop-ico">' +
+        SHOP_SVG +
+        (hot ? '<i class="pin-shop-dot"></i>' : '') +
+        '</div><span>' +
+        label +
+        '</span></div>',
+      iconSize: [86, 58],
+      iconAnchor: [43, 58],
     });
   }
 
@@ -460,6 +487,90 @@
           if (follow && !userMoved) fire();
         });
         setTimeout(fire, 200);
+      },
+      destroy() {
+        try { map.remove(); } catch (_) {}
+      },
+    };
+  };
+
+  global.mountRiderOverviewMap = function (el, opts) {
+    opts = opts || {};
+    if (!el || typeof L === 'undefined') return null;
+    const startLat = opts.lat != null ? Number(opts.lat) : 8.335;
+    const startLng = opts.lng != null ? Number(opts.lng) : 80.4108;
+    const map = L.map(el, { zoomControl: false, attributionControl: false }).setView([startLat, startLng], 14);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '',
+    }).addTo(map);
+    let liveMarker = null;
+    const shopMarks = {};
+    const onShop = typeof opts.onShop === 'function' ? opts.onShop : null;
+
+    function setLive(lat, lng) {
+      if (lat == null || lng == null) return;
+      const la = Number(lat), ln = Number(lng);
+      if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+      if (!liveMarker) {
+        liveMarker = L.marker([la, ln], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
+      } else liveMarker.setLatLng([la, ln]);
+    }
+
+    function setShops(shops, hot) {
+      hot = hot || {};
+      const keep = {};
+      (shops || []).forEach(function (s) {
+        if (!s || !s.id || s.lat == null || s.lng == null) return;
+        const lat = Number(s.lat), lng = Number(s.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        keep[s.id] = 1;
+        const isHot = !!hot[s.id];
+        const icon = shopOverviewIcon(s.name, isHot);
+        if (shopMarks[s.id]) {
+          shopMarks[s.id].setLatLng([lat, lng]);
+          shopMarks[s.id].setIcon(icon);
+          shopMarks[s.id].setZIndexOffset(isHot ? 420 : 200);
+        } else {
+          const m = L.marker([lat, lng], { icon: icon, zIndexOffset: isHot ? 420 : 200 }).addTo(map);
+          m.on('click', function () {
+            if (onShop) onShop(s.id);
+          });
+          shopMarks[s.id] = m;
+        }
+      });
+      Object.keys(shopMarks).forEach(function (id) {
+        if (keep[id]) return;
+        try { map.removeLayer(shopMarks[id]); } catch (_) {}
+        delete shopMarks[id];
+      });
+    }
+
+    setLive(opts.lat, opts.lng);
+    setShops(opts.shops, opts.hot);
+    const pts = [];
+    if (opts.lat != null && opts.lng != null) pts.push([Number(opts.lat), Number(opts.lng)]);
+    (opts.shops || []).forEach(function (s) {
+      if (s && s.lat != null && s.lng != null) pts.push([Number(s.lat), Number(s.lng)]);
+    });
+    if (pts.length > 1) {
+      try { map.fitBounds(L.latLngBounds(pts).pad(0.22), { padding: [28, 96] }); } catch (_) {}
+    }
+    setTimeout(function () { try { map.invalidateSize(); } catch (_) {} }, 200);
+    setTimeout(function () { try { map.invalidateSize(); } catch (_) {} }, 600);
+
+    return {
+      map,
+      update(next) {
+        next = next || {};
+        if (next.lat != null && next.lng != null) setLive(next.lat, next.lng);
+        if (next.shops) setShops(next.shops, next.hot || {});
+      },
+      locate() {
+        if (liveMarker) {
+          const p = liveMarker.getLatLng();
+          map.setView(p, Math.max(map.getZoom(), 16));
+        }
       },
       destroy() {
         try { map.remove(); } catch (_) {}

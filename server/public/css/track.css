@@ -50,6 +50,18 @@ body > #root > .track-screen {
   background: none !important;
   border: none !important;
 }
+.pin-shop-ico { position: relative; }
+.pin-shop-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  background: #00C853;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.28);
+}
 
 .hidden { display: none !important; }
 

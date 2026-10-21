@@ -9,14 +9,14 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zb" />
   <link rel="stylesheet" href="/css/ui.css?v=19zb" />
-  <link rel="stylesheet" href="/css/track.css?v=19zb" />
+  <link rel="stylesheet" href="/css/track.css?v=19zs" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19zr"></script>
-  <script src="/js/maps.js?v=19zn"></script>
+  <script src="/js/maps.js?v=19zs"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="/js/otp-login.js?v=19zj"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -682,12 +682,65 @@
       </div>`;
     }
 
+    function pickupShopIds() {
+      const ids = {};
+      (available() || []).forEach((o) => { if (o && o.shopId) ids[o.shopId] = o.id; });
+      (ongoing() || []).forEach((o) => {
+        if (headingToShop(o) && o.shopId) ids[o.shopId] = o.id;
+      });
+      return ids;
+    }
+    function overviewShops() {
+      const byId = {};
+      (API.shops || []).forEach((s) => {
+        if (!s || !s.id) return;
+        const lat = Number(s.lat), lng = Number(s.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const name = (API.shopTitle && API.shopTitle(s)) || s.name || 'Shop';
+        byId[s.id] = { id: s.id, name: name, lat: lat, lng: lng };
+      });
+      [].concat(available() || [], (ongoing() || []).filter(headingToShop)).forEach((o) => {
+        if (!o || !o.shopId || byId[o.shopId]) return;
+        const pos = shopPos(o);
+        if (!pos) return;
+        byId[o.shopId] = { id: o.shopId, name: o.shopName || 'Shop', lat: pos[0], lng: pos[1] };
+      });
+      return Object.keys(byId).map((k) => byId[k]);
+    }
+    function mapNoteHtml() {
+      const shops = overviewShops();
+      const hotN = Object.keys(pickupShopIds()).length;
+      return `<b data-map-note-title>${state.online ? 'You are online' : 'You are offline'}</b>
+          <div class="sub" data-map-note-sub>${shops.length} shops · ${hotN} pickup ${hotN === 1 ? 'job' : 'jobs'} with a green dot</div>`;
+    }
+    function paintMapNote() {
+      const title = document.querySelector('[data-map-note-title]');
+      const sub = document.querySelector('[data-map-note-sub]');
+      if (!title && !sub) return;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = mapNoteHtml();
+      if (title) title.textContent = wrap.querySelector('[data-map-note-title]').textContent;
+      if (sub) sub.textContent = wrap.querySelector('[data-map-note-sub]').textContent;
+    }
+    function openShopFromMap(shopId) {
+      const orderId = pickupShopIds()[shopId];
+      if (!orderId) return;
+      const o = (API.orders || []).find((x) => x.id === orderId);
+      if (!o) return;
+      state.orderId = orderId;
+      if (isMine(o) && liveJob(o)) {
+        state.screen = 'live';
+        startLiveGps(orderId);
+      } else {
+        state.screen = 'details';
+      }
+      render(true);
+    }
     function mapIdleView() {
-      return `<div class="rd-map-empty" style="position:relative;height:100%">
+      return `<div class="rd-map-empty" data-rider-map style="position:relative;height:100%">
         <div id="map" class="map" style="position:absolute;inset:0"></div>
         <div class="rd-map-note">
-          <b>${state.online ? 'You are online' : 'You are offline'}</b>
-          <div class="sub">${available().length} ready jobs nearby. Accept, go to the shop, confirm pickup, then deliver.</div>
+          ${mapNoteHtml()}
         </div>
       </div>${nav()}`;
     }
@@ -1276,25 +1329,26 @@
           }
         }
         if (state.tab === 'map' && !state.screen) {
-          const live = ongoing().find((o) => liveJob(o));
-          if (live) {
-            state.orderId = live.id;
-            state.screen = 'live';
-            startLiveGps(live.id);
-            render(true);
+          const shops = overviewShops();
+          const hot = pickupShopIds();
+          const existing = root.querySelector('[data-rider-map]');
+          if (!force && existing && state.mapHandle && state.mapHandle.update) {
+            state.mapHandle.update({ lat: state.liveLat, lng: state.liveLng, shops: shops, hot: hot });
+            paintMapNote();
             return;
           }
-          const existing = root.querySelector('.rd-map-empty');
-          if (!force && existing && state.mapHandle) return;
           killMap();
           root.innerHTML = mapIdleView();
           bind();
           const el = document.getElementById('map');
-          if (el && typeof L !== 'undefined') {
-            const lat = state.liveLat || 8.335, lng = state.liveLng || 80.4108;
-            const map = L.map(el, { zoomControl: false }).setView([lat, lng], 14);
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' }).addTo(map);
-            state.mapHandle = { destroy() { try { map.remove(); } catch(_){} }, update() {}, locate() { map.setView([state.liveLat||lat, state.liveLng||lng], 16); } };
+          if (el && typeof mountRiderOverviewMap === 'function') {
+            state.mapHandle = mountRiderOverviewMap(el, {
+              lat: state.liveLat,
+              lng: state.liveLng,
+              shops: shops,
+              hot: hot,
+              onShop: openShopFromMap,
+            });
           }
           return;
         }
