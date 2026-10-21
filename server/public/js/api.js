@@ -160,25 +160,132 @@
   }
 
   function e164(phone) {
+    const list = waNumberCandidates(phone);
+    return list[0] || '';
+  }
+
+  function waNumberCandidates(phone) {
     let d = String(phone || '').replace(/\D/g, '');
+    if (d.indexOf('00') === 0) d = d.slice(2);
+    if (d.startsWith('940') && d.length === 12) d = '94' + d.slice(3);
     if (d.startsWith('0') && d.length === 10) d = '94' + d.slice(1);
-    return d;
+    if (d.startsWith('7') && d.length === 9) d = '94' + d;
+    const out = [];
+    function add(v) {
+      v = String(v || '').replace(/\D/g, '');
+      if (!v || v.length < 9 || v.length > 15) return;
+      if (v.charAt(0) === '0') return;
+      if (out.indexOf(v) >= 0) return;
+      out.push(v);
+    }
+    add(d);
+    if (d.startsWith('94') && d.length === 11) add(d);
+    return out;
+  }
+
+  function waPhoneValue(to) {
+    const n = Number(to);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+    return to;
+  }
+
+  function friendlyWaError(msg) {
+    const s = String(msg || '').slice(0, 240);
+    if (/existsWhatsapp|not on WhatsApp|not registered on WhatsApp/i.test(s)) {
+      return 'This number is not on WhatsApp. Use the number that opens WhatsApp on the phone.';
+    }
+    if (/466|not authorized|unauthorized|stateInstance/i.test(s)) {
+      return 'WhatsApp sender is offline. Try again in a minute.';
+    }
+    if (/field|validation|chatId|message/i.test(s)) {
+      return 'WhatsApp did not accept this number. Check the digits and tap Continue.';
+    }
+    if (!s || /failed|error|send/i.test(s)) {
+      return 'WhatsApp did not send the code. Check the number and tap Continue.';
+    }
+    return s;
+  }
+
+  async function greenPost(host, id, token, method, payload, ms) {
+    const res = await fetch(String(host).replace(/\/$/, '') + '/waInstance' + id + '/' + method + '/' + token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: abortAfter(ms || 12000),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: data || {} };
+  }
+
+  async function sendViaGreenApi(phone, text, wa) {
+    const message = String(text || '').trim();
+    if (!message) throw new Error('WhatsApp message is empty.');
+    const id = String(wa.greenId || '');
+    const token = String(wa.greenToken || '');
+    const hosts = [];
+    function addHost(h) {
+      const v = String(h || '').replace(/\/$/, '');
+      if (v && hosts.indexOf(v) === -1) hosts.push(v);
+    }
+    addHost(wa.apiUrl);
+    if (id.length >= 4) addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
+    addHost('https://api.green-api.com');
+    const numbers = waNumberCandidates(phone);
+    let last = 'WhatsApp did not send the code. Check the number and tap Continue.';
+    let anyOnWa = false;
+    for (let h = 0; h < hosts.length; h++) {
+      for (let n = 0; n < numbers.length; n++) {
+        const to = numbers[n];
+        try {
+          const chk = await greenPost(hosts[h], id, token, 'checkWhatsapp', { phone: waPhoneValue(to) });
+          if (chk.data && chk.data.existsWhatsapp === false) {
+            last = 'This number is not on WhatsApp. Use the number that opens WhatsApp on the phone.';
+            continue;
+          }
+          if (chk.data && chk.data.existsWhatsapp === true) anyOnWa = true;
+          if (chk.status === 466) {
+            last = 'WhatsApp sender is offline. Try again in a minute.';
+            continue;
+          }
+          const sent = await greenPost(hosts[h], id, token, 'sendMessage', {
+            chatId: to + '@c.us',
+            message: message,
+          });
+          if (sent.ok && sent.data && sent.data.idMessage) return true;
+          if (sent.ok && !sent.data.error && sent.status < 300) return true;
+          const err = sent.data.message || sent.data.error || sent.data.reason || '';
+          last = friendlyWaError(typeof err === 'string' ? err : JSON.stringify(err || sent.status));
+        } catch (e) {
+          last = friendlyWaError(e && e.message);
+        }
+      }
+    }
+    if (!anyOnWa && /not on WhatsApp/i.test(last)) throw new Error(last);
+    throw new Error(last);
   }
 
   async function sendWhatsApp(phone, body) {
     const wa = window.QB_WA || {};
     const to = e164(phone);
-    const payload = JSON.stringify({ phone: to, body: body });
+    const text = String(body || '').trim();
+    if (!to || !text) throw new Error('Enter a valid WhatsApp number.');
+    const payload = JSON.stringify({ phone: to, body: text });
     try {
-        const res = await fetch('/otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          signal: abortAfter(12000),
-        });
+      const res = await fetch('/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        signal: abortAfter(20000),
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) return true;
-    } catch (_) {}
+      if (data && data.error && res.status && res.status !== 404 && res.status !== 405) {
+        const msg = typeof data.error === 'string' ? data.error : '';
+        if (msg && /not on WhatsApp|offline|accept this number/i.test(msg)) throw new Error(friendlyWaError(msg));
+      }
+    } catch (e) {
+      if (e && e.message && /not on WhatsApp|offline|accept this number|Enter a valid/i.test(e.message)) throw e;
+    }
     const sb = String(window.QB_SUPABASE_URL || '').replace(/\/$/, '');
     if (sb && window.QB_SUPABASE_ANON) {
       try {
@@ -189,17 +296,12 @@
             Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ phone: to, body }),
+          body: JSON.stringify({ phone: to, body: text }),
+          signal: abortAfter(20000),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) return true;
-        if (res.status && res.status !== 404) {
-          const msg = (data && data.error) ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : ('WhatsApp ' + res.status);
-          throw new Error(msg);
-        }
-      } catch (e) {
-        if (e && e.message && /WhatsApp|GREEN_|META_|Set GREEN|send failed/i.test(e.message)) throw e;
-      }
+      } catch (_) {}
     }
     if (!(wa.greenId && wa.greenToken)) {
       try {
@@ -208,34 +310,7 @@
       } catch (_) {}
     }
     if (wa.greenId && wa.greenToken) {
-      const id = String(wa.greenId);
-      const hosts = [];
-      function addHost(h) {
-        const v = String(h || '').replace(/\/$/, '');
-        if (v && hosts.indexOf(v) === -1) hosts.push(v);
-      }
-      addHost(wa.apiUrl);
-      if (id.length >= 4) addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
-      addHost('https://api.green-api.com');
-      let last = 'WhatsApp send failed';
-      for (let i = 0; i < hosts.length; i++) {
-        try {
-          const res = await fetch(
-            hosts[i] + '/waInstance' + wa.greenId + '/sendMessage/' + wa.greenToken,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ chatId: to + '@c.us', message: body }),
-              signal: abortAfter(8000),
-            },
-          );
-          if (res.ok) return true;
-          last = 'WhatsApp send failed (' + res.status + ')';
-        } catch (e) {
-          last = e && e.message ? e.message : last;
-        }
-      }
-      throw new Error(last);
+      return sendViaGreenApi(to, text, wa);
     }
     if (wa.metaToken && wa.metaPhoneId) {
       const res = await fetch('https://graph.facebook.com/v21.0/' + wa.metaPhoneId + '/messages', {
@@ -245,7 +320,7 @@
           messaging_product: 'whatsapp',
           to: to,
           type: 'text',
-          text: { body: body },
+          text: { body: text },
         }),
       });
       if (!res.ok) throw new Error('WhatsApp Cloud send failed (' + res.status + ')');

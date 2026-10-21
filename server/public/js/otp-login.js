@@ -101,7 +101,7 @@
         const first = root.querySelector('.otp-boxes input');
         if (first) first.focus();
       } catch (e) {
-        err.textContent = e.message;
+        err.textContent = e.message || 'WhatsApp did not send the code. Check the number and tap Continue.';
       }
       btn.disabled = false;
       btn.textContent = 'Continue';
