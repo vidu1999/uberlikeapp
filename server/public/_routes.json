@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/webhooks/*", "/checkout", "/api/*"],
+  "include": ["/webhooks/*", "/webhooks/payments-lk", "/webhook", "/checkout", "/api/*"],
   "exclude": []
 }
