@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zo" />
   <link rel="stylesheet" href="/css/track.css?v=19zj" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zp" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zq" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zn"></script>
+  <script src="/js/api.js?v=19zq"></script>
   <script src="/js/maps.js?v=19zn"></script>
   <script src="/js/track-ui.js?v=19zn"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -179,6 +179,16 @@
       if (m.indexOf('cash') !== -1) return false;
       return /visa|master|amex|unionpay|jcb|discover|card|••••/.test(m);
     }
+    function openCodOrder() {
+      if (API.openCodOrder) return API.openCodOrder();
+      return (API.orders || []).find((o) => {
+        if (!o || o.status === 'delivered' || o.status === 'cancelled') return false;
+        if (API.isCardMethod && API.isCardMethod(o.paymentMethod)) return false;
+        const m = String(o.paymentMethod || 'cash').toLowerCase();
+        return m.indexOf('cash') !== -1;
+      }) || null;
+    }
+    function codLocked() { return !!openCodOrder(); }
     function pullCardDraft() {
       const num = document.getElementById('cardNum');
       const name = document.getElementById('cardName');
@@ -265,10 +275,17 @@
       </div>`;
     }
     function payBlock() {
+      const blocked = codLocked();
+      if (blocked && state.payKind !== 'card') state.payKind = 'card';
       const cashOn = state.payKind !== 'card';
       let html = `<h3>Payment Method</h3>
-        <label class="pay-opt"><input type="radio" name="pay" value="cash" ${cashOn ? 'checked' : ''} /> Cash on Delivery</label>
+        <label class="pay-opt${blocked ? ' pay-disabled' : ''}"><input type="radio" name="pay" value="cash" ${cashOn ? 'checked' : ''} ${blocked ? 'disabled' : ''} /> Cash on Delivery</label>
         <label class="pay-opt"><input type="radio" name="pay" value="card" ${cashOn ? '' : 'checked'} /> Debit / Credit card</label>`;
+      if (blocked) {
+        const open = openCodOrder();
+        const shop = (open && (open.shopName || 'your shop')) || 'your shop';
+        html += `<p class="cod-lock">Cash on Delivery is locked until your current COD order from ${esc(shop)} is delivered or cancelled. You can still pay by card.</p>`;
+      }
       if (!cashOn) {
         html += `<div class="card-form pay-lk">
           <p class="card-using">Pay securely on <b>Payments.lk</b> (sandbox). Card details stay on their page — never on QuickBite.</p>
@@ -2118,6 +2135,12 @@
       root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render({ keepScroll: true }); });
       root.querySelectorAll('input[name="pay"]').forEach((el) => el.onchange = () => {
         pullCardDraft();
+        if (el.value !== 'card' && codLocked()) {
+          state.payKind = 'card';
+          state.cardErr = 'Cash on Delivery is locked until your current COD order is complete.';
+          render({ keepScroll: true });
+          return;
+        }
         state.payKind = el.value === 'card' ? 'card' : 'cash';
         state.cardAuth = null;
         state.paymentObj = null;
@@ -2194,6 +2217,12 @@
         const payEl = document.querySelector('input[name="pay"]:checked');
         if (payEl && payEl.value === 'card') state.payKind = 'card';
         else if (payEl && payEl.value !== 'wallet') state.payKind = 'cash';
+        if (state.payKind !== 'card' && codLocked()) {
+          state.payKind = 'card';
+          state.cardErr = 'Cash on Delivery is locked until your current COD order is delivered or cancelled. Pay by card instead.';
+          render({ keepScroll: true });
+          return;
+        }
         if (state.payKind === 'card') {
           state.payment = (state.cardAuth && state.cardAuth.last4)
             ? (state.cardAuth.brand + ' •••• ' + state.cardAuth.last4)
@@ -2271,6 +2300,13 @@
           state.paying = false;
           if (e && e.code === 'WHATSAPP_REQUIRED') {
             state.wa = { open: true, step: 'phone', phone: state.wa.phone || '', err: '', mode: 'order' };
+            render({ keepScroll: true });
+            return;
+          }
+          if (e && e.code === 'COD_OPEN') {
+            state.payKind = 'card';
+            state.cardErr = e.message;
+            if (place) { place.disabled = false; place.textContent = 'Pay ' + rs(cartTotal() + fee()); }
             render({ keepScroll: true });
             return;
           }

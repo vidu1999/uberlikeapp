@@ -2687,6 +2687,20 @@
     if (s.indexOf('cash') !== -1) return false;
     return /visa|master|amex|unionpay|jcb|discover|card|••••/.test(s);
   };
+  API.isCashMethod = function (m) {
+    if (API.isCardMethod(m)) return false;
+    const s = String(m || '').toLowerCase();
+    return !s || s.indexOf('cash') !== -1;
+  };
+  API.openCodOrder = function (user) {
+    const u = user || API.user;
+    return (API.orders || []).find(function (o) {
+      if (!o) return false;
+      if (o.status === 'delivered' || o.status === 'cancelled') return false;
+      if (u && !mineOrder(o, u)) return false;
+      return API.isCashMethod(o.paymentMethod);
+    }) || null;
+  };
   API.shopCreditOf = function (o) {
     if (!o || o.status === 'cancelled' || o.paymentStatus === 'refunded') return 0;
     if (!o.paid && !API.isCardMethod(o.paymentMethod)) return 0;
@@ -2880,6 +2894,12 @@
     if (!API.isWhatsAppVerified()) {
       const err = new Error('Verify WhatsApp before placing an order.');
       err.code = 'WHATSAPP_REQUIRED';
+      throw err;
+    }
+    const payingCard = !!(payload && payload.payment && payload.payment.paymentId) || API.isCardMethod(payload && payload.paymentMethod);
+    if (!payingCard && API.openCodOrder()) {
+      const err = new Error('Cash on Delivery is limited to one order at a time. Finish that order or pay by card.');
+      err.code = 'COD_OPEN';
       throw err;
     }
     assertOrderStock(payload && payload.items);
