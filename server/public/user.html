@@ -8,9 +8,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zj" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zo" />
   <link rel="stylesheet" href="/css/track.css?v=19zj" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zm" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zo" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -472,7 +472,7 @@
       </nav>`;
     }
     function cartbar() {
-      if (!cartCount() || ['cart','checkout','track','chat','done'].includes(state.screen) || state.tab==='cart') return '';
+      if (!cartCount() || ['cart','checkout','track','chat','done','notes'].includes(state.screen) || state.tab==='cart') return '';
       return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${rs(cartTotal())}</span></div>`;
     }
     function distKm(s) {
@@ -669,7 +669,7 @@
         <div class="u-loc">
           <button type="button" class="u-city" data-open-loc><span>${SVG.pin} ${esc(city)} ▾</span>${state.loc.acc != null ? `<small>${esc(gpsText())}</small>` : ''}</button>
           <div class="u-icons">
-            <button class="u-bell" data-tab="orders">${SVG.bell}</button>
+            <button class="u-bell" type="button" data-notes data-notes-from="home">${SVG.bell}${notesUnread() ? '<i class="nt-dot"></i>' : ''}</button>
             <button class="u-ava" data-tab="account"><img src="${esc(userPhoto())}" alt="" referrerpolicy="no-referrer" /></button>
           </div>
         </div>
@@ -994,8 +994,118 @@
         </form>
       </div>`;
     }
+    function timeAgo(ts) {
+      const s = Math.max(0, (Date.now() - Number(ts || 0)) / 1000);
+      if (s < 45) return 'Now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      const d = Math.floor(s / 86400);
+      return d === 1 ? '1d ago' : d + 'd ago';
+    }
+    function noteShopName(o) {
+      const shop = (API.shopOf && o && API.shopOf(o.shopId)) || {};
+      const n = String((o && o.shopName) || shop.name || '').trim();
+      if (!n || /^shop$/i.test(n) || n === 'My Shop') return shop.name || 'Shop';
+      return n;
+    }
+    function notesSig() {
+      return userNotes().map((n) => n.id + ':' + n.ts + ':' + n.title).join('|');
+    }
+    function userNotes() {
+      const notes = [];
+      (API.orders || []).forEach((o) => {
+        if (!o || !o.id) return;
+        const shopName = noteShopName(o);
+        const placed = Date.parse(o.timestamp || o.createdAt || '') || Date.parse(o.updatedAt || '') || Date.now();
+        const st = Date.parse(o.updatedAt || o.pickedUpAt || o.deliveredAt || '') || placed;
+        if (o.status === 'pending') {
+          notes.push({ id: 'wait-' + o.id, icon: 'bag', title: 'Waiting for confirm', body: shopName + ' has your order', ts: placed, orderId: o.id });
+        } else if (o.status === 'preparing') {
+          notes.push({ id: 'st-' + o.id + '-preparing', icon: 'bag', title: 'Preparing', body: shopName + ' is preparing your order', ts: st, orderId: o.id });
+        } else if (o.status === 'ready') {
+          notes.push({ id: 'st-' + o.id + '-ready', icon: 'bike', title: 'Ready for pickup', body: 'Rider will pick up from ' + shopName, ts: st, orderId: o.id });
+        } else if (o.status === 'accepted') {
+          notes.push({ id: 'st-' + o.id + '-accepted', icon: 'bike', title: 'Rider accepted', body: (o.riderName || 'Your rider') + ' is going to ' + shopName, ts: st, orderId: o.id });
+        } else if (o.status === 'picked_up' || o.status === 'on_the_way') {
+          notes.push({ id: 'st-' + o.id + '-picked', icon: 'bike', title: 'On the way', body: (o.riderName || 'Rider') + ' picked up your order', ts: st, orderId: o.id });
+        } else if (o.status === 'delivered') {
+          notes.push({ id: 'st-' + o.id + '-delivered', icon: 'bag', title: 'Delivered', body: 'Your order from ' + shopName + ' was delivered', ts: Date.parse(o.deliveredAt || '') || st, orderId: o.id });
+        } else if (o.status === 'cancelled') {
+          notes.push({ id: 'st-' + o.id + '-cancelled', icon: 'alert', title: 'Order cancelled', body: shopName, ts: st, orderId: o.id });
+        }
+        if (o.paid && API.isCardMethod && API.isCardMethod(o.paymentMethod)) {
+          notes.push({
+            id: 'pay-' + o.id,
+            icon: 'card',
+            title: 'Payment received',
+            body: (o.paymentMethod || 'Card') + ' · ' + rs(o.totalAmount),
+            ts: Date.parse(o.paidAt || '') || placed,
+            orderId: o.id,
+          });
+        }
+        const unread = (API.unreadCount && API.unreadCount(o.id, 'customer')) || 0;
+        if (unread) {
+          let chatTs = 0;
+          const msgs = (API.chatMessages && API.chatMessages(o.id, 'customer')) || [];
+          msgs.forEach((m) => {
+            if (m && m.role !== 'customer' && m.role !== 'system') chatTs = Math.max(chatTs, Number(m.ts || 0));
+          });
+          notes.push({
+            id: 'chat-' + o.id,
+            icon: 'chat',
+            title: unread === 1 ? 'New message' : unread + ' new messages',
+            body: 'Chat about your ' + shopName + ' order',
+            ts: chatTs || st,
+            orderId: o.id,
+            chat: true,
+          });
+        }
+        if (o.status === 'delivered' && API.orderRated && !API.orderRated(o)) {
+          notes.push({
+            id: 'rate-' + o.id,
+            icon: 'star',
+            title: 'Rate your order',
+            body: 'Rate ' + shopName + ', items, and rider',
+            ts: Date.parse(o.deliveredAt || o.updatedAt || '') || placed,
+            orderId: o.id,
+            rate: true,
+          });
+        }
+      });
+      notes.sort((a, b) => b.ts - a.ts);
+      return notes.slice(0, 40);
+    }
+    function notesUnread() {
+      let n = 0;
+      (API.orders || []).forEach((o) => {
+        if (!o) return;
+        if (o.status && o.status !== 'delivered' && o.status !== 'cancelled') n++;
+        n += (API.unreadCount && API.unreadCount(o.id, 'customer')) || 0;
+        if (o.status === 'delivered' && API.orderRated && !API.orderRated(o)) n++;
+      });
+      return n;
+    }
+    function notesView() {
+      const list = userNotes();
+      const ico = { bag: '🛍️', bike: '🛵', alert: '!', star: '★', card: '💳', chat: '💬' };
+      return `<div class="scroll nt-page" data-notes-root="${esc(notesSig())}">
+        <div class="nt-head">
+          <button class="back" type="button" data-close-notes>←</button>
+          <h1>Notifications</h1>
+        </div>
+        ${list.map((n) => `<button type="button" class="nt-row" data-note="${esc(n.id)}" data-note-order="${esc(n.orderId || '')}" data-note-chat="${n.chat ? '1' : ''}" data-note-rate="${n.rate ? '1' : ''}">
+          <div class="nt-ico ${esc(n.icon)}">${ico[n.icon] || '🛍️'}</div>
+          <div class="grow">
+            <b>${esc(n.title)}</b>
+            <div class="sub">${esc(n.body)}</div>
+          </div>
+          <small>${esc(timeAgo(n.ts))}</small>
+        </button>`).join('') || '<div class="pad muted">No notifications yet. Order updates, chat, and payments show up here.</div>'}
+      </div>${nav()}`;
+    }
     function accountView() {
       const u = API.user || {};
+      const unreadN = notesUnread();
       return `<div class="scroll">
         <div class="prof-head">
           <img src="${esc(userPhoto())}" alt="" referrerpolicy="no-referrer" />
@@ -1009,7 +1119,7 @@
           <button data-tab="orders">${SVG.orders} My Orders</button>
           <button>${SVG.pin} Addresses</button>
           <button data-go="paymethods">${SVG.lock} Payment Methods</button>
-          <button>${SVG.bell} Notifications</button>
+          <button type="button" data-notes data-notes-from="account">${SVG.bell} Notifications${unreadN ? ' · ' + unreadN : ''}</button>
           <button>${SVG.mail} Help & Support</button>
           <button id="logout">Settings · Sign out</button>
         </div>
@@ -1478,6 +1588,14 @@
       if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
       if (state.screen === 'paymethods') { root.innerHTML = payMethodsView(); bindApp(); return; }
+      if (state.screen === 'notes') {
+        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+        const existing = root.querySelector('[data-notes-root]');
+        if (existing && existing.getAttribute('data-notes-root') === notesSig()) return;
+        root.innerHTML = notesView();
+        bindApp();
+        return;
+      }
       if (state.screen === 'shop') { root.innerHTML = shopView(); bindApp(); return; }
       if (state.screen === 'search') { root.innerHTML = searchView(); bindApp(); return; }
       if (state.screen === 'done') {
@@ -1785,6 +1903,39 @@
     function bindApp() {
       const root = document.getElementById('root');
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
+      root.querySelectorAll('[data-notes]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        state.notesFrom = b.getAttribute('data-notes-from') || 'home';
+        state.screen = 'notes';
+        render();
+      });
+      root.querySelectorAll('[data-close-notes]').forEach((b) => b.onclick = () => {
+        state.screen = 'home';
+        state.tab = state.notesFrom === 'account' ? 'account' : 'home';
+        render();
+      });
+      root.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => {
+        const id = b.getAttribute('data-note-order');
+        if (!id) return;
+        const o = (API.orders || []).find((x) => x.id === id);
+        if (b.getAttribute('data-note-chat') === '1' && o && (!API.canChat || API.canChat(o, 'customer'))) {
+          state.trackId = id;
+          state.screen = 'chat';
+          state.lockTrack = false;
+          if (API.markChatRead) API.markChatRead(id, 'customer');
+          render();
+          return;
+        }
+        if (b.getAttribute('data-note-rate') === '1' || (o && o.status === 'delivered')) {
+          state.trackId = id;
+          state.lastOrder = o || state.lastOrder;
+          state.screen = 'done';
+          state.lockTrack = false;
+          render();
+          return;
+        }
+        openTrack(id, true);
+      });
       const q = document.getElementById('q');
       if (q) {
         q.oninput = (e) => {
