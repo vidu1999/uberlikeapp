@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zo" />
   <link rel="stylesheet" href="/css/track.css?v=19zj" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zo" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zp" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -286,17 +286,66 @@
       loadCart();
       loadFavs();
       loadCards();
+      applySavedAddress();
     }
     ensureUserLocal();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
     function fee() { return state.deliveryType === 'express' ? 360 : 200; }
+    function savedAddrKey() { return 'qb_saved_addr_' + (accountKey() || 'anon'); }
+    function persistSavedAddress() {
+      if (state.loc.lat == null || state.loc.lng == null) return;
+      const rec = {
+        lat: Number(state.loc.lat),
+        lng: Number(state.loc.lng),
+        label: state.loc.label || state.address || '',
+        custom: !!state.loc.custom,
+      };
+      try { localStorage.setItem(savedAddrKey(), JSON.stringify(rec)); } catch (_) {}
+      try { localStorage.setItem('qb_live_gps', JSON.stringify({ lat: rec.lat, lng: rec.lng, acc: state.loc.acc, label: rec.label })); } catch (_) {}
+    }
+    function applySavedAddress() {
+      let rec = null;
+      try { rec = JSON.parse(localStorage.getItem(savedAddrKey()) || 'null'); } catch (_) {}
+      if (!rec || typeof rec.lat !== 'number' || typeof rec.lng !== 'number') return;
+      state.loc.lat = rec.lat;
+      state.loc.lng = rec.lng;
+      if (rec.label) {
+        state.loc.label = rec.label;
+        state.address = rec.label;
+      }
+      state.loc.custom = !!rec.custom;
+    }
     function setPlace(lat, lng, label, custom) {
       state.loc.lat = lat; state.loc.lng = lng;
       if (label) state.loc.label = label;
       state.address = state.loc.label;
       if (custom) state.loc.custom = true;
+      else if (custom === false) state.loc.custom = false;
       window.QB_LIVE = { lat: state.loc.liveLat, lng: state.loc.liveLng };
+      persistSavedAddress();
+      paintAddrUi();
+    }
+    function paintAddrUi() {
+      const el = document.querySelector('[data-addr-label]');
+      if (el) el.textContent = state.loc.label || state.address || '';
+      const kind = document.querySelector('[data-addr-kind]');
+      if (kind) kind.textContent = state.loc.frozen ? 'Locked until this order is delivered' : (state.loc.custom ? 'Pinned on map' : 'Live GPS');
+      const inp = document.getElementById('addrLine');
+      if (inp && document.activeElement !== inp) inp.value = state.loc.label || state.address || '';
+      const errEl = document.querySelector('[data-addr-err]');
+      if (errEl && state.loc.liveLat != null) errEl.textContent = '';
+    }
+    function closeLocateScreen() {
+      const from = state.locFrom;
+      if (from === 'checkout') state.screen = 'checkout';
+      else if (from === 'account' || from === 'addresses') {
+        state.tab = 'account';
+        state.screen = 'addresses';
+      } else {
+        state.screen = 'home';
+      }
+      render();
     }
     function deliveryPoint() {
       if (state.loc.custom || state.loc.frozen) return { lat: state.loc.lat, lng: state.loc.lng };
@@ -472,7 +521,7 @@
       </nav>`;
     }
     function cartbar() {
-      if (!cartCount() || ['cart','checkout','track','chat','done','notes'].includes(state.screen) || state.tab==='cart') return '';
+      if (!cartCount() || ['cart','checkout','track','chat','done','notes','addresses'].includes(state.screen) || state.tab==='cart') return '';
       return `<div class="cartbar" data-tab="cart"><span>View cart · ${cartCount()}</span><span>${rs(cartTotal())}</span></div>`;
     }
     function distKm(s) {
@@ -793,6 +842,12 @@
       </div>${nav()}`;
     }
     function locateView() {
+      const fromAddr = state.locFrom === 'account' || state.locFrom === 'addresses';
+      const hint = state.loc.frozen
+        ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.'
+        : fromAddr
+          ? 'Blue pulse is you. Drag the green pin to set your saved address, or tap ◎ / Use live location.'
+          : 'Blue pulse is you. Drag the green pin to change pickup. Tap ◎ to drop it on live GPS.';
       return `<div class="loc-pick" data-locate-root>
         <div class="loc-search">
           <button type="button" data-loc-back>←</button>
@@ -806,11 +861,34 @@
         <div class="loc-sheet">
           <div class="live-line"><span class="live-dot"><i></i><i></i><b></b></span> Live GPS <span data-loc-acc>${esc(gpsText())}</span></div>
           <b data-loc-label>${esc(state.loc.label)}</b>
-          <p class="loc-hint">${state.loc.frozen ? 'Delivery pin is locked until this order is delivered. Blue pulse is live GPS.' : 'Blue pulse is you. Drag the green pin to change pickup. Tap ◎ to drop it on live GPS.'}</p>
+          <p class="loc-hint">${hint}</p>
           <p class="err" data-loc-err></p>
-          <button class="btn-qb" type="button" data-loc-ok>Confirm location</button>
+          ${fromAddr && !state.loc.frozen ? '<button class="btn-ghost-qb" type="button" data-loc-live>Use live location</button>' : ''}
+          <button class="btn-qb" type="button" data-loc-ok>${fromAddr ? 'Save address' : 'Confirm location'}</button>
         </div>
       </div>`;
+    }
+    function addressesView() {
+      const frozen = !!state.loc.frozen;
+      const kind = frozen ? 'Locked until this order is delivered' : (state.loc.custom ? 'Pinned on map' : 'Live GPS');
+      return `<div class="scroll addr-page" data-addr-root>
+        <div class="back-row"><button class="back-fab" type="button" data-tab="account">←</button><b>Addresses</b></div>
+        <div class="pad">
+          <div class="addr-card">
+            ${SVG.pin} <span data-addr-label>${esc(state.address || state.loc.label || 'Set your address')}</span>
+            <div class="addr-kind" data-addr-kind>${esc(kind)}</div>
+          </div>
+          <label for="addrLine">Address</label>
+          <input id="addrLine" type="text" ${frozen ? 'disabled' : ''} value="${esc(state.address || state.loc.label || '')}" placeholder="House, street, city" autocomplete="street-address" />
+          <p class="err" data-addr-err data-loc-err>${esc(state.loc.err || '')}</p>
+          <div class="addr-actions">
+            <button class="btn-qb" type="button" data-addr-live ${frozen ? 'disabled' : ''}>Use live location</button>
+            <button class="btn-ghost-qb" type="button" data-addr-pin ${frozen ? 'disabled' : ''}>Pick on map</button>
+            <button class="btn-qb" type="button" data-addr-save ${frozen ? 'disabled' : ''}>Save address</button>
+          </div>
+          <p class="muted loc-hint">Live GPS follows you. Pick on map drops a pin that stays until you change it. After Place Order the delivery pin stays put until delivered.</p>
+        </div>
+      </div>${nav()}`;
     }
     function payMethodsView() {
       const cards = state.cards || [];
@@ -1117,7 +1195,7 @@
         </div>
         <div class="prof-list">
           <button data-tab="orders">${SVG.orders} My Orders</button>
-          <button>${SVG.pin} Addresses</button>
+          <button type="button" data-go="addresses">${SVG.pin} <span class="grow">Addresses<div class="muted">${esc(state.address || state.loc.label || 'Live GPS or drop a pin')}</div></span></button>
           <button data-go="paymethods">${SVG.lock} Payment Methods</button>
           <button type="button" data-notes data-notes-from="account">${SVG.bell} Notifications${unreadN ? ' · ' + unreadN : ''}</button>
           <button>${SVG.mail} Help & Support</button>
@@ -1588,6 +1666,17 @@
       if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
       if (state.screen === 'paymethods') { root.innerHTML = payMethodsView(); bindApp(); return; }
+      if (state.screen === 'addresses') {
+        if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+        const existing = root.querySelector('[data-addr-root]');
+        if (existing && opts && opts.keepScroll) {
+          paintAddrUi();
+          return;
+        }
+        root.innerHTML = addressesView();
+        bindApp();
+        return;
+      }
       if (state.screen === 'notes') {
         if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
         const existing = root.querySelector('[data-notes-root]');
@@ -1854,26 +1943,42 @@
         });
       }
       const back = document.querySelector('[data-loc-back]');
-      if (back) back.onclick = () => { state.screen = state.locFrom || 'home'; render(); };
-      const me = document.querySelector('[data-loc-me]');
-      if (me) me.onclick = () => {
+      if (back) back.onclick = () => closeLocateScreen();
+      const dropLive = () => {
         startLiveLocation();
-        if (state.loc.liveLat == null) return;
+        if (state.loc.liveLat == null) {
+          const errEl = document.querySelector('[data-loc-err]');
+          if (errEl) errEl.textContent = state.loc.err || 'Waiting for GPS… Allow location if asked.';
+          return;
+        }
         if (state.locHandle && state.locHandle.goLive) state.locHandle.goLive(state.loc.liveLat, state.loc.liveLng, 18);
-        else state.locHandle && state.locHandle.setView(state.loc.liveLat, state.loc.liveLng, 18);
+        else if (state.locHandle && state.locHandle.setView) state.locHandle.setView(state.loc.liveLat, state.loc.liveLng, 18);
+      };
+      const me = document.querySelector('[data-loc-me]');
+      if (me) me.onclick = dropLive;
+      const liveBtn = document.querySelector('[data-loc-live]');
+      if (liveBtn) liveBtn.onclick = () => {
+        if (state.loc.frozen) { closeLocateScreen(); return; }
+        dropLive();
+        if (state.loc.liveLat == null) return;
+        const lat = state.loc.liveLat, lng = state.loc.liveLng;
+        setPlace(lat, lng, (labelEl && labelEl.textContent) || 'Current location', false);
+        labelAt(lat, lng).then((label) => {
+          if (state.loc.frozen) return;
+          setPlace(lat, lng, label, false);
+          closeLocateScreen();
+        }).catch(() => closeLocateScreen());
       };
       const ok = document.querySelector('[data-loc-ok]');
       if (ok) ok.onclick = () => {
         if (state.loc.frozen) {
-          state.screen = state.locFrom || 'home';
-          render();
+          closeLocateScreen();
           return;
         }
         const c = state.locHandle ? state.locHandle.getCenter() : { lat: state.loc.lat, lng: state.loc.lng };
         const label = (labelEl && labelEl.textContent) || (state.loc._draft && state.loc._draft.label) || state.loc.label;
         setPlace(c.lat, c.lng, label, true);
-        state.screen = state.locFrom || 'home';
-        render();
+        closeLocateScreen();
       };
       const q = document.getElementById('locQ');
       let st;
@@ -1974,9 +2079,41 @@
       root.querySelectorAll('[data-qty]').forEach((b) => b.onclick = () => setQty(b.dataset.qty, Number(b.dataset.d)));
       root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
-        state.locFrom = state.screen === 'checkout' ? 'checkout' : 'home';
+        state.locFrom = state.screen === 'checkout' ? 'checkout' : (state.screen === 'addresses' ? 'addresses' : 'home');
         state.screen = 'locate';
         render();
+      });
+      root.querySelectorAll('[data-addr-pin]').forEach((b) => b.onclick = () => {
+        if (state.loc.frozen) return;
+        state.locFrom = 'addresses';
+        state.screen = 'locate';
+        render();
+      });
+      root.querySelectorAll('[data-addr-live]').forEach((b) => b.onclick = async () => {
+        if (state.loc.frozen) return;
+        const errEl = document.querySelector('[data-addr-err]');
+        state.loc.custom = false;
+        startLiveLocation();
+        if (state.loc.liveLat == null) {
+          if (errEl) errEl.textContent = state.loc.err || 'Waiting for GPS… Allow location if asked.';
+          return;
+        }
+        const lat = state.loc.liveLat, lng = state.loc.liveLng;
+        setPlace(lat, lng, 'Current location', false);
+        try {
+          const label = await labelAt(lat, lng);
+          if (!state.loc.custom && !state.loc.frozen) setPlace(lat, lng, label, false);
+        } catch (_) {}
+        if (errEl) errEl.textContent = '';
+        paintAddrUi();
+      });
+      root.querySelectorAll('[data-addr-save]').forEach((b) => b.onclick = () => {
+        if (state.loc.frozen) return;
+        const inp = document.getElementById('addrLine');
+        const label = ((inp && inp.value) || state.loc.label || '').trim();
+        if (!label) return;
+        setPlace(state.loc.lat, state.loc.lng, label, !!state.loc.custom);
+        paintAddrUi();
       });
       root.querySelectorAll('input[name="ship"]').forEach((el) => el.onchange = () => { state.deliveryType = el.value; render({ keepScroll: true }); });
       root.querySelectorAll('input[name="pay"]').forEach((el) => el.onchange = () => {
