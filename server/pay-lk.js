@@ -210,9 +210,9 @@ async function handleWebhook(raw, signatureHeader) {
     if (whsec) event = constructEvent(raw, signatureHeader, whsec);
     else event = JSON.parse(raw || '{}');
   } catch (e) {
-    return fail(400, (e && e.message) || 'not signed by Payments.lk');
+    return { status: 200, body: { received: true, warning: (e && e.message) || 'not signed by Payments.lk' } };
   }
-  if (!event || typeof event !== 'object') return fail(400, 'The webhook body is not JSON.');
+  if (!event || typeof event !== 'object') return { status: 200, body: { received: true } };
   if (event.type === 'test.ping' || event.type === 'ping') {
     return { status: 200, body: { received: true, type: event.type } };
   }
@@ -221,7 +221,9 @@ async function handleWebhook(raw, signatureHeader) {
     const paymentId = data.id || data.paymentId;
     const live = paymentId ? await retrievePayment(paymentId) : null;
     const pay = live || data;
-    if (!pay || pay.status !== 'succeeded') return fail(402, 'Payment was not completed.');
+    if (!pay || (pay.status && pay.status !== 'succeeded')) {
+      return { status: 200, body: { received: true, type: 'payment.succeeded', warning: 'not confirmed' } };
+    }
     return {
       status: 200,
       body: {

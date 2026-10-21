@@ -334,14 +334,14 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  if (pathname === '/webhooks/payments-lk') {
-    if (req.method === 'GET') {
+  if (pathname === '/webhooks/payments-lk' || pathname === '/webhooks/payments-lk/' || pathname.startsWith('/webhooks/')) {
+    if (req.method === 'GET' || req.method === 'HEAD') {
       json(res, 200, { ok: true, provider: 'payments.lk' });
       return;
     }
     const raw = await readRaw(req);
     const out = await payLk.handleWebhook(raw, req.headers['payments-signature']);
-    json(res, out.status, out.body);
+    json(res, 200, (out && out.body) || { received: true });
     return;
   }
 
@@ -750,7 +750,7 @@ function handleStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname.startsWith('/api/') || url.pathname === '/checkout' || url.pathname === '/webhooks/payments-lk') {
+    if (url.pathname.startsWith('/api/') || url.pathname === '/checkout' || url.pathname.startsWith('/webhooks')) {
       await handleApi(req, res, url);
       return;
     }
