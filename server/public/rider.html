@@ -15,7 +15,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zu"></script>
+  <script src="/js/api.js?v=19zv"></script>
   <script src="/js/maps.js?v=19zt"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="/js/otp-login.js?v=19zj"></script>
@@ -851,6 +851,62 @@
       state.fromReg = true;
       render(true);
     }
+    function pendingRiderFilled() {
+      let p = API._pendingRider || {};
+      try {
+        if (!p.name) {
+          const raw = localStorage.getItem('sd_pending_rider') || sessionStorage.getItem('sd_pending_rider');
+          if (raw) p = Object.assign({}, JSON.parse(raw), p);
+        }
+      } catch (_) {}
+      const name = String((p && p.name) || '').trim();
+      return !!(name && !/^(rider|guest|user)$/i.test(name));
+    }
+    async function afterRiderOtp(out) {
+      const phone = (out && out.phone) || state.loginId || state.reg.phone;
+      const needRider = API.isRiderRegistered && !API.isRiderRegistered();
+      if (out && out.needsRegister && !pendingRiderFilled()) {
+        state.auth = 'register';
+        state.fromReg = true;
+        if (phone) state.reg.phone = phone;
+        render(true);
+        return;
+      }
+      if (pendingRiderFilled() && needRider) {
+        try {
+          await API.completeRiderRegister();
+        } catch (e) {
+          state.auth = 'register';
+          state.fromReg = true;
+          if (phone) state.reg.phone = phone;
+          render(true);
+          const err = document.querySelector('[data-err]');
+          if (err) err.textContent = (e && e.message) || 'Finish rider details.';
+          return;
+        }
+      }
+      state.tab = 'home';
+      state.auth = 'home';
+      state.fromReg = false;
+      startRiderGps();
+      render(true);
+    }
+    function bindRiderOtp() {
+      killMap();
+      const root = document.getElementById('root');
+      root.innerHTML = otpView();
+      OtpLogin.bind({ role: 'rider', onReady: afterRiderOtp });
+      const pi = document.getElementById('phone');
+      if (pi) pi.value = state.loginId;
+      const phoneStep = root.querySelector('[data-step="phone"]');
+      const codeStep = root.querySelector('[data-step="code"]');
+      if (phoneStep) phoneStep.classList.add('hidden');
+      if (codeStep) codeStep.classList.remove('hidden');
+      const sp = root.querySelector('[data-sent-phone]');
+      if (sp) sp.textContent = state.loginId;
+      const back = root.querySelector('[data-back-phone]');
+      if (back) back.onclick = () => { state.auth = state.fromReg ? 'register' : 'login'; render(true); };
+    }
     function waPrefill() {
       const p = (me().phone || state.loginId || '').trim();
       const n = API.normalizePhone ? API.normalizePhone(p) : p;
@@ -1058,19 +1114,11 @@
           state.wa.open = false;
           state.wa.err = '';
           state.pendingAcceptId = null;
-          if (out && out.needsRegister) {
-            state.auth = 'register';
-            state.fromReg = true;
-            state.reg.phone = out.phone || state.wa.phone;
-            render(true);
-            return;
-          }
-          if (acceptMode && acceptId && API.user) {
+          if (acceptMode && acceptId && API.user && !(out && out.needsRegister)) {
             await acceptOrder(acceptId);
             return;
           }
-          state.auth = 'home';
-          render(true);
+          await afterRiderOtp(out);
         } catch (e) {
           state.wa.err = e.message || 'Could not verify';
           paintWa();
@@ -1418,38 +1466,17 @@
       const sc0 = root.querySelector('.scroll');
       const y = keep && sc0 ? sc0.scrollTop : 0;
       try {
+        if (state.auth === 'otp') {
+          if (keep && root.querySelector('[data-otp-root]')) return;
+          bindRiderOtp();
+          return;
+        }
         if (!API.user) {
           if (keep && root.querySelector('[data-rider-auth], [data-otp-root]')) return;
           killMap();
           if (state.auth === 'splash') { root.innerHTML = splash(); return; }
           if (state.auth === 'register') { root.innerHTML = registerView(); bindAuth(); return; }
           if (state.auth === 'download') { root.innerHTML = downloadView(); bindAuth(); return; }
-          if (state.auth === 'otp') {
-            root.innerHTML = otpView();
-            OtpLogin.bind({ role: 'rider', onReady: async (out) => {
-              if (out && out.needsRegister) {
-                state.auth = 'register';
-                state.fromReg = true;
-                state.reg.phone = out.phone || state.loginId;
-                render(true);
-                return;
-              }
-              state.tab = 'home';
-              startRiderGps();
-              render(true);
-            } });
-            const pi = document.getElementById('phone');
-            if (pi) pi.value = state.loginId;
-            const phoneStep = root.querySelector('[data-step="phone"]');
-            const codeStep = root.querySelector('[data-step="code"]');
-            if (phoneStep) phoneStep.classList.add('hidden');
-            if (codeStep) codeStep.classList.remove('hidden');
-            const sp = root.querySelector('[data-sent-phone]');
-            if (sp) sp.textContent = state.loginId;
-            const back = root.querySelector('[data-back-phone]');
-            if (back) back.onclick = () => { state.auth = state.fromReg ? 'register' : 'login'; render(true); };
-            return;
-          }
           root.innerHTML = loginView();
           bindAuth();
           return;
@@ -1568,6 +1595,7 @@
       }, 1600);
     }
     API.on(() => {
+      if (state.auth === 'otp') return;
       if (state.wa && state.wa.open) return;
       if (!API.user && document.querySelector('[data-otp-root], [data-rider-auth]')) return;
       render(false, { keepScroll: true });

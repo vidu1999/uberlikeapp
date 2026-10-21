@@ -1794,7 +1794,7 @@
       if (p0.shopName || p0.ownerName) {
         const pe = String(p0.email || '').trim().toLowerCase();
         const ee = String(row.email || '').trim().toLowerCase();
-        if (!(pe && ee && pe === ee)) throw alreadyThisRoleError('shop');
+        if (pe && ee && pe !== ee) throw alreadyThisRoleError('shop');
       }
     }
     if (!row) {
@@ -1805,12 +1805,12 @@
         }
       } catch (_) {}
     }
-    if (!row && role === 'shop') {
+    if (role === 'shop' && !(row && (row.shopId || row.shop_id))) {
       const p = pendingShop() || {};
       const rec = API.recallShopProfile(phone) || {};
       if (!p.shopName && !p.ownerName && !rec.shopName) {
-        throw new Error('Register your shop first.');
-      }
+        if (!row) throw new Error('Register your shop first.');
+      } else {
       const shopId = shopIdFor(phone);
       const pendEmail = String(p.email || rec.email || '').trim().toLowerCase();
       const lat = finiteNum(p.lat != null ? p.lat : rec.lat);
@@ -1840,7 +1840,7 @@
         } catch (_) { allowed = false; }
         if (!allowed) throw alreadyThisRoleError('shop');
       }
-      const typed = String(p.shopName || '').trim();
+      const typed = String(p.shopName || rec.shopName || '').trim();
       const existingName = String((shop && shop.name) || '').trim();
       let shopTitle = typed;
       if (shop && existingName && !isDemoShopName(existingName) && !isPlaceholderShopName(existingName)) {
@@ -1871,9 +1871,11 @@
           try { await sbPutRow('shops', shop); } catch (_) {}
         }
       }
-      let googleRow = null;
+      let googleRow = (row && row.id) ? row : null;
       if (pendEmail && pendEmail.indexOf('@') >= 0) {
-        try { googleRow = await lookupEmail(pendEmail, 'shop'); } catch (_) {}
+        if (!googleRow) {
+          try { googleRow = await lookupEmail(pendEmail, 'shop'); } catch (_) {}
+        }
         if (googleRow && !isPlaceholderPhone(googleRow.phone) && normalizePhone(googleRow.phone) !== phone) {
           throw alreadyEmailError('shop');
         }
@@ -1912,6 +1914,7 @@
         if (i >= 0) API.shops[i] = Object.assign({}, API.shops[i], mapped);
         else API.shops.push(mapped);
       } catch (_) {}
+      }
     }
     if (row && role === 'rider') {
       const pr = pendingRider() || {};
@@ -1975,8 +1978,13 @@
     API.user = mapped;
     if (row.shopName) API.user.shopName = row.shopName;
     if (role === 'shop') {
-      try { API.user = await ensureShopRow(API.user); } catch (_) { API.user = attachShopIdentity(API.user); }
-      try { API.setPendingShop(null); } catch (_) {}
+      const stillPending = pendingShop() || {};
+      try {
+        API.user = await ensureShopRow(API.user, { required: !!(stillPending.shopName || stillPending.ownerName) });
+      } catch (_) { API.user = attachShopIdentity(API.user); }
+      if (API.isShopRegistered && API.isShopRegistered()) {
+        try { API.setPendingShop(null); } catch (_) {}
+      }
     }
     if (API.user && API.user.shopId) {
       const s = API.shops.find((x) => x.id === API.user.shopId);
@@ -2139,36 +2147,52 @@
       return API.attachWhatsApp(phone);
     }
     if (want === 'customer' && API.user && sameRole(API.user.role, 'customer')) {
+      persistVerified({ role: want, phone: phone });
       return API.attachWhatsApp(phone);
     }
+    if (want === 'shop' && API.user && sameRole(API.user.role, 'shop')) {
+      persistVerified({ role: want, phone: phone });
+      await API.attachWhatsApp(phone);
+      const pShop = pendingShop() || {};
+      const rec = API.recallShopProfile(phone) || {};
+      if (pShop.shopName || pShop.ownerName || rec.shopName) return enterAccount(want, phone);
+      if (API.isShopRegistered && API.isShopRegistered()) return API.user;
+      return { needsRegister: true, phone: phone, role: want };
+    }
     if (want === 'rider' && API.user && sameRole(API.user.role, 'rider')) {
-      return API.attachWhatsApp(phone);
+      persistVerified({ role: want, phone: phone });
+      await API.attachWhatsApp(phone);
+      const pRide = pendingRider() || {};
+      if (!isPlaceholderName(pRide.name)) return enterAccount(want, phone);
+      return API.user;
     }
     if (want === 'shop' || want === 'rider') {
       const existing = await lookupPhone(phone, want);
       const pShop = pendingShop() || {};
       const pRide = pendingRider() || {};
-      const registeringShop = want === 'shop' && !!(pShop.shopName || pShop.ownerName);
+      const rec = want === 'shop' ? (API.recallShopProfile(phone) || {}) : {};
+      const registeringShop = want === 'shop' && !!(pShop.shopName || pShop.ownerName || rec.shopName);
       const registeringRider = want === 'rider' && !isPlaceholderName(pRide.name);
+      function sameRegisteringEmail(pendingEmail, acc) {
+        const pe = String(pendingEmail || '').trim().toLowerCase();
+        const ee = String((acc && acc.email) || '').trim().toLowerCase();
+        if (pe && ee && pe === ee) return true;
+        if (API.user && acc && API.user.id === acc.id) return true;
+        if (API.user && emailsEqual(API.user.email, acc && acc.email)) return true;
+        return false;
+      }
       if (existing) {
         if (registeringShop) {
-          const pe = String(pShop.email || '').trim().toLowerCase();
-          const ee = String(existing.email || '').trim().toLowerCase();
-          if (pe && ee && pe === ee) {
+          if (sameRegisteringEmail(pShop.email, existing)) {
             persistVerified({ role: want, phone: phone });
             return enterAccount(want, phone);
           }
           throw alreadyThisRoleError(want);
         }
         if (registeringRider) {
-          const pe = String(pRide.email || '').trim().toLowerCase();
-          const ee = String(existing.email || '').trim().toLowerCase();
-          if (pe && ee && pe === ee) return enterAccount(want, phone);
+          if (sameRegisteringEmail(pRide.email, existing)) return enterAccount(want, phone);
           throw alreadyThisRoleError(want);
         }
-        API.setPendingShop(null);
-        API.setPendingRider(null);
-        clearVerified(want);
         return enterAccount(want, phone);
       }
       persistVerified({ role: want, phone: phone });
@@ -2555,17 +2579,27 @@
   };
 
   API.completeShopRegister = async function () {
-    const phone = API.verifiedPhone('shop');
+    let phone = API.verifiedPhone('shop');
+    if (!phone && API.user && sameRole(API.user.role, 'shop') && !isPlaceholderPhone(API.user.phone)) {
+      phone = normalizePhone(API.user.phone);
+    }
     if (!phone) throw new Error('Verify WhatsApp first.');
     const p = pendingShop() || {};
-    if (!p.shopName && !p.ownerName) throw new Error('Register your shop first.');
+    const rec = API.recallShopProfile(phone) || {};
+    if (!p.shopName && !p.ownerName && !rec.shopName) throw new Error('Register your shop first.');
+    if (!p.shopName && rec.shopName) {
+      API.setPendingShop(Object.assign({}, rec, p, { phone: phone }));
+    }
     const user = await enterAccount('shop', phone);
     clearVerified('shop');
     return user;
   };
 
   API.completeRiderRegister = async function () {
-    const phone = API.verifiedPhone('rider');
+    let phone = API.verifiedPhone('rider');
+    if (!phone && API.user && sameRole(API.user.role, 'rider') && !isPlaceholderPhone(API.user.phone)) {
+      phone = normalizePhone(API.user.phone);
+    }
     if (!phone) throw new Error('Verify WhatsApp first.');
     const p = pendingRider() || {};
     if (isPlaceholderName(p.name)) throw new Error('Register as a rider first.');
@@ -2652,7 +2686,11 @@
       sessionKeys(API.user.role).forEach(function (k) { storeSet(k, payload); });
       cookieWrite(API.roleHint || API.user.role, API.user);
       cookieWrite(API.user.role, API.user);
-      clearVerified(API.user.role);
+      const v = API._verified;
+      if (v && sameRole(v.role, API.user.role)) {
+        const sameWa = !isPlaceholderPhone(API.user.phone) && normalizePhone(API.user.phone) === normalizePhone(v.phone);
+        if (!isPlaceholderPhone(API.user.phone) && !sameWa) clearVerified(API.user.role);
+      }
     } catch (_) {}
   }
 
@@ -2663,8 +2701,6 @@
     API.orders = [];
     API.messages = {};
     resetKept();
-    API.setPendingShop(null);
-    API.setPendingRider(null);
     clearVerified(role);
     try {
       sessionKeys(role).forEach(storeDel);
@@ -2716,7 +2752,7 @@
       if (API.user && sameRole(API.user.role, 'shop')) API.user = attachShopIdentity(API.user);
       purgeLocalDemoStores();
       if (API.user) {
-        clearVerified(hint);
+        if (!isPlaceholderPhone(API.user.phone)) clearVerified(hint);
         saveSession();
       }
     } catch (_) {}
