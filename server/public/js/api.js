@@ -3067,6 +3067,59 @@
     }
     return API.orders.find((o) => o.id === id) || order || local;
   }
+  function earthMeters(a, b) {
+    if (!a || !b) return Infinity;
+    const lat1 = Number(a[0]), lng1 = Number(a[1]), lat2 = Number(b[0]), lng2 = Number(b[1]);
+    if (![lat1, lng1, lat2, lng2].every(Number.isFinite)) return Infinity;
+    if (typeof haversineKm === 'function') return haversineKm([lat1, lng1], [lat2, lng2]) * 1000;
+    const R = 6371000;
+    const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+    const dp = (lat2 - lat1) * Math.PI / 180;
+    const dl = (lng2 - lng1) * Math.PI / 180;
+    const x = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  }
+  function riderPatchHere(body, order) {
+    const lat = finiteNum(body && body.riderLat != null ? body.riderLat : (order && order.riderLat));
+    const lng = finiteNum(body && body.riderLng != null ? body.riderLng : (order && order.riderLng));
+    if (lat != null && lng != null) return [lat, lng];
+    if (typeof window !== 'undefined' && window.QB_LIVE && window.QB_LIVE.lat != null) {
+      const la = Number(window.QB_LIVE.lat), ln = Number(window.QB_LIVE.lng);
+      if (Number.isFinite(la) && Number.isFinite(ln)) return [la, ln];
+    }
+    return null;
+  }
+  function shopPatchHere(order) {
+    if (!order) return null;
+    const shop = shopOf(order.shopId) || {};
+    const lat = finiteNum(shop.lat != null ? shop.lat : order.shopLat);
+    const lng = finiteNum(shop.lng != null ? shop.lng : order.shopLng);
+    const dLat = finiteNum(order.deliveryLat);
+    const dLng = finiteNum(order.deliveryLng);
+    if (lat != null && lng != null) {
+      if (dLat != null && Math.abs(lat - dLat) < 1e-5 && Math.abs(lng - dLng) < 1e-5) return null;
+      return [lat, lng];
+    }
+    return null;
+  }
+  const RIDER_CLOSE_M = 25;
+  function assertRiderClose(id, body) {
+    if (!API.user || !sameRole(API.user.role, 'rider')) return;
+    const st = body && body.status;
+    if (st !== 'picked_up' && st !== 'on_the_way' && st !== 'delivered') return;
+    const order = (API.orders || []).find(function (o) { return o.id === id; });
+    const here = riderPatchHere(body, order);
+    const dest = st === 'delivered'
+      ? (order ? [finiteNum(order.deliveryLat), finiteNum(order.deliveryLng)] : null)
+      : shopPatchHere(order);
+    const m = earthMeters(here, dest);
+    if (m < RIDER_CLOSE_M) return;
+    const err = new Error(st === 'delivered'
+      ? 'Get within 25 m of the customer to mark delivered.'
+      : 'Get within 25 m of the shop to confirm pickup.');
+    err.code = 'TOO_FAR';
+    throw err;
+  }
   API.patch = async function (id, body) {
     body = Object.assign({}, body || {});
     if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
@@ -3077,6 +3130,7 @@
         throw err;
       }
     }
+    assertRiderClose(id, body);
     if (locOnlyBody(body)) {
       const local = applyLocalOrder(id, body);
       if (local && (local.status === 'delivered' || local.status === 'cancelled')) return local;

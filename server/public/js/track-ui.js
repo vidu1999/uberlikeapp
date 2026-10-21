@@ -62,7 +62,7 @@
   const ICO_SHOP_SIDE =
     '<div class="rd-shop-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div>';
 
-  const CLOSE_M = 200;
+  const CLOSE_M = 25;
 
   function telHref(phone) {
     if (!phone) return '';
@@ -100,15 +100,40 @@
     return [dLat, dLng];
   }
 
-  function targetOf(order) {
-    if (goingToShop(order)) return shopPosOf(order);
-    return [Number(order.deliveryLat), Number(order.deliveryLng)];
+  function destPosOf(order) {
+    const lat = Number(order && order.deliveryLat);
+    const lng = Number(order && order.deliveryLng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+    return null;
   }
 
-  function kmLeft(order) {
+  function shopPinOf(order) {
     const shop =
-      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
-    const dest = targetOf(order);
+      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
+    const sLat = Number(shop && shop.lat);
+    const sLng = Number(shop && shop.lng);
+    if (Number.isFinite(sLat) && Number.isFinite(sLng)) return [sLat, sLng];
+    const lat = Number(order && order.shopLat);
+    const lng = Number(order && order.shopLng);
+    const dest = destPosOf(order);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      if (dest && Math.abs(lat - dest[0]) < 1e-5 && Math.abs(lng - dest[1]) < 1e-5) return null;
+      return [lat, lng];
+    }
+    return null;
+  }
+
+  function targetOf(order) {
+    if (goingToShop(order)) return shopPosOf(order);
+    return destPosOf(order) || [Number(order.deliveryLat), Number(order.deliveryLng)];
+  }
+
+  function closeTargetOf(order) {
+    if (goingToShop(order)) return shopPinOf(order);
+    return destPosOf(order);
+  }
+
+  function riderFrom(order) {
     const live =
       typeof document !== 'undefined' &&
       document.documentElement.getAttribute('data-role') === 'rider' &&
@@ -116,27 +141,31 @@
       window.QB_LIVE.lat != null
         ? window.QB_LIVE
         : null;
-    const from = live
-      ? [Number(live.lat), Number(live.lng)]
-      : order.riderLat != null
-        ? [Number(order.riderLat), Number(order.riderLng)]
-        : [Number(shop.lat || dest[0]), Number(shop.lng || dest[1])];
+    if (live) return [Number(live.lat), Number(live.lng)];
+    if (order && order.riderLat != null && order.riderLng != null) {
+      return [Number(order.riderLat), Number(order.riderLng)];
+    }
+    return null;
+  }
+
+  function kmLeft(order) {
+    const dest = targetOf(order);
+    const from = riderFrom(order);
+    if (!from || !dest) return 2.3;
     const km = typeof haversineKm === 'function' ? haversineKm(from, dest) : 2.3;
     return Math.max(0.05, km);
   }
 
   function metersLeft(order) {
-    return kmLeft(order) * 1000;
+    const dest = closeTargetOf(order);
+    const from = riderFrom(order);
+    if (!from || !dest || typeof haversineKm !== 'function') return Infinity;
+    return haversineKm(from, dest) * 1000;
   }
 
   function isClose(order) {
-    const live =
-      typeof document !== 'undefined' &&
-      document.documentElement.getAttribute('data-role') === 'rider' &&
-      window.QB_LIVE &&
-      window.QB_LIVE.lat != null;
-    if (!live && (order.riderLat == null || order.riderLng == null)) return false;
-    return metersLeft(order) <= CLOSE_M;
+    if (!riderFrom(order)) return false;
+    return metersLeft(order) < CLOSE_M;
   }
 
   function etaRange(km) {
@@ -246,10 +275,12 @@
     const showDone = order.status === 'delivered' && viewer !== 'rider';
     const chatOn = typeof API !== 'undefined' && API.canChat ? API.canChat(order, viewerRole(viewer)) : false;
     const title = trackTitle(order, viewer);
+    const nearM = metersLeft(order);
+    const nearAway = Number.isFinite(nearM) ? Math.max(1, Math.round(nearM)) + ' m' : '—';
     const nearTxt = showPickup
-      ? (close ? 'You are at the shop — confirm pickup' : Math.round(metersLeft(order)) + ' m to shop · get closer to confirm')
+      ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
       : showComplete
-        ? (close ? 'You are at the customer — confirm delivered' : Math.round(metersLeft(order)) + ' m to customer · get closer to confirm')
+        ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
         : '';
     return `<div class="rd-screen" data-track-root="${esc(order.id)}" data-viewer="${esc(viewer)}" data-has-rider="${order.riderName ? '1' : '0'}">
       <div id="map" class="map"></div>
@@ -341,10 +372,12 @@
     if (near) {
       const showPickup = viewer === 'rider' && toShop;
       const showComplete = viewer === 'rider' && picked;
+      const nearM = metersLeft(order);
+      const nearAway = Number.isFinite(nearM) ? Math.max(1, Math.round(nearM)) + ' m' : '—';
       const txt = showPickup
-        ? (close ? 'You are at the shop — confirm pickup' : Math.round(metersLeft(order)) + ' m to shop · get closer to confirm')
+        ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
         : showComplete
-          ? (close ? 'You are at the customer — confirm delivered' : Math.round(metersLeft(order)) + ' m to customer · get closer to confirm')
+          ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
           : '';
       near.textContent = txt;
       near.classList.toggle('hidden', !txt);

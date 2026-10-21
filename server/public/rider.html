@@ -15,9 +15,9 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zq"></script>
+  <script src="/js/api.js?v=19zr"></script>
   <script src="/js/maps.js?v=19zn"></script>
-  <script src="/js/track-ui.js?v=19zn"></script>
+  <script src="/js/track-ui.js?v=19zr"></script>
   <script src="/js/otp-login.js?v=19zj"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -91,26 +91,40 @@
       return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || liveJob(o)));
     }
     function shopPos(o) {
+      const shop = API.shopOf ? API.shopOf(o && o.shopId) : {};
+      const lat = Number(shop && shop.lat);
+      const lng = Number(shop && shop.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
       const slat = Number(o && o.shopLat);
       const slng = Number(o && o.shopLng);
-      if (Number.isFinite(slat) && Number.isFinite(slng)) return [slat, slng];
-      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
-      const lat = Number(shop.lat);
-      const lng = Number(shop.lng);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
-      return [Number(o.deliveryLat), Number(o.deliveryLng)];
+      const dLat = Number(o && o.deliveryLat);
+      const dLng = Number(o && o.deliveryLng);
+      if (Number.isFinite(slat) && Number.isFinite(slng)) {
+        if (Number.isFinite(dLat) && Math.abs(slat - dLat) < 1e-5 && Math.abs(slng - dLng) < 1e-5) return null;
+        return [slat, slng];
+      }
+      return null;
     }
     function metersTo(lat, lng, to) {
       if (lat == null || lng == null || !to) return Infinity;
       const km = typeof haversineKm === 'function' ? haversineKm([lat, lng], to) : 99;
       return km * 1000;
     }
-    const CLOSE_M = 200;
+    const CLOSE_M = 25;
     function closeToShop(o) {
-      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, shopPos(o)) <= CLOSE_M;
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, shopPos(o)) < CLOSE_M;
     }
     function closeToCust(o) {
-      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, [Number(o.deliveryLat), Number(o.deliveryLng)]) <= CLOSE_M;
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, [Number(o.deliveryLat), Number(o.deliveryLng)]) < CLOSE_M;
+    }
+    function tooFarMsg(o, kind) {
+      const hereLat = state.liveLat ?? o.riderLat;
+      const hereLng = state.liveLng ?? o.riderLng;
+      const to = kind === 'shop' ? shopPos(o) : [Number(o.deliveryLat), Number(o.deliveryLng)];
+      const m = metersTo(hereLat, hereLng, to);
+      const where = kind === 'shop' ? 'the shop' : 'the customer';
+      if (!Number.isFinite(m) || m === Infinity) return 'Need live GPS within 25 m of ' + where + ' to confirm.';
+      return Math.round(m) + ' m from ' + where + '. Get within 25 m to confirm.';
     }
     function done() {
       return (API.orders || []).filter((o) => isMine(o) && o.status === 'delivered');
@@ -150,6 +164,7 @@
         ? [state.liveLat, state.liveLng]
         : (o.riderLat != null ? [Number(o.riderLat), Number(o.riderLng)] : [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)]);
       const to = headingToShop(o) ? shopPos(o) : [Number(o.deliveryLat), Number(o.deliveryLng)];
+      if (!from || !to || from[0] == null || to[0] == null) return 2.4;
       const km = typeof haversineKm === 'function' ? haversineKm(from, to) : 2.4;
       return Math.max(0.05, km);
     }
@@ -1050,11 +1065,16 @@
         if (needWa(id)) return;
         const o = (API.orders || []).find((x) => x.id === id);
         if (!o) return;
-        if (!closeToShop(o)) return;
+        if (!closeToShop(o)) { alert(tooFarMsg(o, 'shop')); return; }
         const u = me();
         const body = { status: 'picked_up', riderId: u.id, riderName: u.name, riderPhone: u.phone };
         if (state.liveLat != null && state.liveLng != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
-        await API.patch(id, body);
+        try {
+          await API.patch(id, body);
+        } catch (e) {
+          alert((e && e.message) || tooFarMsg(o, 'shop'));
+          return;
+        }
         try { await API.sendMessage(id, 'QuickBite', 'system', 'Order picked up. ' + (u.name || 'Rider') + ' is on the way to you.'); } catch (_) {}
         state.orderId = id;
         state.screen = 'live';
@@ -1066,11 +1086,16 @@
         const id = b.dataset.drop;
         const o = (API.orders || []).find((x) => x.id === id);
         if (!o || !headingToCustomer(o)) return;
-        if (!closeToCust(o)) return;
-        stopLiveGps();
+        if (!closeToCust(o)) { alert(tooFarMsg(o, 'cust')); return; }
         const drop = { status: 'delivered' };
         if (state.liveLat != null && state.liveLng != null) { drop.riderLat = state.liveLat; drop.riderLng = state.liveLng; }
-        await API.patch(id, drop);
+        try {
+          await API.patch(id, drop);
+        } catch (e) {
+          alert((e && e.message) || tooFarMsg(o, 'cust'));
+          return;
+        }
+        stopLiveGps();
         try { await API.sendMessage(id, 'QuickBite', 'system', 'Order delivered.'); } catch (_) {}
         state.orderId = id;
         state.screen = 'delivered';
