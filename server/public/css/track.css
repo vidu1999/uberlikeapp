@@ -62,6 +62,10 @@ body > #root > .track-screen {
   border-radius: 50%;
   box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.28);
 }
+.pin-shop-dot.red {
+  background: #E11D48;
+  box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.28);
+}
 
 .hidden { display: none !important; }
 

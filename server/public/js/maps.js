@@ -71,16 +71,17 @@
     });
   }
 
-  function shopOverviewIcon(name, hot) {
+  function shopOverviewIcon(name, dot) {
     let raw = String(name || 'Shop').trim() || 'Shop';
     if (raw.length > 18) raw = raw.slice(0, 17) + '…';
     const label = htmlEsc(raw);
+    const kind = dot === 'red' ? 'red' : (dot === 'green' || dot === true ? 'green' : '');
     return L.divIcon({
-      className: 'pin-shop-wrap' + (hot ? ' pin-shop-hot' : ''),
+      className: 'pin-shop-wrap' + (kind ? ' pin-shop-' + kind : ''),
       html:
         '<div class="pin-lab"><div class="pin-shop-ico">' +
         SHOP_SVG +
-        (hot ? '<i class="pin-shop-dot"></i>' : '') +
+        (kind ? '<i class="pin-shop-dot' + (kind === 'red' ? ' red' : '') + '"></i>' : '') +
         '</div><span>' +
         label +
         '</span></div>',
@@ -517,22 +518,23 @@
       } else liveMarker.setLatLng([la, ln]);
     }
 
-    function setShops(shops, hot) {
-      hot = hot || {};
+    function setShops(shops, dots) {
+      dots = dots || {};
       const keep = {};
       (shops || []).forEach(function (s) {
         if (!s || !s.id || s.lat == null || s.lng == null) return;
         const lat = Number(s.lat), lng = Number(s.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         keep[s.id] = 1;
-        const isHot = !!hot[s.id];
-        const icon = shopOverviewIcon(s.name, isHot);
+        const kind = dots[s.id] === 'red' ? 'red' : (dots[s.id] ? 'green' : '');
+        const icon = shopOverviewIcon(s.name, kind);
+        const z = kind === 'red' ? 480 : (kind === 'green' ? 320 : 200);
         if (shopMarks[s.id]) {
           shopMarks[s.id].setLatLng([lat, lng]);
           shopMarks[s.id].setIcon(icon);
-          shopMarks[s.id].setZIndexOffset(isHot ? 420 : 200);
+          shopMarks[s.id].setZIndexOffset(z);
         } else {
-          const m = L.marker([lat, lng], { icon: icon, zIndexOffset: isHot ? 420 : 200 }).addTo(map);
+          const m = L.marker([lat, lng], { icon: icon, zIndexOffset: z }).addTo(map);
           m.on('click', function () {
             if (onShop) onShop(s.id);
           });

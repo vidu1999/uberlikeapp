@@ -9,14 +9,14 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zb" />
   <link rel="stylesheet" href="/css/ui.css?v=19zb" />
-  <link rel="stylesheet" href="/css/track.css?v=19zs" />
+  <link rel="stylesheet" href="/css/track.css?v=19zt" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zr"></script>
-  <script src="/js/maps.js?v=19zs"></script>
+  <script src="/js/api.js?v=19zt"></script>
+  <script src="/js/maps.js?v=19zt"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="/js/otp-login.js?v=19zj"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -90,6 +90,10 @@
     function ongoing() {
       return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || liveJob(o)));
     }
+    function activeJob() {
+      return (ongoing() || []).find((o) => o && o.status !== 'delivered' && o.status !== 'cancelled') || null;
+    }
+    function riderBusy() { return !!activeJob(); }
     function shopPos(o) {
       const shop = API.shopOf ? API.shopOf(o && o.shopId) : {};
       const lat = Number(shop && shop.lat);
@@ -371,7 +375,7 @@
           <div class="sub">${esc(o.shopName || 'Shop')}</div>
           <div class="sub">${km} km · ${rs(earnOf(o))}</div>
         </div>
-        ${accept ? `<button class="acc" data-pick="${esc(o.id)}">Accept</button>` : `<span class="acc" style="background:#1F2937">${esc(timeOf(o))}</span>`}
+        ${accept && !riderBusy() ? `<button class="acc" data-pick="${esc(o.id)}">Accept</button>` : (accept && riderBusy() ? `<span class="acc" style="background:#1F2937">Busy</span>` : `<span class="acc" style="background:#1F2937">${esc(timeOf(o))}</span>`)}
       </div>`;
     }
 
@@ -399,6 +403,7 @@
           <button data-tab="profile"><span class="ico">${SVG.profile}</span>Profile</button>
         </div>
         <div class="rd-sec"><h2>Available Orders</h2><button data-tab="orders">See all</button></div>
+        ${riderBusy() ? '<div class="pad muted">Finish your current order before accepting another.</div>' : ''}
         ${state.online ? (jobs.map((o) => jobCard(o, { accept: true })).join('') || '<div class="pad muted">No ready jobs yet. When a shop taps Food is ready, Accept and go to the shop first.</div>')
           : '<div class="pad muted">Go Online to see nearby orders.</div>'}
       </div>${nav()}`;
@@ -414,6 +419,7 @@
           <button class="${f==='going'?'on':''}" data-filter="going">On Going (${ongoing().length})</button>
           <button class="${f==='done'?'on':''}" data-filter="done">Completed</button>
         </div>
+        ${f==='new' && riderBusy() ? '<div class="pad muted">Finish your current order before accepting another.</div>' : ''}
         ${list.map((o) => jobCard(o, { accept: f==='new' })).join('') || '<div class="pad muted">No orders in this tab.</div>'}
       </div>${nav()}`;
     }
@@ -474,7 +480,8 @@
           <h3>Order Items</h3>
           ${items.map((it) => `<div class="rd-item"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(it.name)}</b><div class="sub">x${it.qty} · ${rs(it.price)}</div></div></div>`).join('') || '<div class="sub">No items</div>'}
         </div>
-        ${!claimed && o.status === 'ready' ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">Accept</button>` : ''}
+        ${!claimed && o.status === 'ready' && !riderBusy() ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">Accept</button>` : ''}
+        ${!claimed && o.status === 'ready' && riderBusy() ? '<p class="pad muted">Finish your current order before accepting another.</p>' : ''}
         ${canNav && liveJob(o) ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
         ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
       </div>`;
@@ -682,15 +689,7 @@
       </div>`;
     }
 
-    function pickupShopIds() {
-      const ids = {};
-      (available() || []).forEach((o) => { if (o && o.shopId) ids[o.shopId] = o.id; });
-      (ongoing() || []).forEach((o) => {
-        if (headingToShop(o) && o.shopId) ids[o.shopId] = o.id;
-      });
-      return ids;
-    }
-    function overviewShops() {
+    function allMapShops() {
       const byId = {};
       (API.shops || []).forEach((s) => {
         if (!s || !s.id) return;
@@ -699,19 +698,45 @@
         const name = (API.shopTitle && API.shopTitle(s)) || s.name || 'Shop';
         byId[s.id] = { id: s.id, name: name, lat: lat, lng: lng };
       });
-      [].concat(available() || [], (ongoing() || []).filter(headingToShop)).forEach((o) => {
-        if (!o || !o.shopId || byId[o.shopId]) return;
-        const pos = shopPos(o);
-        if (!pos) return;
-        byId[o.shopId] = { id: o.shopId, name: o.shopName || 'Shop', lat: pos[0], lng: pos[1] };
-      });
+      return byId;
+    }
+    function shopFromJob(o) {
+      if (!o || !o.shopId) return null;
+      const listed = allMapShops()[o.shopId];
+      if (listed) return listed;
+      const pos = shopPos(o);
+      if (!pos) return null;
+      return { id: o.shopId, name: o.shopName || 'Shop', lat: pos[0], lng: pos[1] };
+    }
+    function overviewShops() {
+      const job = activeJob();
+      if (job) {
+        const one = shopFromJob(job);
+        return one ? [one] : [];
+      }
+      const byId = allMapShops();
       return Object.keys(byId).map((k) => byId[k]);
     }
+    function mapDots() {
+      const job = activeJob();
+      const dots = {};
+      if (job && job.shopId) {
+        dots[job.shopId] = 'red';
+        return dots;
+      }
+      overviewShops().forEach((s) => { if (s && s.id) dots[s.id] = 'green'; });
+      return dots;
+    }
     function mapNoteHtml() {
+      const job = activeJob();
+      if (job) {
+        const name = job.shopName || 'Shop';
+        return `<b data-map-note-title>On a job</b>
+          <div class="sub" data-map-note-sub>${esc(name)} · red pin until delivered. Finish this order before accepting another.</div>`;
+      }
       const shops = overviewShops();
-      const hotN = Object.keys(pickupShopIds()).length;
       return `<b data-map-note-title>${state.online ? 'You are online' : 'You are offline'}</b>
-          <div class="sub" data-map-note-sub>${shops.length} shops · ${hotN} pickup ${hotN === 1 ? 'job' : 'jobs'} with a green dot</div>`;
+          <div class="sub" data-map-note-sub>${shops.length} shops · green pins. Accept one order at a time.</div>`;
     }
     function paintMapNote() {
       const title = document.querySelector('[data-map-note-title]');
@@ -723,17 +748,23 @@
       if (sub) sub.textContent = wrap.querySelector('[data-map-note-sub]').textContent;
     }
     function openShopFromMap(shopId) {
-      const orderId = pickupShopIds()[shopId];
-      if (!orderId) return;
-      const o = (API.orders || []).find((x) => x.id === orderId);
-      if (!o) return;
-      state.orderId = orderId;
-      if (isMine(o) && liveJob(o)) {
-        state.screen = 'live';
-        startLiveGps(orderId);
-      } else {
-        state.screen = 'details';
+      const job = activeJob();
+      if (job && job.shopId === shopId) {
+        state.orderId = job.id;
+        if (liveJob(job)) {
+          state.screen = 'live';
+          startLiveGps(job.id);
+        } else {
+          state.screen = 'details';
+        }
+        render(true);
+        return;
       }
+      if (job) return;
+      const ready = (available() || []).find((o) => o && o.shopId === shopId);
+      if (!ready) return;
+      state.orderId = ready.id;
+      state.screen = 'details';
       render(true);
     }
     function mapIdleView() {
@@ -806,6 +837,10 @@
     }
     async function acceptOrder(id) {
       if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
+      if (riderBusy()) {
+        alert('Finish your current order before accepting another.');
+        return;
+      }
       if (needWa(id)) return;
       const u = me();
       const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
@@ -1330,7 +1365,7 @@
         }
         if (state.tab === 'map' && !state.screen) {
           const shops = overviewShops();
-          const hot = pickupShopIds();
+          const hot = mapDots();
           const existing = root.querySelector('[data-rider-map]');
           if (!force && existing && state.mapHandle && state.mapHandle.update) {
             state.mapHandle.update({ lat: state.liveLat, lng: state.liveLng, shops: shops, hot: hot });

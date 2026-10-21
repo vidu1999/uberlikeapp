@@ -3130,6 +3130,19 @@
         throw err;
       }
     }
+    if (API.user && sameRole(API.user.role, 'rider') && body.status === 'accepted') {
+      const open = (API.orders || []).find(function (o) {
+        if (!o || o.id === id) return false;
+        if (!mineOrder(o, API.user)) return false;
+        if (o.status === 'delivered' || o.status === 'cancelled') return false;
+        return o.status === 'accepted' || o.status === 'picked_up' || o.status === 'on_the_way' || (o.status === 'ready' && !!(o.riderId || o.rider_id));
+      });
+      if (open) {
+        const err = new Error('Finish your current order before accepting another.');
+        err.code = 'RIDER_BUSY';
+        throw err;
+      }
+    }
     assertRiderClose(id, body);
     if (locOnlyBody(body)) {
       const local = applyLocalOrder(id, body);
