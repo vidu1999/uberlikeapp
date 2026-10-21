@@ -84,10 +84,20 @@
   function shopPosOf(order) {
     const shop =
       typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
-    const lat = Number(order.shopLat != null ? order.shopLat : shop.lat);
-    const lng = Number(order.shopLng != null ? order.shopLng : shop.lng);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
-    return [Number(order.deliveryLat), Number(order.deliveryLng)];
+    const sLat = Number(shop && shop.lat);
+    const sLng = Number(shop && shop.lng);
+    if (Number.isFinite(sLat) && Number.isFinite(sLng)) return [sLat, sLng];
+    const lat = Number(order.shopLat);
+    const lng = Number(order.shopLng);
+    const dLat = Number(order.deliveryLat);
+    const dLng = Number(order.deliveryLng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      if (Number.isFinite(dLat) && Math.abs(lat - dLat) < 1e-5 && Math.abs(lng - dLng) < 1e-5) {
+        return [dLat, dLng];
+      }
+      return [lat, lng];
+    }
+    return [dLat, dLng];
   }
 
   function targetOf(order) {

@@ -99,15 +99,30 @@
     });
   }
 
-  function positions(order) {
+  function samePoint(aLat, aLng, bLat, bLng) {
+    return Math.abs(Number(aLat) - Number(bLat)) < 1e-5 && Math.abs(Number(aLng) - Number(bLng)) < 1e-5;
+  }
+
+  function registeredShopPos(order) {
     const shop =
-      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order.shopId) : {};
+      typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
+    const sLat = Number(shop && shop.lat);
+    const sLng = Number(shop && shop.lng);
+    if (Number.isFinite(sLat) && Number.isFinite(sLng)) return [sLat, sLng];
+    const oLat = Number(order && order.shopLat);
+    const oLng = Number(order && order.shopLng);
+    const dLat = Number(order && order.deliveryLat);
+    const dLng = Number(order && order.deliveryLng);
+    if (Number.isFinite(oLat) && Number.isFinite(oLng)) {
+      if (Number.isFinite(dLat) && samePoint(oLat, oLng, dLat, dLng)) return null;
+      return [oLat, oLng];
+    }
+    return null;
+  }
+
+  function positions(order) {
     const dest = [Number(order.deliveryLat), Number(order.deliveryLng)];
-    const lat = Number(order.shopLat != null ? order.shopLat : shop.lat);
-    const lng = Number(order.shopLng != null ? order.shopLng : shop.lng);
-    const shopPos = Number.isFinite(lat) && Number.isFinite(lng)
-      ? [lat, lng]
-      : dest;
+    const shopPos = registeredShopPos(order);
     const rider =
       order.riderLat != null && order.riderLng != null
         ? [Number(order.riderLat), Number(order.riderLng)]
@@ -127,10 +142,11 @@
   }
 
   function routeEnds(order, pos) {
+    const shop = pos.shopPos || pos.dest;
     if (goingToShop(order)) {
-      return { from: pos.rider || pos.dest, to: pos.shopPos };
+      return { from: pos.rider || pos.dest, to: shop };
     }
-    return { from: pos.rider || pos.shopPos, to: pos.dest };
+    return { from: pos.rider || shop, to: pos.dest };
   }
 
   function drawRoutes(map, layers, shopPos, dest, rider) {
@@ -196,7 +212,7 @@
   global.mountTrackingMap = function (el, order) {
     if (!el || !order || typeof L === 'undefined') return null;
     const pos = positions(order);
-    const center = pos.rider || pos.shopPos;
+    const center = pos.rider || pos.shopPos || pos.dest;
     const map = L.map(el, {
       zoomControl: false,
       attributionControl: false,
@@ -206,7 +222,9 @@
       attribution: '',
     }).addTo(map);
 
-    L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map);
+    let shopMarker = pos.shopPos
+      ? L.marker(pos.shopPos, { icon: shopIcon() }).addTo(map)
+      : null;
     const destLocked = [pos.dest[0], pos.dest[1]];
     L.marker(destLocked, { icon: destIcon() }).addTo(map);
     let liveMarker = null;
@@ -230,7 +248,8 @@
     }
 
     const pad = { paddingTopLeft: [28, 96], paddingBottomRight: [56, 220] };
-    const pts = [pos.dest, pos.shopPos];
+    const pts = [pos.dest];
+    if (pos.shopPos) pts.push(pos.shopPos);
     if (pos.rider) pts.push(pos.rider);
     map.fitBounds(L.latLngBounds(pts).pad(0.18), pad);
     setTimeout(() => map.invalidateSize(), 200);
@@ -242,6 +261,10 @@
         if (!next) return;
         const p = positions(next);
         p.dest = destLocked;
+        if (p.shopPos) {
+          if (!shopMarker) shopMarker = L.marker(p.shopPos, { icon: shopIcon() }).addTo(map);
+          else shopMarker.setLatLng(p.shopPos);
+        }
         const live = window.QB_LIVE;
         if (live && live.lat != null) {
           if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);

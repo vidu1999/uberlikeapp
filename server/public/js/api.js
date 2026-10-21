@@ -2941,13 +2941,21 @@
       applyPay(order, payload.payment, payload.paymentMethod);
     }
     const shopPin = shopOf(order.shopId);
-    const sLat = finiteNum(order.shopLat != null ? order.shopLat : shopPin.lat);
-    const sLng = finiteNum(order.shopLng != null ? order.shopLng : shopPin.lng);
+    const dLat = finiteNum(order.deliveryLat);
+    const dLng = finiteNum(order.deliveryLng);
+    const pinLat = finiteNum(shopPin.lat);
+    const pinLng = finiteNum(shopPin.lng);
+    let sLat = finiteNum(pinLat != null ? pinLat : (payload.shopLat != null ? payload.shopLat : order.shopLat));
+    let sLng = finiteNum(pinLng != null ? pinLng : (payload.shopLng != null ? payload.shopLng : order.shopLng));
+    if (sLat != null && sLng != null && dLat != null && Math.abs(sLat - dLat) < 1e-5 && Math.abs(sLng - dLng) < 1e-5 && pinLat == null) {
+      sLat = null;
+      sLng = null;
+    }
     if (sLat != null && sLng != null) {
       order.shopLat = sLat;
       order.shopLng = sLng;
     }
-    order.shopAddress = order.shopAddress || shopPin.address || '';
+    order.shopAddress = shopPin.address || payload.shopAddress || order.shopAddress || '';
     if (shopPin.name && (!order.shopName || order.shopName === 'Shop')) order.shopName = shopPin.name;
     if (!order.stockApplied) {
       try {

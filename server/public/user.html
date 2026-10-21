@@ -17,9 +17,9 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zm"></script>
-  <script src="/js/maps.js?v=19zj"></script>
-  <script src="/js/track-ui.js?v=19zj"></script>
+  <script src="/js/api.js?v=19zn"></script>
+  <script src="/js/maps.js?v=19zn"></script>
+  <script src="/js/track-ui.js?v=19zn"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -1188,6 +1188,10 @@
         amountCents: Math.round((cartTotal() + fee()) * 100),
         reference: 'QB-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(),
         description: 'QuickBite · ' + ((shop && shop.name) || 'order'),
+        shopLat: shop && shop.lat,
+        shopLng: shop && shop.lng,
+        shopAddress: (shop && shop.address) || '',
+        shopName: (shop && shop.name) || '',
         loc: { lat: state.loc.lat, lng: state.loc.lng, label: state.loc.label, custom: !!state.loc.custom, frozen: !!state.loc.frozen, _gps: true },
       }, extra || {});
       pending.lineItems = payLineItems(pending);
@@ -1273,12 +1277,18 @@
         state.paymentObj = payment;
         state.payment = method;
       }
+      const pending = loadPayPending() || {};
+      const shop = API.shopOf && state.cart[0] ? API.shopOf(state.cart[0].shopId) : null;
       const order = await API.placeOrder({
         shopId: state.cart[0].shopId, userId: API.user.id, customerName: API.user.name,
         customerPhone: API.user.phone, address: state.address, note: state.note,
         paymentMethod: method, deliveryType: state.deliveryType, deliveryFee: fee(),
         deliveryLat: pin.lat, deliveryLng: pin.lng, items: state.cart,
         payment: payment || null,
+        shopLat: pending.shopLat != null ? pending.shopLat : (shop && shop.lat),
+        shopLng: pending.shopLng != null ? pending.shopLng : (shop && shop.lng),
+        shopAddress: pending.shopAddress || (shop && shop.address) || '',
+        shopName: pending.shopName || (shop && shop.name) || '',
       });
       clearPayPending();
       state.cart = []; saveCart();
@@ -1362,6 +1372,9 @@
       state.screen = 'checkout';
       render({ keepScroll: true });
       try {
+        if (!(API.shops || []).some((s) => s && s.id === pending.shopId && s.lat != null)) {
+          try { await API.refresh(); } catch (_) {}
+        }
         const confirmed = await API.confirmPayCheckout(checkoutId, pending.amountCents);
         const paidRupees = Math.round(Number(confirmed.amountCents) / 100);
         if (paidRupees !== Math.round(Number(pending.amount) || 0)) {
