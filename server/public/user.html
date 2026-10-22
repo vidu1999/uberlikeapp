@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zo" />
   <link rel="stylesheet" href="/css/track.css?v=19zt" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zq" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zx" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -308,7 +308,14 @@
     ensureUserLocal();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
     function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
+    function deliveredCount() {
+      return (API.orders || []).filter((o) => o && o.status === 'delivered').length;
+    }
     function fee() { return state.deliveryType === 'express' ? 360 : 200; }
+    function shopFeeOf(s) {
+      const n = Number(s && s.fee);
+      return n > 0 ? Math.round(n) : 200;
+    }
     function savedAddrKey() { return 'qb_saved_addr_' + (accountKey() || 'anon'); }
     function persistSavedAddress() {
       if (state.loc.lat == null || state.loc.lng == null) return;
@@ -615,6 +622,117 @@
         </div>
       </div>`;
     }
+    function hoursBit(hours, which) {
+      const parts = String(hours || '').split(/[–—-]/).map((x) => x.trim()).filter(Boolean);
+      if (which === 'open') return parts[0] || '';
+      return parts[1] || parts[0] || '';
+    }
+    function shopStatusLine(s) {
+      if (s && s.isOpen === false) {
+        const t = hoursBit(s.hours, 'open');
+        return (t ? ('Opens ' + t) : 'Closed') + ' · Schedule ahead';
+      }
+      const until = hoursBit(s && s.hours, 'close');
+      return until ? ('Open · until ' + until) : 'Open now';
+    }
+    function shopRatingLine(s) {
+      const n = Number(s && s.reviews) || 0;
+      if (n <= 0) return 'New';
+      const r = Number(s.rating || 0).toFixed(1);
+      const shown = n >= 1000 ? (Math.floor(n / 1000).toLocaleString('en-LK') + ',000+') : String(n);
+      return r + '★ (' + shown + ')';
+    }
+    function shopNameOf(s) {
+      return (API.shopTitle && API.shopTitle(s)) || (s && s.name) || 'Shop';
+    }
+    function nearShopCard(s) {
+      return `<article class="ue-near" data-shop="${esc(s.id)}">
+        <img class="ue-near-img" src="${shopImg(s)}" alt="" />
+        <div class="ue-near-status">${esc(shopStatusLine(s))}</div>
+        <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
+        <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee</div>
+        <div class="ue-rate">${esc(shopRatingLine(s))}</div>
+      </article>`;
+    }
+    function allStoreCard(s) {
+      return `<article class="ue-store" data-shop="${esc(s.id)}">
+        <img src="${shopImg(s)}" alt="" />
+        <div class="ue-store-body">
+          <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
+          <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee · ${esc(shopStatusLine(s))}</div>
+          <div class="ue-rate">${esc(shopRatingLine(s))}</div>
+        </div>
+      </article>`;
+    }
+    function isDefaultPromo(p) {
+      const t = String(p || '').trim();
+      if (!t) return true;
+      return /freshly baked cakes|made with love|best ingredients to bring happiness/i.test(t);
+    }
+    function systemOffers() {
+      const shops = filteredShops();
+      const offers = [];
+      if (!shops.length) return offers;
+      const nDel = deliveredCount();
+      if (nDel === 0) {
+        offers.push({
+          id: 'welcome',
+          tone: 'green',
+          title: 'New on QuickBite*',
+          body: 'Order from live shops near you. Delivery fee is shown on each shop.',
+          pill: 'First order',
+          img: '/img/banner-promo.jpg',
+          shopId: '',
+        });
+      } else if (nDel < 3) {
+        offers.push({
+          id: 'welcome3',
+          tone: 'green',
+          title: 'Welcome back',
+          body: 'Order again from shops around you. Delivery fee is shown on each shop.',
+          pill: 'Nearby',
+          img: '/img/shop-grocery.jpg',
+          shopId: '',
+        });
+      }
+      const fees = shops.map((s) => shopFeeOf(s));
+      const minFee = fees.length ? Math.min.apply(null, fees) : 200;
+      offers.push({
+        id: 'fee',
+        tone: 'dark',
+        title: 'Delivery from Rs.' + minFee,
+        body: 'Live shops around you. Tap a shop to see the menu and place an order.',
+        pill: 'On now',
+        img: '/img/shop-curry.jpg',
+        shopId: '',
+      });
+      shops.forEach((s) => {
+        const promo = String(s.promo || s.about || '').trim();
+        if (isDefaultPromo(promo)) return;
+        offers.push({
+          id: 'shop-' + s.id,
+          tone: 'green',
+          title: promo.split(/[.\n]/)[0].slice(0, 48),
+          body: shopNameOf(s),
+          pill: 'Shop offer',
+          img: shopImg(s),
+          shopId: s.id,
+        });
+      });
+      return offers.slice(0, 8);
+    }
+    function offerCard(o) {
+      const shopAttr = o.shopId ? ` data-shop="${esc(o.shopId)}"` : ' data-go-search';
+      return `<article class="ue-offer ${esc(o.tone || 'green')}"${shopAttr}>
+        <div class="copy">
+          <h3>${esc(o.title)}</h3>
+          <p>${esc(o.body)}</p>
+          <span class="pill">${esc(o.pill)}</span>
+        </div>
+        <img src="${esc(o.img)}" alt="" />
+      </article>`;
+    }
+    const UE_ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
     function itemRow(it) {
       const shop = API.shopOf(it.shopId);
       return `<div class="item-card" data-shop="${esc(it.shopId)}">
@@ -752,6 +870,13 @@
     }
     function homeView() {
         const live = TrackUI.liveOrder(API.orders);
+      const shops = filteredShops();
+      const near = shops.slice(0, 12);
+      const offers = systemOffers();
+      const empty = state.category === 'Favourites'
+        ? 'No favourite shops yet. Tap the heart next to a shop name.'
+        : 'No shops nearby yet. When a shop registers, they appear here.';
+      const nearTitle = state.category === 'Favourites' ? 'Favourite shops' : 'Shops near you';
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         ${header()}
         <div class="u-hi">
@@ -761,19 +886,26 @@
         </div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
         ${TrackUI.banner(live)}
-        <div class="u-promo">
-          <img src="/img/shop-burger.jpg" alt="" />
-          <div class="copy"><h3>Delicious Food</h3><h3>Fast Delivery</h3><p>Fresh · Hot · Trusted</p></div>
-          <button class="u-play" data-shop="${(API.shops[1]||API.shops[0]||{}).id||''}">▶</button>
-        </div>
         <div class="u-cats">
           ${CATS.map((c) => `<button class="u-cat ${c.id==='Favourites'?'fav':''} ${state.category===c.id?'on':''}" data-cat="${c.id}">
             <div class="ico">${c.id==='Favourites' ? SVG.heartOn : (c.img ? `<img src="${c.img}" alt="" />` : SVG.grid)}</div>
             <span>${c.label}</span>
           </button>`).join('')}
         </div>
-        <div class="sec-row"><h2>${state.category==='Favourites' ? 'Favourite Shops' : 'Popular Shops'}</h2><button class="see" data-go-search>See All ›</button></div>
-        ${filteredShops().slice(0,6).map((s) => shopRow(s, false)).join('') || `<div class="pad muted">${state.category==='Favourites' ? 'No favourite shops yet. Tap the heart next to a shop name.' : 'No shops nearby yet. When a shop registers, they appear here.'}</div>`}
+        <div class="ue-head">
+          <h2>${esc(nearTitle)}</h2>
+          <button type="button" class="ue-arrow" data-go-search aria-label="See all shops">${UE_ARROW}</button>
+        </div>
+        ${near.length
+          ? `<div class="ue-rail" data-rail="near">${near.map(nearShopCard).join('')}</div>`
+          : `<div class="pad muted">${empty}</div>`}
+        ${offers.length ? `
+        <div class="ue-band">
+          <div class="ue-rail ue-offers" data-rail="offers">${offers.map(offerCard).join('')}</div>
+        </div>` : ''}
+        ${shops.length ? `
+        <div class="ue-head"><h2>All stores</h2></div>
+        ${shops.map(allStoreCard).join('')}` : ''}
       </div>${cartbar()}${nav()}`;
     }
     function searchView() {
@@ -1613,6 +1745,10 @@
       const keep = !!(opts && opts.keepScroll);
       const sc0 = root.querySelector('.scroll');
       const y = keep && sc0 ? sc0.scrollTop : 0;
+      const rails = {};
+      if (keep) {
+        root.querySelectorAll('[data-rail]').forEach((el) => { rails[el.dataset.rail] = el.scrollLeft; });
+      }
       try {
       if (state.gate === 'otp') {
         root.innerHTML = otpView();
@@ -1755,6 +1891,10 @@
         if (keep) {
           const sc = root.querySelector('.scroll');
           if (sc) sc.scrollTop = y;
+          Object.keys(rails).forEach((k) => {
+            const el = root.querySelector('[data-rail="' + k + '"]');
+            if (el) el.scrollLeft = rails[k];
+          });
         }
       }
     }
