@@ -480,6 +480,292 @@
   function isHttpUrl(v) {
     return /^https?:\/\//i.test(String(v || ''));
   }
+  function blobToDataUrl(blob) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(String(r.result || '')); };
+      r.onerror = function () { reject(new Error('Could not read image')); };
+      r.readAsDataURL(blob);
+    });
+  }
+  function dataUrlToBlob(dataUrl) {
+    try {
+      const m = String(dataUrl || '').match(/^data:([^;]+);base64,(.*)$/);
+      if (!m) return null;
+      const bin = atob(m[2]);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: m[1] || 'image/jpeg' });
+    } catch (_) { return null; }
+  }
+  function compressImageFile(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return reject(new Error('Choose an image'));
+      let url = '';
+      try { url = URL.createObjectURL(file); } catch (_) {}
+      const img = new Image();
+      const failRead = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        blobToDataUrl(file).then(resolve).catch(reject);
+      };
+      img.onload = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        let w = img.naturalWidth || img.width || 1;
+        let h = img.naturalHeight || img.height || 1;
+        const scale = Math.min(1, 720 / Math.max(w, h, 1));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        if (!ctx) return failRead();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        let q = 0.74;
+        function asUrl() {
+          try {
+            let dataUrl = c.toDataURL('image/jpeg', q);
+            while (dataUrl.length > 140000 && q > 0.4) {
+              q -= 0.12;
+              dataUrl = c.toDataURL('image/jpeg', q);
+            }
+            resolve(dataUrl);
+          } catch (e) { reject(e); }
+        }
+        if (!c.toBlob) return asUrl();
+        const tryBlob = function () {
+          c.toBlob(function (blob) {
+            if (!blob) return asUrl();
+            if (blob.size > 110000 && q > 0.4) {
+              q -= 0.12;
+              tryBlob();
+              return;
+            }
+            resolve(blob);
+          }, 'image/jpeg', q);
+        };
+        tryBlob();
+      };
+      img.onerror = failRead;
+      img.src = url || (typeof file === 'string' ? file : '');
+    });
+  }
+  async function uploadPublicImage(blob, path) {
+    const base = String(window.QB_SUPABASE_URL || '').replace(/\/$/, '');
+    if (!base || !blob) throw new Error('no storage');
+    const headers = {
+      apikey: window.QB_SUPABASE_ANON,
+      Authorization: 'Bearer ' + window.QB_SUPABASE_ANON,
+      'x-upsert': 'true',
+    };
+    if (!API._imgBucketTried) {
+      API._imgBucketTried = true;
+      try {
+        await fetch(base + '/storage/v1/bucket', {
+          method: 'POST',
+          headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id: 'qb-images', name: 'qb-images', public: true, fileSizeLimit: 2097152 }),
+        });
+      } catch (_) {}
+    }
+    let res = await fetch(base + '/storage/v1/object/qb-images/' + path, {
+      method: 'POST',
+      headers: Object.assign({}, headers, { 'Content-Type': 'image/jpeg' }),
+      body: blob,
+    });
+    if (!res.ok) {
+      res = await fetch(base + '/storage/v1/object/qb-images/' + path, {
+        method: 'PUT',
+        headers: Object.assign({}, headers, { 'Content-Type': 'image/jpeg' }),
+        body: blob,
+      });
+    }
+    if (!res.ok) throw new Error('upload ' + res.status);
+    return base + '/storage/v1/object/public/qb-images/' + path;
+  }
+  API.storeImage = async function (file, kind) {
+    if (!file) throw new Error('Choose an image');
+    if (file.type && String(file.type).indexOf('image/') !== 0) throw new Error('Choose a photo file.');
+    const compressed = await compressImageFile(file);
+    const path = String(kind || 'img').replace(/[^a-z]/gi, '').slice(0, 12) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '.jpg';
+    let blob = null;
+    let dataUrl = '';
+    if (typeof compressed === 'string') {
+      dataUrl = compressed;
+      blob = dataUrlToBlob(compressed);
+    } else blob = compressed;
+    if (sbConfigured() && blob) {
+      try {
+        const pub = await uploadPublicImage(blob, path);
+        if (pub) return pub;
+      } catch (_) {}
+    }
+    if (dataUrl) {
+      if (dataUrl.length > 220000) throw new Error('Image is too large. Try a smaller photo.');
+      return dataUrl;
+    }
+    if (blob) {
+      const url = await blobToDataUrl(blob);
+      if (url.length > 220000) throw new Error('Image is too large. Try a smaller photo.');
+      return url;
+    }
+    throw new Error('Could not save image');
+  };
+  const catState = {
+    origin: null,
+    radiusKm: 14,
+    offset: 0,
+    pageSize: 12,
+    hasMore: true,
+    loading: false,
+    ids: {},
+    itemIds: {},
+  };
+  function viewOrigin() {
+    if (API._viewOrigin && Number.isFinite(Number(API._viewOrigin.lat))) {
+      return { lat: Number(API._viewOrigin.lat), lng: Number(API._viewOrigin.lng) };
+    }
+    try {
+      const g = JSON.parse(localStorage.getItem('qb_live_gps') || 'null');
+      if (g && typeof g.lat === 'number' && typeof g.lng === 'number') return { lat: g.lat, lng: g.lng };
+    } catch (_) {}
+    if (typeof window !== 'undefined' && window.QB_LIVE && Number.isFinite(Number(window.QB_LIVE.lat))) {
+      return { lat: Number(window.QB_LIVE.lat), lng: Number(window.QB_LIVE.lng) };
+    }
+    return null;
+  }
+  function bboxOf(origin, km) {
+    const dLat = km / 111.32;
+    const cos = Math.cos((origin.lat * Math.PI) / 180) || 0.5;
+    const dLng = km / (111.32 * Math.max(0.2, Math.abs(cos)));
+    return {
+      minLat: origin.lat - dLat,
+      maxLat: origin.lat + dLat,
+      minLng: origin.lng - dLng,
+      maxLng: origin.lng + dLng,
+    };
+  }
+  function pgIn(ids) {
+    return (ids || []).map(function (id) {
+      return '"' + String(id).replace(/"/g, '') + '"';
+    }).join(',');
+  }
+  function mergeById(list, rows, mapFn) {
+    const by = {};
+    (list || []).forEach(function (r) { if (r && r.id) by[r.id] = r; });
+    (rows || []).forEach(function (r) {
+      const m = mapFn(r);
+      if (!m || !m.id) return;
+      by[m.id] = Object.assign({}, by[m.id] || {}, m);
+    });
+    const out = [];
+    Object.keys(by).forEach(function (k) { out.push(by[k]); });
+    return out;
+  }
+  async function fetchItemsForShops(shopIds) {
+    const need = (shopIds || []).filter(function (id) { return id && !catState.itemIds[id]; });
+    if (!need.length) return;
+    for (let i = 0; i < need.length; i += 16) {
+      const chunk = need.slice(i, i + 16);
+      const rows = asRows(await sbGet('menu_items?shop_id=in.(' + pgIn(chunk) + ')&select=*&order=id.asc'));
+      API.items = mergeById(API.items, rows, mapItem);
+      chunk.forEach(function (id) { catState.itemIds[id] = 1; });
+    }
+  }
+  async function pullNearbyCatalog(opts) {
+    if (!sbConfigured()) return;
+    if (catState.loading) return;
+    catState.loading = true;
+    try {
+      const more = !!(opts && opts.more);
+      const page = catState.pageSize;
+      const origin = viewOrigin();
+      const first = !API._shopCatalogReady;
+      if (!more && first) {
+        catState.offset = 0;
+        catState.radiusKm = 14;
+        catState.hasMore = true;
+      }
+      let rows = [];
+      if (origin) {
+        let radius = catState.radiusKm || 14;
+        let loops = 0;
+        while (loops < 3) {
+          const box = bboxOf(origin, radius);
+          const off = more && loops === 0 ? catState.offset : 0;
+          const q = 'shops?select=*&lat=gte.' + box.minLat + '&lat=lte.' + box.maxLat
+            + '&lng=gte.' + box.minLng + '&lng=lte.' + box.maxLng
+            + '&order=id.asc&limit=' + page + '&offset=' + off;
+          rows = asRows(await sbGet(q));
+          catState.radiusKm = radius;
+          if (rows.length || radius >= 56) break;
+          radius = Math.min(56, radius * 2);
+          loops += 1;
+        }
+        catState.origin = origin;
+        if (more) catState.offset += rows.length;
+        else if (first) catState.offset = rows.length;
+      } else {
+        const off = more ? catState.offset : 0;
+        rows = asRows(await sbGet('shops?select=*&order=id.asc&limit=' + page + '&offset=' + off));
+        catState.offset = off + rows.length;
+      }
+      catState.hasMore = rows.length >= page;
+      API.shops = mergeById(API.shops, rows, mapShop);
+      const ids = [];
+      rows.forEach(function (r) {
+        if (r && r.id) { catState.ids[r.id] = 1; ids.push(r.id); }
+      });
+      await fetchItemsForShops(ids);
+    } finally {
+      catState.loading = false;
+    }
+  }
+  API.hasMoreNearby = function () { return !!catState.hasMore; };
+  API.loadMoreNearby = async function () {
+    if (!catState.hasMore || catState.loading) return false;
+    await pullNearbyCatalog({ more: true });
+    notify(true);
+    return !!catState.hasMore;
+  };
+  API.setViewOrigin = function (lat, lng) {
+    lat = Number(lat);
+    lng = Number(lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const prev = API._viewOrigin;
+    API._viewOrigin = { lat: lat, lng: lng };
+    if (prev) {
+      const dlat = prev.lat - lat;
+      const dlng = prev.lng - lng;
+      if ((dlat * dlat) + (dlng * dlng) < 0.00005) return;
+    }
+    if (sbConfigured() && !(API.user && sameRole(API.user.role, 'shop'))) {
+      API.refresh({ catalog: true }).catch(function () {});
+    }
+  };
+  API.ensureShops = async function (ids) {
+    const need = [];
+    const seen = {};
+    (ids || []).forEach(function (id) {
+      if (!id || seen[id] || catState.ids[id]) return;
+      seen[id] = 1;
+      need.push(id);
+    });
+    if (!need.length || !sbConfigured()) return;
+    const rows = asRows(await sbGet('shops?id=in.(' + pgIn(need) + ')&select=*'));
+    API.shops = mergeById(API.shops, rows, mapShop);
+    rows.forEach(function (r) { if (r && r.id) catState.ids[r.id] = 1; });
+    await fetchItemsForShops(need);
+    notify();
+  };
+  API.ensureShopItems = async function (shopId) {
+    if (!shopId) return;
+    await API.ensureShops([shopId]);
+    await fetchItemsForShops([shopId]);
+    notify();
+  };
   function accountPhoto(r) {
     if (!r) return '';
     const cands = [r.photo, r.picture, r.image, r.avatar];
@@ -1708,7 +1994,7 @@
     try { return asRows(await sbGet('orders?select=*')); } catch (_) { return []; }
   }
 
-  async function pullSupabase() {
+  async function pullSupabase(opts) {
     purgeLocalDemoStores();
     await oneShotEmptyDb();
     await wipeTestNumber();
@@ -1719,24 +2005,31 @@
     }
     if (API.user) saveSession();
     const me = API.user;
-    let shopQ = 'shops?select=*&order=id.asc';
-    let itemQ = 'menu_items?select=*&order=id.asc';
-    if (me && sameRole(me.role, 'shop')) {
+    const isShop = me && sameRole(me.role, 'shop');
+    const light = !isShop && !!(opts && opts.light) && API._shopCatalogReady && !(opts && opts.catalog);
+    let orderRows = [];
+    if (isShop) {
       const sid = linkedShopId(me);
       if (sid) {
-        shopQ = 'shops?id=eq.' + encodeURIComponent(sid) + '&select=*';
-        itemQ = 'menu_items?shop_id=eq.' + encodeURIComponent(sid) + '&select=*';
+        const pack = await Promise.all([
+          sbGet('shops?id=eq.' + encodeURIComponent(sid) + '&select=*'),
+          sbGet('menu_items?shop_id=eq.' + encodeURIComponent(sid) + '&select=*'),
+          fetchMyOrderRows(),
+        ]);
+        API.shops = asRows(pack[0]).map(mapShop);
+        API.items = asRows(pack[1]).map(mapItem);
+        orderRows = pack[2];
+      } else {
+        orderRows = await fetchMyOrderRows();
+      }
+    } else {
+      orderRows = await fetchMyOrderRows();
+      if (!light) {
+        try { await pullNearbyCatalog({ more: false }); } catch (_) {}
       }
     }
-    const [shopRows, itemRows, orderRows] = await Promise.all([
-      sbGet(shopQ),
-      sbGet(itemQ),
-      fetchMyOrderRows(),
-    ]);
     const prevById = {};
     (API.orders || []).forEach((o) => { if (o && o.id) prevById[o.id] = o; });
-    API.shops = asRows(shopRows).map(mapShop);
-    API.items = asRows(itemRows).map(mapItem);
     API.orders = asRows(orderRows).map(mapOrder).map((o) => {
       const p = prevById[o.id];
       if (p) o.status = mergeStatus(p.status, o.status);
@@ -1744,6 +2037,13 @@
       return o;
     });
     try { await loadRatingsBag(); } catch (_) { applyRatingOverlay(); }
+    if (!isShop && sbConfigured()) {
+      const oids = [];
+      (API.orders || []).forEach(function (o) { if (o && o.shopId) oids.push(o.shopId); });
+      if (oids.length) {
+        try { await API.ensureShops(oids); } catch (_) {}
+      }
+    }
     scopeData();
     API._shopCatalogReady = true;
     if (API.user && sameRole(API.user.role, 'shop')) {
@@ -1779,7 +2079,7 @@
     fn(API);
   };
 
-  API.refresh = async function () {
+  API.refresh = async function (opts) {
     if (!window.QB_SUPABASE_URL) {
       try {
         const cfg = await getJSON('/api/config');
@@ -1788,7 +2088,7 @@
       } catch (_) {}
     }
     if (sbConfigured()) {
-      await pullSupabase();
+      await pullSupabase(opts);
       return;
     }
     const data = await getJSON('/api/state');
@@ -3656,6 +3956,7 @@
         throw new Error('Item did not save to the database. Try again.');
       }
     }
+    if (sid) delete catState.itemIds[sid];
     const i = API.items.findIndex((x) => x.id === id);
     if (i >= 0) API.items[i] = mapped;
     else API.items.push(mapped);
@@ -3899,7 +4200,7 @@
   if (API.user) notify(true);
   API.refresh().catch(() => {});
   setInterval(() => {
-    if (sbConfigured()) API.refresh().catch(() => {});
+    if (sbConfigured()) API.refresh({ light: true }).catch(() => {});
   }, 2500);
   global.API = API;
 })(window);

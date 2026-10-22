@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zz" />
   <link rel="stylesheet" href="/css/track.css?v=19zt" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a1" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a2" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zx"></script>
+  <script src="/js/api.js?v=19zy"></script>
   <script src="/js/maps.js?v=19zt"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -69,6 +69,7 @@
       trackId: null,
       cart: [],
       favs: [],
+      shown: 8,
       note: '',
       address: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
       loc: {
@@ -130,6 +131,7 @@
         const arr = JSON.parse(raw);
         state.favs = Array.isArray(arr) ? arr.map(String) : [];
       } catch (_) { state.favs = []; }
+      if (state.favs.length && API.ensureShops) API.ensureShops(state.favs).catch(function () {});
     }
     function saveFavs() {
       try { localStorage.setItem(favKey(), JSON.stringify(state.favs)); } catch (_) {}
@@ -435,6 +437,7 @@
         state.loc.liveLng = lng;
         state.loc.err = '';
         window.QB_LIVE = { lat, lng, acc };
+        if (API.setViewOrigin) API.setViewOrigin(lat, lng);
         paintLiveUi();
         const first = !state.loc._gps;
         state.loc._gps = true;
@@ -684,7 +687,7 @@
       const km = distKm(s);
       const cls = asCard ? 'shop-card' : 'shop-row';
       return `<div class="${cls}" data-shop="${s.id}">
-        <div class="thumb-wrap"><img class="thumb" src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
+        <div class="thumb-wrap"><img class="thumb" src="${shopImg(s)}" alt="" loading="lazy" decoding="async" />${shopCap(s)}</div>
         <div class="grow">
           <div class="name-row"><div class="name">${esc((API.shopTitle && API.shopTitle(s)) || s.name)}</div>${heartBtn(s.id)}</div>
           <div class="meta">${esc(s.category || 'Shop')}</div>
@@ -717,7 +720,7 @@
     }
     function nearShopCard(s) {
       return `<article class="ue-near" data-shop="${esc(s.id)}">
-        <div class="ue-near-hero"><img class="ue-near-img" src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
+        <div class="ue-near-hero"><img class="ue-near-img" src="${shopImg(s)}" alt="" loading="lazy" decoding="async" />${shopCap(s)}</div>
         <div class="ue-near-status">${esc(shopStatusLine(s))}</div>
         <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
         <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee</div>
@@ -726,7 +729,7 @@
     }
     function allStoreCard(s) {
       return `<article class="ue-store" data-shop="${esc(s.id)}">
-        <div class="ue-store-hero"><img src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
+        <div class="ue-store-hero"><img src="${shopImg(s)}" alt="" loading="lazy" decoding="async" />${shopCap(s)}</div>
         <div class="ue-store-body">
           <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
           <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee · ${esc(shopStatusLine(s))}</div>
@@ -799,7 +802,7 @@
           <p>${esc(o.body)}</p>
           <span class="pill">${esc(o.pill)}</span>
         </div>
-        <img src="${esc(o.img)}" alt="" />
+        <img src="${esc(o.img)}" alt="" loading="lazy" decoding="async" />
       </article>`;
     }
     function pauseOfferPromo() {
@@ -862,7 +865,7 @@
     function itemRow(it) {
       const shop = API.shopOf(it.shopId);
       return `<div class="item-card" data-shop="${esc(it.shopId)}">
-        <img class="thumb" src="${itemImg(it)}" alt="" />
+        <img class="thumb" src="${itemImg(it)}" alt="" loading="lazy" decoding="async" />
         <div class="grow">
           <div class="name">${esc(it.name)}</div>
           <div class="meta">${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || 'Shop')}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : ''}</div>
@@ -1067,7 +1070,8 @@
         </div>` : ''}
         ${shops.length ? `
         <div class="ue-head"><h2>All stores</h2></div>
-        ${shops.map(allStoreCard).join('')}` : ''}
+        ${shops.slice(0, state.shown || 8).map(allStoreCard).join('')}
+        ${(shops.length > (state.shown || 8) || (API.hasMoreNearby && API.hasMoreNearby())) ? '<div class="ue-more" data-more-shops></div>' : ''}` : ''}
       </div>${cartbar()}${nav()}`;
     }
     function searchView() {
@@ -1076,13 +1080,17 @@
       const items = filteredItems();
       const shopHead = q ? 'Shops' : (state.category === 'Favourites' ? 'Favourite Shops' : (state.category === 'All' ? 'Popular Near You' : state.category));
       let body = '';
+      const cap = state.shown || 8;
       if (items.length) {
-        body += `<div class="sec-row"><h2>Items</h2></div>` + items.slice(0, 40).map(itemRow).join('');
+        body += `<div class="sec-row"><h2>Items</h2></div>` + items.slice(0, cap).map(itemRow).join('');
       }
       if (shops.length) {
-        body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + shops.map((s) => shopRow(s, true)).join('');
+        body += `<div class="sec-row"><h2>${esc(shopHead)}</h2></div>` + shops.slice(0, cap).map((s) => shopRow(s, true)).join('');
       } else if (!items.length) {
         body += `<div class="pad muted">${state.category==='Favourites' ? 'No favourite shops yet. Tap the heart next to a shop name.' : (q ? 'No shops or items match that search.' : 'No shops nearby yet.')}</div>`;
+      }
+      if (items.length > cap || shops.length > cap || (API.hasMoreNearby && API.hasMoreNearby())) {
+        body += '<div class="ue-more" data-more-shops></div>';
       }
       return `<div class="scroll qb-search-page">
         <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>
@@ -2329,6 +2337,31 @@
       };
     }
 
+    let moreIo = null;
+    function bindMoreShops(root) {
+      if (moreIo) { try { moreIo.disconnect(); } catch (_) {} moreIo = null; }
+      const el = root.querySelector('[data-more-shops]');
+      const sc = root.querySelector('.scroll');
+      if (!el || !sc || typeof IntersectionObserver === 'undefined') return;
+      moreIo = new IntersectionObserver(function (ents) {
+        if (!ents.some(function (e) { return e.isIntersecting; })) return;
+        const vis = filteredShops().length;
+        if ((state.shown || 8) < vis) {
+          state.shown = (state.shown || 8) + 8;
+          render({ keepScroll: true });
+          return;
+        }
+        if (API.loadMoreNearby && API.hasMoreNearby && API.hasMoreNearby()) {
+          if (bindMoreShops._busy) return;
+          bindMoreShops._busy = true;
+          API.loadMoreNearby().then(function () {
+            state.shown = (state.shown || 8) + 8;
+            render({ keepScroll: true });
+          }).catch(function () {}).then(function () { bindMoreShops._busy = false; });
+        }
+      }, { root: sc, rootMargin: '700px 0px' });
+      moreIo.observe(el);
+    }
     function bindApp() {
       const root = document.getElementById('root');
       prepOfferRail(root.querySelector('.ue-offers'));
@@ -2413,7 +2446,16 @@
       root.querySelectorAll('[data-ff-close]').forEach((b) => b.onclick = () => { state.ff.menu = ''; render({ keepScroll: true }); });
       root.querySelectorAll('[data-stop]').forEach((el) => el.onclick = (e) => e.stopPropagation());
       root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
-      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; state.menuTab = 'menu'; state.menuCat = 'All'; render(); });
+      root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => {
+        if (!b.dataset.shop) return;
+        state.shopId = b.dataset.shop;
+        state.screen = 'shop';
+        state.menuTab = 'menu';
+        state.menuCat = 'All';
+        render();
+        if (API.ensureShopItems) API.ensureShopItems(state.shopId).catch(function () {});
+      });
+      bindMoreShops(root);
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
         const id = b.dataset.fav;
