@@ -50,6 +50,7 @@
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#fff"/><path d="M8 10.5c0-1.2.9-2.2 2.4-2.6V7h1.3v.8c1.4.3 2.4 1.2 2.4 2.4 0 1.6-1.4 2.2-2.7 2.5v2.2c.7-.1 1.3-.4 1.7-.8l.9.8c-.7.7-1.7 1.1-2.6 1.3V17h-1.3v-.8c-1.6-.3-2.6-1.3-2.6-2.7 0-1.5 1.2-2.2 2.6-2.5V10c-.6.2-1.1.5-1.1 1.1H8zm3.7 1.3c.7-.2 1.2-.4 1.2-.9s-.5-.8-1.2-.9v1.8zm-1.3 3.3v-1.8c-.7.2-1.2.5-1.2 1s.5.7 1.2.8z" fill="#00C853"/></svg>';
 
     const seenOnboard = localStorage.getItem('qb_onboard') === '1' || sessionStorage.getItem('qb_onboard') === '1';
+    const offerPromo = { due: 0, hold: 0, moving: false, timer: null };
     let restoredSession = !!API.user;
     let savedGps = null;
     try { savedGps = JSON.parse(localStorage.getItem('qb_live_gps') || 'null'); } catch (_) {}
@@ -800,6 +801,62 @@
         </div>
         <img src="${esc(o.img)}" alt="" />
       </article>`;
+    }
+    function pauseOfferPromo() {
+      offerPromo.hold = Date.now() + 8000;
+      offerPromo.due = Math.max(offerPromo.due, offerPromo.hold);
+    }
+    function armOfferPromo() {
+      if (offerPromo.timer) { clearTimeout(offerPromo.timer); offerPromo.timer = null; }
+      const el = document.querySelector('.ue-offers');
+      if (!el) return;
+      if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      const n = Number(el.dataset.offerN || 0);
+      if (n < 2 && el.querySelectorAll('.ue-offer').length < 2) return;
+      const now = Date.now();
+      if (!offerPromo.due) offerPromo.due = now + 5000;
+      const wait = Math.max(40, offerPromo.due - now);
+      offerPromo.timer = setTimeout(() => {
+        offerPromo.timer = null;
+        const rail = document.querySelector('.ue-offers');
+        if (!rail) { offerPromo.due = Date.now() + 5000; return; }
+        if (Date.now() < offerPromo.hold) {
+          offerPromo.due = offerPromo.hold;
+          armOfferPromo();
+          return;
+        }
+        const card = rail.querySelector('.ue-offer');
+        if (!card) return;
+        const styles = window.getComputedStyle(rail);
+        const gap = parseFloat(styles.columnGap || styles.gap) || 14;
+        const step = card.getBoundingClientRect().width + gap;
+        const count = Number(rail.dataset.offerN || 0) || rail.querySelectorAll('.ue-offer').length;
+        offerPromo.moving = true;
+        rail.scrollTo({ left: rail.scrollLeft + step, behavior: 'smooth' });
+        setTimeout(() => {
+          const orig = count * step;
+          if (orig > 0 && rail.scrollLeft >= orig - 8) rail.scrollLeft = rail.scrollLeft - orig;
+          offerPromo.moving = false;
+        }, 560);
+        offerPromo.due = Date.now() + 5000;
+        armOfferPromo();
+      }, wait);
+    }
+    function prepOfferRail(el) {
+      if (!el) return;
+      if (!el.dataset.offerLoop) {
+        const n = el.querySelectorAll('.ue-offer').length;
+        el.dataset.offerN = String(n);
+        if (n > 1) {
+          for (let i = 0; i < n; i++) el.appendChild(el.children[i].cloneNode(true));
+          el.dataset.offerLoop = '1';
+        }
+      }
+      const pause = () => { if (!offerPromo.moving) pauseOfferPromo(); };
+      el.addEventListener('pointerdown', pause);
+      el.addEventListener('touchstart', pause, { passive: true });
+      el.addEventListener('wheel', pause, { passive: true });
+      armOfferPromo();
     }
     const UE_ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
     function itemRow(it) {
@@ -2274,6 +2331,7 @@
 
     function bindApp() {
       const root = document.getElementById('root');
+      prepOfferRail(root.querySelector('.ue-offers'));
       root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.screen = 'home'; render(); });
       root.querySelectorAll('[data-notes]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
