@@ -377,7 +377,10 @@ html[data-role="shop"] .menu-item b { color: #fff; }
 html[data-role="shop"] .add { background: var(--g); }
 
 .sd-order { cursor: pointer; }
-.mi-page, .ie-page, .ol-page {
+.mi-page, .ie-page {
+  background: #fff; color: #111; min-height: 100%; color-scheme: light;
+}
+.ol-page {
   background: #fff; color: #111; min-height: 100%;
 }
 .mi-head, .ie-head, .ol-head {
@@ -494,7 +497,8 @@ html[data-role="shop"] .st-head { color: #111; background: #fff; }
 .ie-form { padding: 0 20px 28px; }
 .ie-form label { display: block; font-size: 13px; font-weight: 700; margin: 12px 0 6px; color: #374151; }
 .ie-form input, .ie-form select, .ie-form textarea {
-  width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 12px 14px; font-size: 15px; background: #fff;
+  width: 100%; border: 1px solid #E5E7EB; border-radius: 14px; padding: 12px 14px; font-size: 15px;
+  background: #fff; color: #111; caret-color: #111; -webkit-text-fill-color: #111; color-scheme: light;
 }
 .ie-form textarea { min-height: 90px; resize: vertical; }
 .ie-picks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 8px; }
@@ -586,6 +590,28 @@ html[data-role="shop"] .app:has([data-otp-root]) {
   color: #fff !important;
   color-scheme: dark;
 }
+.ie-page input, .ie-page textarea, .ie-page select,
+.mi-search input,
+.sp-edit input, .sp-edit textarea, .sp-edit select,
+.sp-auth:not([data-shop-auth="login"]) input {
+  color: #111 !important;
+  -webkit-text-fill-color: #111;
+  caret-color: #111;
+  color-scheme: light;
+}
+.ie-page input::placeholder, .ie-page textarea::placeholder,
+.sp-edit input::placeholder, .sp-edit textarea::placeholder,
+.sp-auth:not([data-shop-auth="login"]) input::placeholder {
+  color: #6B7280;
+  -webkit-text-fill-color: #6B7280;
+}
+.ie-page input:-webkit-autofill,
+.sp-edit input:-webkit-autofill,
+.sp-auth:not([data-shop-auth="login"]) input:-webkit-autofill {
+  -webkit-text-fill-color: #111;
+  box-shadow: 0 0 0 1000px #fff inset;
+}
+
 .sp-auth {
   min-height: 100%;
   background: #fff;
@@ -781,12 +807,13 @@ html[data-role="shop"] .app:has([data-otp-root]) {
   background: transparent; color: #FCA5A5; border-radius: 14px; padding: 12px;
   font-weight: 800; cursor: pointer;
 }
-.sp-edit { background: #fff; color: #111; min-height: 100%; }
+.sp-edit { background: #fff; color: #111; min-height: 100%; color-scheme: light; }
 .sp-edit .ie-head h1 { color: #111; }
 .sp-edit label { display: block; font-size: 13px; font-weight: 700; margin: 12px 16px 6px; color: #374151; }
 .sp-edit input, .sp-edit textarea, .sp-edit select {
   width: calc(100% - 32px); margin: 0 16px; border: 1px solid #E5E7EB; border-radius: 14px;
-  padding: 12px 14px; font-size: 15px; background: #F9FAFB;
+  padding: 12px 14px; font-size: 15px; background: #F9FAFB; color: #111;
+  caret-color: #111; -webkit-text-fill-color: #111; color-scheme: light;
 }
 .sp-edit textarea { min-height: 90px; }
 .sp-edit .btn { width: calc(100% - 32px); margin: 18px 16px 24px; }
