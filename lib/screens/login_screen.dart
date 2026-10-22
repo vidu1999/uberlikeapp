@@ -447,7 +447,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (acc == null) {
         setState(() {
           busy = false;
-          error = 'Google window closed. Tap Continue with Google again.';
+          error = 'Try Continue with Google again.';
         });
         return;
       }

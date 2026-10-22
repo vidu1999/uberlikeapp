@@ -61,12 +61,14 @@ def patch_app_gradle(text: str, kts: bool) -> str:
             "\ndependencies {\n"
             '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n'
             '    implementation("com.google.android.gms:play-services-auth:20.7.0")\n'
+            '    implementation("androidx.webkit:webkit:1.11.0")\n'
             "}\n"
             if kts
             else (
                 "\ndependencies {\n"
                 "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n"
                 "    implementation 'com.google.android.gms:play-services-auth:20.7.0'\n"
+                "    implementation 'androidx.webkit:webkit:1.11.0'\n"
                 "}\n"
             )
         )
@@ -77,9 +79,9 @@ def patch_app_gradle(text: str, kts: bool) -> str:
         if idx >= 0:
             line_end = n.find("\n", idx)
             insert = (
-                '\n    implementation("com.google.android.gms:play-services-auth:20.7.0")'
+                '\n    implementation("com.google.android.gms:play-services-auth:20.7.0")\n    implementation("androidx.webkit:webkit:1.11.0")'
                 if kts
-                else "\n    implementation 'com.google.android.gms:play-services-auth:20.7.0'"
+                else "\n    implementation 'com.google.android.gms:play-services-auth:20.7.0'\n    implementation 'androidx.webkit:webkit:1.11.0'"
             )
             n = n[:line_end] + insert + n[line_end:]
     return n

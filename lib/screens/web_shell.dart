@@ -286,6 +286,8 @@ class _WebShellState extends State<WebShell> {
 
   bool _googleBusy = false;
 
+  GoogleSignIn? _googleClient;
+
   Future<void> _google() async {
     if (_googleBusy) return;
     _googleBusy = true;
@@ -295,61 +297,18 @@ class _WebShellState extends State<WebShell> {
       return;
     }
     try {
-      try {
-        final google = GoogleSignIn(
-          scopes: const ['email', 'profile'],
-          serverClientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
-        );
-        final acc = await google.signInSilently() ?? await google.signIn();
-        if (acc != null) {
-          await _deliverGoogle({
-            'email': acc.email,
-            'name': acc.displayName ?? acc.email,
-            'sub': acc.id,
-            'photo': acc.photoUrl ?? '',
-          });
-          return;
-        }
-      } catch (_) {}
-      final clientId = AppConfig.googleClientId;
-      await c.runJavaScript('''
-        (function(){
-          function fail(m){
-            if (window._qbGoogleDone) { window._qbGoogleDone(String(m||'Could not finish Google sign-in.')); return; }
-            var el = document.querySelector('[data-err]');
-            if (el) el.textContent = String(m||'Could not finish Google sign-in. Try WhatsApp.');
-          }
-          function ok(p){
-            if (window._qbGoogleDone) { window._qbGoogleDone(null, p); return; }
-            if (window.API && API.signInGoogle) {
-              API.signInGoogle(p).then(function(){ location.reload(); }).catch(function(){ location.reload(); });
-            }
-          }
-          function start(){
-            try {
-              var tc = google.accounts.oauth2.initTokenClient({
-                client_id: ${jsonEncode(clientId)},
-                scope: 'openid email profile',
-                callback: function(resp){
-                  if (!resp || !resp.access_token) { fail(resp && (resp.error_description||resp.error)); return; }
-                  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {headers:{Authorization:'Bearer '+resp.access_token}})
-                    .then(function(r){ return r.json(); }).then(ok).catch(function(e){ fail(e && e.message); });
-                },
-                error_callback: function(err){ fail(err && (err.type||err.message)); }
-              });
-              tc.requestAccessToken({prompt:'select_account'});
-            } catch(e) { fail(e && e.message); }
-          }
-          if (window.google && google.accounts && google.accounts.oauth2) start();
-          else {
-            var s = document.createElement('script');
-            s.src = 'https://accounts.google.com/gsi/client';
-            s.onload = start;
-            s.onerror = function(){ fail('Could not load Google Sign-In.'); };
-            document.head.appendChild(s);
-          }
-        })();
-      ''');
+      _googleClient ??= GoogleSignIn(scopes: const ['email', 'profile']);
+      final acc = await _googleClient!.signIn();
+      if (acc != null && acc.email.isNotEmpty) {
+        await _deliverGoogle({
+          'email': acc.email,
+          'name': acc.displayName ?? acc.email,
+          'sub': acc.id,
+          'photo': acc.photoUrl ?? '',
+        });
+        return;
+      }
+      await _deliverGoogle({}, 'Try Continue with Google again.');
     } catch (_) {
       await _deliverGoogle({}, 'Could not finish Google sign-in. Try Continue with WhatsApp.');
     } finally {

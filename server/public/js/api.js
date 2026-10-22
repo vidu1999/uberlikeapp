@@ -2972,7 +2972,7 @@
     if (/redirect_uri/i.test(s)) return 'Google is not allowed on this page yet. Use WhatsApp, or open the site in Chrome.';
     if (/popup_failed|blocked/i.test(s)) return 'Google could not open. Try again.';
     if (/cancel|closed|popup_closed|access_denied|12501/i.test(s)) {
-      return 'Google window closed. Tap Continue with Google again.';
+      return 'Try Continue with Google again.';
     }
     if (/did not share an email/i.test(s)) return s;
     return 'Could not finish Google sign-in. Try again.';
@@ -3031,12 +3031,20 @@
   };
   API.googleSignIn = function () {
     return new Promise(function (resolve, reject) {
+      var settled = false;
       function done(profile) {
+        if (settled) return;
         const g = googleProfile(profile);
-        if (g.email) resolve(Object.assign({}, profile, g));
-        else reject(new Error('Google did not share an email for this account.'));
+        if (g.email) {
+          settled = true;
+          window._qbGoogleDone = null;
+          resolve(Object.assign({}, profile, g));
+        } else fail('Google did not share an email for this account.');
       }
       function fail(err) {
+        if (settled) return;
+        settled = true;
+        window._qbGoogleDone = null;
         reject(new Error(friendlyGoogleError(err)));
       }
       const pending = readGoogleOAuth();
@@ -3046,53 +3054,69 @@
       }
       const clientId = googleClientId();
       if (!clientId) {
-        reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
+        fail('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.');
         return;
       }
-      if (inQuickBiteApp()) {
-        window._qbGoogleDone = function (err, profile) {
-          window._qbGoogleDone = null;
-          if (err) fail(err);
-          else done(profile || {});
-        };
+      window._qbGoogleDone = function (err, profile) {
+        window._qbGoogleDone = null;
+        if (err) fail(err);
+        else done(profile || {});
+      };
+      function nativeGoogle() {
+        if (!inQuickBiteApp()) {
+          fail('Could not load Google Sign-In.');
+          return;
+        }
         try { window.QuickBiteNative.postMessage('google'); }
         catch (e) { fail(e); }
-        return;
       }
       function fromAccessToken(accessToken) {
         profileFromGoogleHit({ access_token: accessToken }).then(done).catch(fail);
       }
       function startGis() {
         try {
-          if (window.google && google.accounts && google.accounts.oauth2) {
-            const tc = google.accounts.oauth2.initTokenClient({
-              client_id: clientId,
-              scope: 'openid email profile',
-              callback: function (resp) {
-                if (!resp || resp.error || !resp.access_token) {
-                  fail((resp && (resp.error_description || resp.error)) || 'closed');
-                  return;
-                }
-                fromAccessToken(resp.access_token);
-              },
-              error_callback: function (err) {
-                fail((err && (err.type || err.message)) || 'closed');
-              },
-            });
-            tc.requestAccessToken({ prompt: 'select_account' });
+          if (!(window.google && google.accounts && google.accounts.oauth2)) {
+            if (inQuickBiteApp()) nativeGoogle();
+            else fail('Could not load Google Sign-In.');
             return;
           }
+          const tc = google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: 'openid email profile',
+            callback: function (resp) {
+              if (!resp || resp.error || !resp.access_token) {
+                if (inQuickBiteApp()) {
+                  setTimeout(function () { if (!settled) nativeGoogle(); }, 400);
+                  return;
+                }
+                fail((resp && (resp.error_description || resp.error)) || 'closed');
+                return;
+              }
+              fromAccessToken(resp.access_token);
+            },
+            error_callback: function (err) {
+              if (inQuickBiteApp()) {
+                setTimeout(function () { if (!settled) nativeGoogle(); }, 400);
+                return;
+              }
+              fail((err && (err.type || err.message)) || 'closed');
+            },
+          });
+          tc.requestAccessToken({ prompt: 'select_account' });
         } catch (e) {
-          fail(e);
-          return;
+          if (inQuickBiteApp()) nativeGoogle();
+          else fail(e);
         }
-        fail('Could not load Google Sign-In.');
       }
       if (window.google && google.accounts && google.accounts.oauth2) {
         startGis();
         return;
       }
-      const existing = document.querySelector('script[data-gsi]');
+      if (inQuickBiteApp()) {
+        nativeGoogle();
+        return;
+      }
+      const existing = document.querySelector('script[data-gsi],script[src*="accounts.google.com/gsi/client"]');
       if (existing) {
         existing.addEventListener('load', startGis);
         existing.addEventListener('error', function () { fail('Could not load Google Sign-In.'); });
