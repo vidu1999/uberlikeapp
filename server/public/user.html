@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19a0" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a3" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a4" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -69,6 +69,8 @@
       trackId: null,
       cart: [],
       favs: [],
+      seen: [],
+      aisleMap: {},
       shown: 8,
       note: '',
       address: savedGps ? (savedGps.label || 'Current location') : 'Finding your location…',
@@ -135,6 +137,33 @@
     }
     function saveFavs() {
       try { localStorage.setItem(favKey(), JSON.stringify(state.favs)); } catch (_) {}
+    }
+    function seenKey() { return 'qb_seen_' + accountKey(); }
+    function loadSeen() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(seenKey()) || '[]');
+        state.seen = Array.isArray(arr) ? arr : [];
+      } catch (_) { state.seen = []; }
+    }
+    function saveSeen() {
+      try { localStorage.setItem(seenKey(), JSON.stringify(state.seen || [])); } catch (_) {}
+    }
+    function noteSeen(it) {
+      if (!it || !it.id) return;
+      const row = { id: String(it.id), shopId: it.shopId, ts: Date.now() };
+      state.seen = (state.seen || []).filter((x) => String(x.id) !== row.id);
+      state.seen.unshift(row);
+      state.seen = state.seen.slice(0, 40);
+      saveSeen();
+    }
+    function loadAisleMap() {
+      try {
+        const o = JSON.parse(localStorage.getItem('qb_aisles') || '{}');
+        state.aisleMap = o && typeof o === 'object' ? o : {};
+      } catch (_) { state.aisleMap = {}; }
+    }
+    function saveAisleMap() {
+      try { localStorage.setItem('qb_aisles', JSON.stringify(state.aisleMap || {})); } catch (_) {}
     }
     function cardsKey() { return 'qb_cards_' + accountKey(); }
     function loadCards() {
@@ -313,6 +342,8 @@
       localUserId = id;
       loadCart();
       loadFavs();
+      loadSeen();
+      loadAisleMap();
       loadCards();
       applySavedAddress();
     }
@@ -518,6 +549,7 @@
       if (st && !st.unlimited && next > st.stock) return;
       if (hit) hit.qty = next;
       else state.cart.push({ id: item.id, shopId: item.shopId, name: item.name, price: item.price, qty: 1, image: item.image });
+      noteSeen(item);
       saveCart();
       render({ keepScroll: true });
     }
@@ -1099,12 +1131,123 @@
         ${body}
       </div>${nav()}`;
     }
+    const AISLES = ['Fruit', 'Vegetables', 'Beverages', 'Grocery', 'Chilled', 'Meat', 'Frozen', 'Household', 'Bakery', 'Fast food'];
+    function classifyAisle(it) {
+      if (it && state.aisleMap && state.aisleMap[it.id]) return state.aisleMap[it.id];
+      const blob = [it && it.name, it && it.category, it && it.desc, it && it.description].join(' ').toLowerCase();
+      const has = (re) => re.test(blob);
+      if (has(/frozen|ice cream|icecream|gelato|fish finger|nugget/)) return 'Frozen';
+      if (has(/chicken|beef|mutton|pork|lamb|meat|sausage|bacon|ham|fish|tuna|prawn|shrimp|crab|seafood|\beggs?\b/)) return 'Meat';
+      if (has(/yoghurt|yogurt|cheese|butter|margarine|curd|chilled|dairy|fresh milk/)) return 'Chilled';
+      if (has(/apple|banana|mango|papaya|pineapple|watermelon|grape|orange|lemon|lime|avocado|rambutan|durian|wood apple|fruit|guava|melon|pomegranate|strawberry/)) return 'Fruit';
+      if (has(/carrot|cabbage|leek|beans|tomato|onion|potato|pumpkin|brinjal|eggplant|okra|gotukola|vegetable|salad|cucumber|chilli|chili|garlic|ginger|spinach|lettuce|beet/)) return 'Vegetables';
+      if (has(/juice|soda|cola|pepsi|coke|sprite|water|tea|coffee|beverage|drink|necto|cordial|\bpet\b|1\.5l|elephant house|fanta|mirinda/)) return 'Beverages';
+      if (has(/soap|shampoo|toothpaste|detergent|bleach|harpic|dettol|household|tissue|nappy|diaper|cleaner|lux|lifebuoy|\bvim\b|sunlight/)) return 'Household';
+      if (has(/cake|pastry|bread|bun|croissant|bakery|cookie|doughnut|donut/)) return 'Bakery';
+      if (has(/burger|pizza|kottu|fried rice|shawarma|submarine|fast food|fries/)) return 'Fast food';
+      if (has(/rice|flour|sugar|salt|dhal|\bdal\b|coconut|oil|spice|biscuit|snack|noodle|maggi|pasta|cereal|grocery|maliban|munchee/)) return 'Grocery';
+      const c = String((it && it.category) || '');
+      if (/beverage|drink|coffee/i.test(c)) return 'Beverages';
+      if (/bakery|dessert/i.test(c)) return 'Bakery';
+      if (/grocery/i.test(c)) return 'Grocery';
+      if (/fast food|pizza|burger/i.test(c)) return 'Fast food';
+      if (/ice cream/i.test(c)) return 'Frozen';
+      return 'Grocery';
+    }
+    function askAisles(shopId, items) {
+      if (!shopId || !items || !items.length) return;
+      askAisles._on = askAisles._on || {};
+      if (askAisles._on[shopId]) return;
+      askAisles._on[shopId] = 1;
+      const payload = items.slice(0, 40).map((it) => ({
+        id: it.id, name: it.name, category: it.category, desc: it.desc || it.description || '',
+      }));
+      fetch('/api/categorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: payload }),
+      }).then((r) => r.json()).then((data) => {
+        const list = (data && data.aisles) || [];
+        let n = 0;
+        list.forEach((row) => {
+          if (!row || !row.id || !row.aisle) return;
+          if (state.aisleMap[row.id] !== row.aisle) n += 1;
+          state.aisleMap[row.id] = row.aisle;
+        });
+        saveAisleMap();
+        if (n && state.screen === 'shop') render({ keepScroll: true });
+      }).catch(() => { delete askAisles._on[shopId]; });
+    }
+    function buyAgainItems(shopId) {
+      const ids = [];
+      const seen = {};
+      (API.orders || []).slice().sort((a, b) => {
+        const ta = Date.parse((a && (a.deliveredAt || a.timestamp || a.createdAt)) || '') || 0;
+        const tb = Date.parse((b && (b.deliveredAt || b.timestamp || b.createdAt)) || '') || 0;
+        return tb - ta;
+      }).forEach((o) => {
+        if (!o || String(o.shopId) !== String(shopId)) return;
+        if (o.status === 'cancelled') return;
+        (o.items || []).forEach((line) => {
+          if (!line || !line.id || seen[line.id]) return;
+          seen[line.id] = 1;
+          ids.push(line.id);
+        });
+      });
+      return ids.map((id) => (API.items || []).find((i) => i.id === id)).filter(Boolean);
+    }
+    function recentItems(shopId) {
+      return (state.seen || []).filter((x) => String(x.shopId) === String(shopId))
+        .map((x) => (API.items || []).find((i) => i.id === x.id))
+        .filter(Boolean);
+    }
+    function prodTile(it) {
+      const sold = API.itemOnSale && !API.itemOnSale(it);
+      return `<article class="ue-prod" data-seen="${esc(it.id)}">
+        <div class="ue-prod-pic">
+          <img src="${itemImg(it)}" alt="" loading="lazy" decoding="async" />
+          ${itemCap(it)}
+          ${sold ? '' : `<button type="button" class="ue-plus" data-add="${esc(it.id)}" aria-label="Add">+</button>`}
+        </div>
+        <div class="ue-prod-price">${rs(it.price)}</div>
+        <div class="ue-prod-name">${esc(it.name)}</div>
+      </article>`;
+    }
+    function aisleRail(title, key, items) {
+      if (!items || !items.length) return '';
+      return `<div class="ue-head"><h2>${esc(title)}</h2><button type="button" class="ue-arrow" data-mcat="${esc(key)}" aria-label="See ${esc(title)}">${UE_ARROW}</button></div>
+        <div class="ue-rail" data-rail="aisle-${esc(key)}">${items.map(prodTile).join('')}</div>`;
+    }
     function shopView() {
       const shop = API.shopOf(state.shopId);
       const items = API.items.filter((i) => i.shopId === shop.id);
-      const cats = [...new Set(items.map((i) => i.category).filter(Boolean))];
-      if (state.menuCat !== 'All' && cats.length && !cats.includes(state.menuCat)) state.menuCat = 'All';
-      const list = items.filter((i) => !state.menuCat || state.menuCat === 'All' || i.category === state.menuCat);
+      askAisles(shop.id, items);
+      const buy = buyAgainItems(shop.id);
+      const recent = recentItems(shop.id).filter((it) => !buy.some((b) => b.id === it.id));
+      const byAisle = {};
+      items.forEach((it) => {
+        const a = classifyAisle(it);
+        (byAisle[a] || (byAisle[a] = [])).push(it);
+      });
+      const cats = ['All'].concat(AISLES.filter((a) => (byAisle[a] || []).length));
+      if (buy.length) cats.splice(1, 0, 'Buy again');
+      if (recent.length) cats.splice(buy.length ? 2 : 1, 0, 'Recently viewed');
+      if (state.menuCat !== 'All' && cats.indexOf(state.menuCat) < 0) state.menuCat = 'All';
+      let menuBody = '';
+      if (state.menuCat === 'Buy again') {
+        menuBody = `<div class="ue-prod-grid">${buy.map(prodTile).join('')}</div>`;
+      } else if (state.menuCat === 'Recently viewed') {
+        menuBody = `<div class="ue-prod-grid">${recent.map(prodTile).join('')}</div>`;
+      } else if (state.menuCat && state.menuCat !== 'All') {
+        menuBody = `<div class="ue-prod-grid">${(byAisle[state.menuCat] || []).map(prodTile).join('')}</div>`;
+      } else {
+        menuBody = aisleRail('Buy again', 'Buy again', buy)
+          + aisleRail('Recently viewed', 'Recently viewed', recent)
+          + AISLES.map((a) => aisleRail(a, a, byAisle[a])).join('');
+        if (!buy.length && !recent.length && !items.length) {
+          menuBody = '<div class="pad muted">This shop has no items yet.</div>';
+        }
+      }
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
@@ -1123,12 +1266,8 @@
           <button class="${state.menuTab==='info'?'on':''}" data-mtab="info">Info</button>
         </div>
         ${state.menuTab==='menu' ? `
-          <div class="menu-cats">${['All'].concat(cats).map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-          ${list.map((it)=>`<div class="menu-row">
-            <div class="thumb-wrap"><img src="${itemImg(it)}" alt="" />${itemCap(it)}</div>
-            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${API.offerCaption && API.offerCaption(it) ? ' · ' + esc(API.offerCaption(it)) : ''}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
-            ${itemSaleLabel(it)}
-          </div>`).join('')}
+          <div class="menu-cats">${cats.map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+          ${menuBody}
         ` : state.menuTab==='reviews' ? `<div class="pad"><p>${esc(shopRateText(shop))}${Number(shop.reviews) > 0 ? ' from customers after delivery.' : ' — ratings appear after delivered orders.'}</p></div>`
           : `<div class="pad"><p>${esc(shop.address)}</p><p class="muted">${esc(shop.hours)}</p></div>`}
       </div>${cartbar()}${nav()}`;
@@ -2474,6 +2613,11 @@
         e.stopPropagation();
         const item = API.items.find((i) => i.id === b.dataset.add);
         if (item) addToCart(item);
+      });
+      root.querySelectorAll('[data-seen]').forEach((el) => el.onclick = (e) => {
+        if (e.target.closest('[data-add]')) return;
+        const it = (API.items || []).find((i) => i.id === el.dataset.seen);
+        if (it) noteSeen(it);
       });
       root.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => { state.screen='home'; state.tab='home'; render(); });
       root.querySelectorAll('[data-mtab]').forEach((b) => b.onclick = () => { state.menuTab = b.dataset.mtab; render({ keepScroll: true }); });
