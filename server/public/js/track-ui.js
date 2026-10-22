@@ -450,10 +450,32 @@
     return Date.parse((o && (o.timestamp || o.createdAt || o.updatedAt)) || '') || 0;
   }
 
+  function shopAccepted(o) {
+    const st = String((o && o.status) || '');
+    return !!(st && st !== 'pending' && st !== 'cancelled');
+  }
+  function riderAccepted(o) {
+    const st = String((o && o.status) || '');
+    return !!(o && (o.riderName || st === 'accepted' || st === 'picked_up' || st === 'on_the_way'));
+  }
+  function trackScore(o, earliestId) {
+    let n = 0;
+    if (shopAccepted(o)) n += 2;
+    if (riderAccepted(o)) n += 3;
+    if (o && earliestId && String(o.id) === String(earliestId)) n += 1;
+    return n;
+  }
   function liveOrder(orders) {
     const live = (orders || []).filter((o) => o && o.status !== 'delivered' && o.status !== 'cancelled');
+    if (!live.length) return null;
     live.sort(function (a, b) { return orderTs(a) - orderTs(b); });
-    return live[0] || null;
+    const earliestId = live[0] && live[0].id;
+    live.sort(function (a, b) {
+      const d = trackScore(b, earliestId) - trackScore(a, earliestId);
+      if (d) return d;
+      return orderTs(a) - orderTs(b);
+    });
+    return live[0];
   }
 
   function orderSteps(order) {
