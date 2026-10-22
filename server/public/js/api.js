@@ -3008,16 +3008,6 @@
     const hit = takeGoogleHash();
     if (hit) stashGoogleOAuth(hit);
   })();
-  function googleAuthUrl() {
-    return 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
-      client_id: googleClientId(),
-      redirect_uri: location.origin + location.pathname,
-      response_type: 'token',
-      scope: 'openid email profile',
-      prompt: 'select_account',
-      include_granted_scopes: 'true',
-    }).toString();
-  }
   function profileFromGoogleHit(hit) {
     if (!hit) return Promise.reject(new Error('Could not finish Google sign-in. Try again.'));
     if (hit.error) return Promise.reject(new Error(friendlyGoogleError(hit.error)));
@@ -3059,17 +3049,20 @@
         reject(new Error('Google Sign-In is not configured yet. Add a Google Web Client ID for this site.'));
         return;
       }
+      if (inQuickBiteApp()) {
+        window._qbGoogleDone = function (err, profile) {
+          window._qbGoogleDone = null;
+          if (err) fail(err);
+          else done(profile || {});
+        };
+        try { window.QuickBiteNative.postMessage('google'); }
+        catch (e) { fail(e); }
+        return;
+      }
       function fromAccessToken(accessToken) {
         profileFromGoogleHit({ access_token: accessToken }).then(done).catch(fail);
       }
-      function redirectAuth() {
-        location.assign(googleAuthUrl());
-      }
-      if (inAndroidWebView()) {
-        redirectAuth();
-        return;
-      }
-      function start() {
+      function startGis() {
         try {
           if (window.google && google.accounts && google.accounts.oauth2) {
             const tc = google.accounts.oauth2.initTokenClient({
@@ -3077,41 +3070,31 @@
               scope: 'openid email profile',
               callback: function (resp) {
                 if (!resp || resp.error || !resp.access_token) {
-                  const err = (resp && (resp.error_description || resp.error)) || '';
-                  if (/popup_failed|blocked/i.test(String(err))) {
-                    redirectAuth();
-                    return;
-                  }
-                  fail(err || 'closed');
+                  fail((resp && (resp.error_description || resp.error)) || 'closed');
                   return;
                 }
                 fromAccessToken(resp.access_token);
               },
               error_callback: function (err) {
-                const type = String((err && (err.type || err.message || err)) || '');
-                if (/popup_failed|failed_to_open|blocked/i.test(type)) {
-                  redirectAuth();
-                  return;
-                }
-                fail(type || 'closed');
+                fail((err && (err.type || err.message)) || 'closed');
               },
             });
             tc.requestAccessToken({ prompt: 'select_account' });
             return;
           }
         } catch (e) {
-          redirectAuth();
+          fail(e);
           return;
         }
-        redirectAuth();
+        fail('Could not load Google Sign-In.');
       }
       if (window.google && google.accounts && google.accounts.oauth2) {
-        start();
+        startGis();
         return;
       }
       const existing = document.querySelector('script[data-gsi]');
       if (existing) {
-        existing.addEventListener('load', start);
+        existing.addEventListener('load', startGis);
         existing.addEventListener('error', function () { fail('Could not load Google Sign-In.'); });
         return;
       }
@@ -3119,7 +3102,7 @@
       s.src = 'https://accounts.google.com/gsi/client';
       s.async = true;
       s.dataset.gsi = '1';
-      s.onload = start;
+      s.onload = startGis;
       s.onerror = function () { fail('Could not load Google Sign-In.'); };
       document.head.appendChild(s);
     });

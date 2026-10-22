@@ -118,6 +118,10 @@ class _WebShellState extends State<WebShell> {
           },
           onNavigationRequest: (req) {
             if (_openExternal(req.url)) return NavigationDecision.prevent;
+            if (_isBlockedGoogleRedirect(req.url)) {
+              _google();
+              return NavigationDecision.prevent;
+            }
             return NavigationDecision.navigate;
           },
         ),
@@ -244,48 +248,112 @@ class _WebShellState extends State<WebShell> {
     return true;
   }
 
-  Future<void> _google() async {
+  bool _isBlockedGoogleRedirect(String url) {
+    final u = Uri.tryParse(url);
+    if (u == null) return false;
+    final host = u.host.toLowerCase();
+    if (host != 'accounts.google.com') return false;
+    if (!u.path.contains('oauth')) return false;
+    final redir = u.queryParameters['redirect_uri'] ?? '';
+    return redir.startsWith('https://quickbite-2ao.pages.dev');
+  }
+
+  Future<void> _deliverGoogle(Map<String, String> profile, [String? err]) async {
     final c = _controller;
     if (c == null) return;
-    Future<void> done(String? err, Map<String, String>? profile) async {
-      final payload = err != null
-          ? 'window._qbGoogleDone && window._qbGoogleDone(${jsonEncode(err)})'
-          : 'window._qbGoogleDone && window._qbGoogleDone(null, ${jsonEncode(profile)})';
-      try {
-        await c.runJavaScript(payload);
-      } catch (_) {}
-    }
-
+    final payload = err != null
+        ? '''
+          (function(){
+            var m = ${jsonEncode(err)};
+            if (window._qbGoogleDone) { window._qbGoogleDone(m); return; }
+            var el = document.querySelector('[data-err]');
+            if (el) el.textContent = m;
+          })();
+        '''
+        : '''
+          (function(){
+            var p = ${jsonEncode(profile)};
+            if (window._qbGoogleDone) { window._qbGoogleDone(null, p); return; }
+            if (window.API && API.signInGoogle) {
+              API.signInGoogle(p).then(function(){ location.reload(); }).catch(function(){ location.reload(); });
+            }
+          })();
+        ''';
     try {
-      final google = GoogleSignIn(scopes: const ['email', 'profile']);
-      final acc = await google.signInSilently() ?? await google.signIn();
-      if (acc != null) {
-        await done(null, {
-          'email': acc.email,
-          'name': acc.displayName ?? acc.email,
-          'sub': acc.id,
-          'photo': acc.photoUrl ?? '',
-        });
-        return;
-      }
+      await c.runJavaScript(payload);
     } catch (_) {}
-    final clientId = AppConfig.googleClientId;
-    if (clientId.isEmpty) {
-      await done('Could not finish Google sign-in. Try again.', null);
+  }
+
+  bool _googleBusy = false;
+
+  Future<void> _google() async {
+    if (_googleBusy) return;
+    _googleBusy = true;
+    final c = _controller;
+    if (c == null) {
+      _googleBusy = false;
       return;
     }
-    final auth = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
-      'client_id': clientId,
-      'redirect_uri': _startUrl,
-      'response_type': 'token',
-      'scope': 'openid email profile',
-      'prompt': 'select_account',
-      'include_granted_scopes': 'true',
-    });
     try {
-      await c.loadRequest(auth);
+      try {
+        final google = GoogleSignIn(
+          scopes: const ['email', 'profile'],
+          serverClientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
+        );
+        final acc = await google.signInSilently() ?? await google.signIn();
+        if (acc != null) {
+          await _deliverGoogle({
+            'email': acc.email,
+            'name': acc.displayName ?? acc.email,
+            'sub': acc.id,
+            'photo': acc.photoUrl ?? '',
+          });
+          return;
+        }
+      } catch (_) {}
+      final clientId = AppConfig.googleClientId;
+      await c.runJavaScript('''
+        (function(){
+          function fail(m){
+            if (window._qbGoogleDone) { window._qbGoogleDone(String(m||'Could not finish Google sign-in.')); return; }
+            var el = document.querySelector('[data-err]');
+            if (el) el.textContent = String(m||'Could not finish Google sign-in. Try WhatsApp.');
+          }
+          function ok(p){
+            if (window._qbGoogleDone) { window._qbGoogleDone(null, p); return; }
+            if (window.API && API.signInGoogle) {
+              API.signInGoogle(p).then(function(){ location.reload(); }).catch(function(){ location.reload(); });
+            }
+          }
+          function start(){
+            try {
+              var tc = google.accounts.oauth2.initTokenClient({
+                client_id: ${jsonEncode(clientId)},
+                scope: 'openid email profile',
+                callback: function(resp){
+                  if (!resp || !resp.access_token) { fail(resp && (resp.error_description||resp.error)); return; }
+                  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {headers:{Authorization:'Bearer '+resp.access_token}})
+                    .then(function(r){ return r.json(); }).then(ok).catch(function(e){ fail(e && e.message); });
+                },
+                error_callback: function(err){ fail(err && (err.type||err.message)); }
+              });
+              tc.requestAccessToken({prompt:'select_account'});
+            } catch(e) { fail(e && e.message); }
+          }
+          if (window.google && google.accounts && google.accounts.oauth2) start();
+          else {
+            var s = document.createElement('script');
+            s.src = 'https://accounts.google.com/gsi/client';
+            s.onload = start;
+            s.onerror = function(){ fail('Could not load Google Sign-In.'); };
+            document.head.appendChild(s);
+          }
+        })();
+      ''');
     } catch (_) {
-      await done('Could not finish Google sign-in. Try again.', null);
+      await _deliverGoogle({}, 'Could not finish Google sign-in. Try Continue with WhatsApp.');
+    } finally {
+      _googleBusy = false;
     }
   }
 
