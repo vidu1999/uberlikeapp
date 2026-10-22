@@ -338,6 +338,7 @@
         <button type="button" data-zoom="out">−</button>
       </div>
       <div class="rd-card">
+        ${stepsHtml(order)}
         <div class="rd-who">
           ${p.photo ? `<img data-avatar src="${p.photo}" alt="" />` : `<div class="fallback" data-initials>${esc(p.initials)}</div>`}
           <div class="grow">
@@ -373,6 +374,13 @@
     if (!root || !order) return;
     const p = person(order, viewer);
     const km = kmLeft(order);
+    const steps = root.querySelector('[data-steps]');
+    if (steps) {
+      const next = stepsHtml(order);
+      const hold = document.createElement('div');
+      hold.innerHTML = next;
+      if (hold.firstChild) steps.replaceWith(hold.firstChild);
+    }
     const name = root.querySelector('[data-rider]');
     if (name) name.textContent = p.name;
     const sub = root.querySelector('[data-sub]');
@@ -438,14 +446,59 @@
     });
   }
 
+  function orderTs(o) {
+    return Date.parse((o && (o.timestamp || o.createdAt || o.updatedAt)) || '') || 0;
+  }
+
   function liveOrder(orders) {
-    return (orders || []).find((o) => !['delivered', 'cancelled'].includes(o.status));
+    const live = (orders || []).filter((o) => o && o.status !== 'delivered' && o.status !== 'cancelled');
+    live.sort(function (a, b) { return orderTs(a) - orderTs(b); });
+    return live[0] || null;
+  }
+
+  function orderSteps(order) {
+    const st = String((order && order.status) || '');
+    const placed = st !== 'cancelled';
+    const shopOk = placed && st !== 'pending' && st !== '';
+    const riderOk = !!(order && (order.riderName || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered'));
+    let now = 'placed';
+    if (riderOk) now = 'rider';
+    else if (shopOk) now = 'shop';
+    return {
+      now: now,
+      items: [
+        { id: 'placed', label: 'Order placed', on: placed },
+        { id: 'shop', label: 'Shop accepted', on: shopOk },
+        { id: 'rider', label: 'Rider accepted', on: riderOk },
+      ],
+    };
+  }
+
+  function stepsHtml(order) {
+    const s = orderSteps(order);
+    let html = '<div class="rd-steps" data-steps>';
+    s.items.forEach(function (it, i) {
+      html += '<div class="rd-step' + (it.on ? ' on' : '') + (s.now === it.id ? ' now' : '') + '" data-step="' + it.id + '"><i></i><span>' + it.label + '</span></div>';
+      if (i < s.items.length - 1) html += '<em class="' + (it.on ? 'on' : '') + '"></em>';
+    });
+    return html + '</div>';
+  }
+
+  function stepLine(order) {
+    const s = orderSteps(order);
+    if (s.now === 'placed') return 'Waiting for shop to accept';
+    if (s.now === 'shop') return 'Shop accepted · waiting for rider';
+    return 'Rider accepted';
   }
 
   function banner(order) {
     if (!order) return '';
     return `<div class="live-banner" data-track="${esc(order.id)}">
-      <div><b>Track your order</b><small>${esc(statusLabel(order.status))} · ${esc(order.shopName || '')}</small></div>
+      <div>
+        <b>Track your order</b>
+        ${stepsHtml(order)}
+        <small>${esc(stepLine(order))} · ${esc(order.shopName || '')}</small>
+      </div>
       <span>›</span>
     </div>`;
   }
@@ -456,6 +509,7 @@
     person,
     liveOrder,
     banner,
+    orderSteps,
     telHref,
     statusLabel,
     oid,

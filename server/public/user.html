@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zz" />
-  <link rel="stylesheet" href="/css/track.css?v=19zt" />
+  <link rel="stylesheet" href="/css/track.css?v=19zu" />
   <link rel="stylesheet" href="/css/qb.css?v=19a2" />
 </head>
 <body>
@@ -19,7 +19,7 @@
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19zy"></script>
   <script src="/js/maps.js?v=19zu"></script>
-  <script src="/js/track-ui.js?v=19zs"></script>
+  <script src="/js/track-ui.js?v=19zt"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -1049,13 +1049,13 @@
       const nearTitle = state.category === 'Favourites' ? 'Favourite shops' : 'Shops near you';
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         ${header()}
+        ${TrackUI.banner(live)}
         <div class="u-hi">
           <p class="greet">${hello()},</p>
           <h1>${esc(firstName())} 👋</h1>
           <p class="hungry">Hungry? Let's get you something delicious!</p>
         </div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
-        ${TrackUI.banner(live)}
         ${filtersBar()}
         <div class="ue-head">
           <h2>${esc(nearTitle)}</h2>
@@ -1268,7 +1268,14 @@
         + '</div></div>';
     }
     function ordersView() {
-      const mine = API.orders;
+      const mine = (API.orders || []).slice().sort(function (a, b) {
+        const al = a && a.status !== 'delivered' && a.status !== 'cancelled';
+        const bl = b && b.status !== 'delivered' && b.status !== 'cancelled';
+        if (al !== bl) return al ? -1 : 1;
+        const ta = Date.parse((a && (a.timestamp || a.createdAt)) || '') || 0;
+        const tb = Date.parse((b && (b.timestamp || b.createdAt)) || '') || 0;
+        return al ? ta - tb : tb - ta;
+      });
       return `<div class="scroll">${header()}
         <div class="pad"><h2>My Orders</h2></div>
         ${mine.map((o) => `
