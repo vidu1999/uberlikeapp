@@ -120,6 +120,100 @@ function shopById(id) {
   return shops.find((s) => s.id === id);
 }
 
+const AISLES = ['Fruit', 'Vegetables', 'Beverages', 'Grocery', 'Chilled', 'Meat', 'Frozen', 'Household', 'Bakery', 'Fast food'];
+
+function classifyAisle(it) {
+  const blob = [it && it.name, it && it.category, it && it.desc, it && it.description].join(' ').toLowerCase();
+  const has = (re) => re.test(blob);
+  if (has(/frozen|ice cream|icecream|gelato|fish finger|nugget/)) return 'Frozen';
+  if (has(/chicken|beef|mutton|pork|lamb|meat|sausage|bacon|ham|fish|tuna|prawn|shrimp|crab|seafood|\beggs?\b/)) return 'Meat';
+  if (has(/yoghurt|yogurt|cheese|butter|margarine|curd|chilled|dairy|fresh milk/)) return 'Chilled';
+  if (has(/apple|banana|mango|papaya|pineapple|watermelon|grape|orange|lemon|lime|avocado|rambutan|durian|wood apple|fruit|guava|melon|pomegranate|strawberry/)) return 'Fruit';
+  if (has(/carrot|cabbage|leek|beans|tomato|onion|potato|pumpkin|brinjal|eggplant|okra|gotukola|vegetable|salad|cucumber|chilli|chili|garlic|ginger|spinach|lettuce|beet/)) return 'Vegetables';
+  if (has(/juice|soda|cola|pepsi|coke|sprite|water|tea|coffee|beverage|drink|necto|cordial|\bpet\b|1\.5l|elephant house|fanta|mirinda/)) return 'Beverages';
+  if (has(/soap|shampoo|toothpaste|detergent|bleach|harpic|dettol|household|tissue|nappy|diaper|cleaner|lux|lifebuoy|\bvim\b|sunlight/)) return 'Household';
+  if (has(/cake|pastry|bread|bun|croissant|bakery|cookie|doughnut|donut/)) return 'Bakery';
+  if (has(/burger|pizza|kottu|fried rice|shawarma|submarine|fast food|fries/)) return 'Fast food';
+  if (has(/rice|flour|sugar|salt|dhal|\bdal\b|coconut|oil|spice|biscuit|snack|noodle|maggi|pasta|cereal|grocery|maliban|munchee/)) return 'Grocery';
+  const c = String((it && it.category) || '');
+  if (/beverage|drink|coffee/i.test(c)) return 'Beverages';
+  if (/bakery|dessert/i.test(c)) return 'Bakery';
+  if (/grocery/i.test(c)) return 'Grocery';
+  if (/fast food|pizza|burger/i.test(c)) return 'Fast food';
+  if (/ice cream/i.test(c)) return 'Frozen';
+  return 'Grocery';
+}
+
+function localAisles(items) {
+  return (items || []).map((it) => ({ id: it && it.id, aisle: classifyAisle(it) })).filter((x) => x.id);
+}
+
+function waNumberCandidates(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.indexOf('00') === 0) d = d.slice(2);
+  if (d.startsWith('940') && d.length === 12) d = '94' + d.slice(3);
+  if (d.startsWith('0') && d.length === 10) d = '94' + d.slice(1);
+  if (d.startsWith('7') && d.length === 9) d = '94' + d;
+  const out = [];
+  function add(v) {
+    v = String(v || '').replace(/\D/g, '');
+    if (!v || v.length < 9 || v.length > 15) return;
+    if (v.charAt(0) === '0') return;
+    if (out.indexOf(v) < 0) out.push(v);
+  }
+  add(d);
+  return out;
+}
+
+async function sendWhatsAppOtp(phone, text) {
+  const message = String(text || '').trim();
+  if (!message) throw new Error('WhatsApp message is empty.');
+  let wa = {};
+  try { wa = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'js', 'wa.json'), 'utf8')); } catch (_) {}
+  const id = String(process.env.GREEN_ID || process.env.GREEN_API_ID || wa.greenId || '710722770031');
+  const token = String(process.env.GREEN_TOKEN || process.env.GREEN_API_TOKEN || wa.greenToken || '');
+  const hosts = [];
+  function addHost(h) {
+    const v = String(h || '').replace(/\/$/, '');
+    if (v && hosts.indexOf(v) === -1) hosts.push(v);
+  }
+  addHost(process.env.GREEN_API_URL || wa.apiUrl || 'https://7107.api.green-api.com');
+  if (id.length >= 4) addHost('https://' + id.slice(0, 4) + '.api.green-api.com');
+  addHost('https://api.green-api.com');
+  const numbers = waNumberCandidates(phone);
+  if (!numbers.length) throw new Error('Enter a valid WhatsApp number.');
+  let last = 'WhatsApp did not send the code. Check the number and tap Continue.';
+  for (let h = 0; h < hosts.length; h++) {
+    for (let n = 0; n < numbers.length; n++) {
+      const to = numbers[n];
+      try {
+        const chkRes = await fetch(hosts[h] + '/waInstance' + id + '/checkWhatsapp/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: Number(to) || to }),
+        });
+        const chk = await chkRes.json().catch(() => ({}));
+        if (chk && chk.existsWhatsapp === false) {
+          last = 'This number is not on WhatsApp. Use the number that opens WhatsApp on the phone.';
+          continue;
+        }
+        const sentRes = await fetch(hosts[h] + '/waInstance' + id + '/sendMessage/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: to + '@c.us', message: message }),
+        });
+        const sent = await sentRes.json().catch(() => ({}));
+        if (sentRes.ok && sent && sent.idMessage) return { ok: true, to: to, idMessage: sent.idMessage };
+        const err = sent.message || sent.error || sent.reason || '';
+        last = typeof err === 'string' && err ? err : last;
+      } catch (e) {
+        last = (e && e.message) || last;
+      }
+    }
+  }
+  throw new Error(last);
+}
+
 function token() {
   return 'tok_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -286,6 +380,42 @@ async function handleApi(req, res, url) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, cors(res));
     res.end();
+    return;
+  }
+
+  if (pathname === '/otp') {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, provider: 'green-api' });
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, error: 'Use POST to send a WhatsApp code.' });
+      return;
+    }
+    const body = await readBody(req);
+    const phone = body.phone || body.to || '';
+    const text = body.body || body.message || body.text || '';
+    try {
+      const out = await sendWhatsAppOtp(phone, text);
+      json(res, 200, { ok: true, provider: 'green-api', to: out.to });
+    } catch (err) {
+      json(res, 502, { ok: false, error: err.message || 'WhatsApp did not send the code.' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/categorize') {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, aisles: AISLES, provider: 'openrouter' });
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, error: 'method' });
+      return;
+    }
+    const body = await readBody(req);
+    const items = Array.isArray(body.items) ? body.items.slice(0, 40) : [];
+    json(res, 200, { ok: true, aisles: localAisles(items), source: 'local' });
     return;
   }
 
@@ -720,14 +850,15 @@ function handleStatic(req, res, url) {
   let p = decodeURIComponent(url.pathname);
   if (p === '/js/live.js') {
     const inf = db.info();
+    let extra = '';
+    try { extra = fs.readFileSync(path.join(PUBLIC, 'js', 'live.js'), 'utf8'); } catch (_) {}
     const body =
-      'window.QB_API = ' +
+      extra +
+      '\nwindow.QB_API = ' +
       JSON.stringify(process.env.PUBLIC_API_URL || '') +
-      ';\nwindow.QB_SUPABASE_URL = ' +
-      JSON.stringify(inf.supabaseUrl || '') +
-      ';\nwindow.QB_SUPABASE_ANON = ' +
-      JSON.stringify(inf.supabaseAnon || '') +
-      ';\n';
+      ';\n' +
+      (inf.supabaseUrl ? 'window.QB_SUPABASE_URL = ' + JSON.stringify(inf.supabaseUrl) + ';\n' : '') +
+      (inf.supabaseAnon ? 'window.QB_SUPABASE_ANON = ' + JSON.stringify(inf.supabaseAnon) + ';\n' : '');
     res.writeHead(200, cors(res, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' }));
     res.end(body);
     return;
@@ -750,7 +881,12 @@ function handleStatic(req, res, url) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    if (url.pathname.startsWith('/api/') || url.pathname === '/checkout' || url.pathname.startsWith('/webhooks')) {
+    if (
+      url.pathname.startsWith('/api/') ||
+      url.pathname === '/otp' ||
+      url.pathname === '/checkout' ||
+      url.pathname.startsWith('/webhooks')
+    ) {
       await handleApi(req, res, url);
       return;
     }
