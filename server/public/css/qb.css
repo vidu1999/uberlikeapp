@@ -403,10 +403,23 @@
   scroll-snap-align: start;
   cursor: pointer; background: #fff;
 }
+.ue-near-hero, .ue-store-hero, .thumb-wrap { position: relative; display: block; }
 .ue-near-img {
   width: 100%; height: 148px; object-fit: cover;
   border-radius: 16px; background: #eee; display: block;
 }
+.ue-cap {
+  position: absolute; left: 8px; bottom: 8px;
+  background: #E11900; color: #fff;
+  font-size: 12px; font-weight: 800; letter-spacing: -0.2px;
+  padding: 5px 8px; border-radius: 4px;
+  max-width: calc(100% - 16px);
+  line-height: 1.2; z-index: 2; pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+}
+.thumb-wrap { flex: none; }
+.thumb-wrap .ue-cap { left: 4px; bottom: 4px; font-size: 9px; padding: 3px 5px; max-width: calc(100% - 8px); }
+.menu-hero .ue-cap { left: 12px; top: 56px; bottom: auto; font-size: 13px; }
 .ue-near-status {
   color: #6B7280; font-size: 13px; font-weight: 600;
   margin: 10px 2px 2px;

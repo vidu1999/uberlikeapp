@@ -8,16 +8,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zo" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zz" />
   <link rel="stylesheet" href="/css/track.css?v=19zt" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zy" />
+  <link rel="stylesheet" href="/css/qb.css?v=19zz" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19zw"></script>
+  <script src="/js/api.js?v=19zx"></script>
   <script src="/js/maps.js?v=19zt"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -307,7 +307,21 @@
     }
     ensureUserLocal();
     function cartCount() { return state.cart.reduce((s, i) => s + i.qty, 0); }
-    function cartTotal() { return state.cart.reduce((s, i) => s + i.qty * i.price, 0); }
+    function cartTotal() {
+      if (API.cartPayTotal) return API.cartPayTotal(state.cart);
+      return state.cart.reduce((s, i) => s + i.qty * i.price, 0);
+    }
+    function offerCap(label) {
+      const t = String(label || '').trim();
+      if (!t) return '';
+      return `<span class="ue-cap">${esc(t)}</span>`;
+    }
+    function shopCap(s) {
+      return offerCap(API.shopOfferCaption && s && API.shopOfferCaption(s.id));
+    }
+    function itemCap(it) {
+      return offerCap(API.offerCaption && API.offerCaption(it));
+    }
     function deliveredCount() {
       return (API.orders || []).filter((o) => o && o.status === 'delivered').length;
     }
@@ -614,7 +628,7 @@
       const km = distKm(s);
       const cls = asCard ? 'shop-card' : 'shop-row';
       return `<div class="${cls}" data-shop="${s.id}">
-        <img class="thumb" src="${shopImg(s)}" alt="" />
+        <div class="thumb-wrap"><img class="thumb" src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
         <div class="grow">
           <div class="name-row"><div class="name">${esc((API.shopTitle && API.shopTitle(s)) || s.name)}</div>${heartBtn(s.id)}</div>
           <div class="meta">${esc(s.category || 'Shop')}</div>
@@ -647,7 +661,7 @@
     }
     function nearShopCard(s) {
       return `<article class="ue-near" data-shop="${esc(s.id)}">
-        <img class="ue-near-img" src="${shopImg(s)}" alt="" />
+        <div class="ue-near-hero"><img class="ue-near-img" src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
         <div class="ue-near-status">${esc(shopStatusLine(s))}</div>
         <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
         <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee</div>
@@ -656,7 +670,7 @@
     }
     function allStoreCard(s) {
       return `<article class="ue-store" data-shop="${esc(s.id)}">
-        <img src="${shopImg(s)}" alt="" />
+        <div class="ue-store-hero"><img src="${shopImg(s)}" alt="" />${shopCap(s)}</div>
         <div class="ue-store-body">
           <div class="name-row"><div class="name">${esc(shopNameOf(s))}</div>${heartBtn(s.id)}</div>
           <div class="ue-fee">Rs.${shopFeeOf(s)} Delivery Fee · ${esc(shopStatusLine(s))}</div>
@@ -939,6 +953,7 @@
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
+          ${shopCap(shop)}
           <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
           <div class="overlay">
             <div class="name-row"><h1>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name)}</h1>${heartBtn(shop.id)}</div>
@@ -955,8 +970,8 @@
         ${state.menuTab==='menu' ? `
           <div class="menu-cats">${['All'].concat(cats).map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
           ${list.map((it)=>`<div class="menu-row">
-            <img src="${itemImg(it)}" alt="" />
-            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
+            <div class="thumb-wrap"><img src="${itemImg(it)}" alt="" />${itemCap(it)}</div>
+            <div class="grow"><b>${esc(it.name)}</b><div class="muted">${rs(it.price)}${API.offerCaption && API.offerCaption(it) ? ' · ' + esc(API.offerCaption(it)) : ''}${it.reviews ? ' · ★ ' + Number(it.rating).toFixed(1) : (API.itemRateOf && API.itemRateOf(it.id) ? ' · ★ ' + API.itemRateOf(it.id).rating.toFixed(1) : '')}</div></div>
             ${itemSaleLabel(it)}
           </div>`).join('')}
         ` : state.menuTab==='reviews' ? `<div class="pad"><p>${esc(shopRateText(shop))}${Number(shop.reviews) > 0 ? ' from customers after delivery.' : ' — ratings appear after delivered orders.'}</p></div>`
@@ -976,7 +991,7 @@
           const it = API.items.find((i) => i.id === c.id) || c;
           return `<div class="cart-line">
             <img src="${itemImg(it)}" alt="" />
-            <div class="grow"><b>${esc(c.name)}</b><div class="muted">${rs(c.price)}</div></div>
+            <div class="grow"><b>${esc(c.name)}</b><div class="muted">${rs(c.price)}${API.offerCaption && API.offerCaption(it) ? ' · ' + esc(API.offerCaption(it)) : ''}</div></div>
             <div class="qty"><button data-qty="${c.id}" data-d="-1">−</button><b>${c.qty}</b><button data-qty="${c.id}" data-d="1">+</button></div>
           </div>`;
         }).join('')}

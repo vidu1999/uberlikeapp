@@ -54,7 +54,7 @@
     const orders = (API.orders || []).map((o) =>
       [o.id, o.status, o.riderName || '', o.riderLat, o.riderLng, o.paymentStatus || '', o.paid ? '1' : '0'].join(':')
     ).join('|');
-    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1') + ':' + (i.stockUnlimited ? 'U' : String(i.stock != null ? i.stock : '')) + ':' + (i.rating || '') + ':' + (i.reviews || '')).join('|');
+    const items = (API.items || []).map((i) => i.id + ':' + i.name + ':' + i.price + ':' + (i.image || '') + ':' + (i.isAvailable === false ? '0' : '1') + ':' + (i.stockUnlimited ? 'U' : String(i.stock != null ? i.stock : '')) + ':' + offerToken(i.offer) + ':' + (i.rating || '') + ':' + (i.reviews || '')).join('|');
     const msgs = Object.keys(API.messages || {}).sort().map((k) => k + ':' + ((API.messages[k] || []).length)).join('|');
     const shops = (API.shops || []).map((s) => (s && s.id) + ':' + (s && s.name || '') + ':' + (s && s.rating) + ':' + (s && s.reviews)).join('|');
     return [(API.user && API.user.id) || '', shops, items, orders, msgs].join('~');
@@ -99,19 +99,108 @@
       promo: r.promo,
     };
   }
+  function parseOfferToken(tok) {
+    tok = String(tok || '').trim();
+    if (!tok || tok === 'none') return null;
+    if (tok === 'bogo' || tok === 'b1g1') return { type: 'bogo' };
+    if (tok.indexOf('pct:') === 0) {
+      const n = Math.max(1, Math.min(90, parseInt(tok.slice(4), 10) || 0));
+      return n ? { type: 'pct', pct: n } : null;
+    }
+    if (tok.indexOf('get:') === 0) {
+      const id = tok.slice(4).replace(/[^A-Za-z0-9_.-]/g, '');
+      return id ? { type: 'get', getId: id } : null;
+    }
+    return null;
+  }
+  function offerToken(offer) {
+    if (!offer || !offer.type || offer.type === 'none') return '';
+    if (offer.type === 'bogo') return 'bogo';
+    if (offer.type === 'pct') {
+      const n = Math.max(1, Math.min(90, Math.round(Number(offer.pct) || 0)));
+      return n ? ('pct:' + n) : '';
+    }
+    if (offer.type === 'get' && offer.getId) return 'get:' + String(offer.getId).replace(/[^A-Za-z0-9_.-]/g, '');
+    return '';
+  }
+  function stripItemMeta(desc) {
+    return String(desc || '')
+      .replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '')
+      .replace(/^\[\[QB\|OFF\|[^\]]+\]\]\n?/, '');
+  }
   function unpackDesc(raw) {
-    const text = String(raw || '');
-    const m = text.match(/^\[\[QB\|(U|\d+)\]\]\n?/);
-    if (!m) return { unlimited: true, stock: null, desc: text };
-    if (m[1] === 'U') return { unlimited: true, stock: null, desc: text.slice(m[0].length) };
-    return { unlimited: false, stock: Math.max(0, parseInt(m[1], 10) || 0), desc: text.slice(m[0].length) };
+    let text = String(raw || '');
+    let unlimited = true;
+    let stock = null;
+    let offer = null;
+    const stockM = text.match(/^\[\[QB\|(U|\d+)\]\]\n?/);
+    if (stockM) {
+      if (stockM[1] === 'U') { unlimited = true; stock = null; }
+      else { unlimited = false; stock = Math.max(0, parseInt(stockM[1], 10) || 0); }
+      text = text.slice(stockM[0].length);
+    }
+    const offM = text.match(/^\[\[QB\|OFF\|([^\]]+)\]\]\n?/);
+    if (offM) {
+      offer = parseOfferToken(offM[1]);
+      text = text.slice(offM[0].length);
+    }
+    return { unlimited: unlimited, stock: stock, desc: text, offer: offer };
   }
-  function packDesc(desc, unlimited, stock) {
-    const text = String(desc || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
-    if (unlimited) return '[[QB|U]]' + (text ? '\n' + text : '');
-    const n = Math.max(0, Math.round(Number(stock) || 0));
-    return '[[QB|' + n + ']]' + (text ? '\n' + text : '');
+  function packDesc(desc, unlimited, stock, offer) {
+    const text = stripItemMeta(desc);
+    let head = unlimited ? '[[QB|U]]' : ('[[QB|' + Math.max(0, Math.round(Number(stock) || 0)) + ']]');
+    const tok = offerToken(offer);
+    if (tok) head += '[[QB|OFF|' + tok + ']]';
+    return head + (text ? '\n' + text : '');
   }
+  function offerCaption(offer, items) {
+    if (!offer || !offer.type) return '';
+    if (offer.type === 'bogo') return 'Buy 1, Get 1 Free';
+    if (offer.type === 'pct') return Math.round(Number(offer.pct) || 0) + '% Off';
+    if (offer.type === 'get') {
+      const g = (items || API.items || []).find(function (x) { return x && x.id === offer.getId; });
+      const n = String((g && g.name) || '').trim() || '1 item';
+      return 'Buy 1, Get ' + (n.length > 18 ? n.slice(0, 16) + '…' : n) + ' Free';
+    }
+    return '';
+  }
+  API.offerCaption = function (it) {
+    return offerCaption(it && it.offer, API.items);
+  };
+  API.shopOfferCaption = function (shopId) {
+    const list = (API.items || []).filter(function (it) {
+      return it && it.shopId === shopId && itemOnSale(it) && it.offer && it.offer.type;
+    });
+    if (!list.length) return '';
+    list.sort(function (a, b) {
+      function rank(o) { return o.type === 'pct' ? 0 : o.type === 'bogo' ? 1 : 2; }
+      return rank(a.offer) - rank(b.offer);
+    });
+    return offerCaption(list[0].offer, API.items);
+  };
+  API.cartPayTotal = function (cart) {
+    cart = cart || [];
+    const gift = {};
+    cart.forEach(function (line) {
+      const src = (API.items || []).find(function (x) { return x && x.id === line.id; }) || line;
+      const o = src && src.offer;
+      if (o && o.type === 'get' && o.getId) gift[o.getId] = (gift[o.getId] || 0) + Number(line.qty || 0);
+    });
+    let sum = 0;
+    cart.forEach(function (line) {
+      const src = (API.items || []).find(function (x) { return x && x.id === line.id; }) || line;
+      const o = src && src.offer;
+      const price = Number(line.price != null ? line.price : src.price) || 0;
+      const qty = Number(line.qty) || 0;
+      let charged = Math.max(0, qty - Math.min(qty, gift[line.id] || 0));
+      if (charged <= 0) return;
+      if (o && o.type === 'bogo') charged = Math.ceil(charged / 2);
+      let unit = price;
+      if (o && o.type === 'pct') unit = price * (1 - Math.min(90, Number(o.pct) || 0) / 100);
+      sum += charged * unit;
+    });
+    return Math.round(sum);
+  };
   function itemStockOf(it) {
     if (!it) return { unlimited: true, stock: 0 };
     if (it.stockUnlimited === false) return { unlimited: false, stock: Math.max(0, Math.round(Number(it.stock) || 0)) };
@@ -141,6 +230,7 @@
       image: r.image,
       stockUnlimited: packed.unlimited,
       stock: packed.unlimited ? null : packed.stock,
+      offer: packed.offer || null,
     };
   }
 
@@ -3022,14 +3112,14 @@
   async function persistItemStock(it) {
     if (!it || !it.id) return;
     const st = itemStockOf(it);
-    const plain = String(it.desc || it.description || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
+    const plain = stripItemMeta(it.desc || it.description);
     const available = (!st.unlimited && st.stock <= 0) ? false : (it.isAvailable !== false);
     it.isAvailable = available;
     it.stock = st.unlimited ? null : st.stock;
     it.stockUnlimited = st.unlimited;
     if (sbConfigured()) {
       await sbSend('menu_items?id=eq.' + encodeURIComponent(it.id), 'PATCH', {
-        description: packDesc(plain, st.unlimited, st.stock),
+        description: packDesc(plain, st.unlimited, st.stock, it.offer),
         is_available: available,
       });
     }
@@ -3541,7 +3631,7 @@
     if (!String(item.name || '').trim()) throw new Error('Enter an item name.');
     const id = item.id || ('ITM_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     const st = itemStockOf(item);
-    const plain = String(item.desc || item.description || '').replace(/^\[\[QB\|(U|\d+)\]\]\n?/, '');
+    const plain = stripItemMeta(item.desc || item.description);
     let available = item.isAvailable !== false;
     if (!st.unlimited && st.stock <= 0) available = false;
     if (!st.unlimited && st.stock > 0 && item.stockUnlimited === false) available = item.isAvailable !== false;
@@ -3552,7 +3642,7 @@
       category: item.category || 'Food',
       price: Number(item.price || 0),
       is_available: available,
-      description: packDesc(plain, st.unlimited, st.stock),
+      description: packDesc(plain, st.unlimited, st.stock, item.offer),
       image: item.image || '/img/shop-bakery.jpg',
     };
     let mapped = mapItem(row);

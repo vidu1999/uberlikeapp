@@ -177,9 +177,13 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + env(safe-ar
   padding: 10px 16px; cursor: pointer;
 }
 .item-card { align-items: center; }
+.shop-row .thumb-wrap, .shop-card .thumb-wrap, .menu-row .thumb-wrap {
+  position: relative; flex: none;
+}
 .shop-row .thumb, .shop-card .thumb, .item-card .thumb {
   width: 72px; height: 72px; border-radius: 16px; object-fit: cover; background: #eee; flex: none;
 }
+.menu-row .thumb-wrap img { width: 72px; height: 72px; border-radius: 14px; object-fit: cover; display: block; }
 .shop-row .grow, .shop-card .grow { flex: 1; min-width: 0; }
 .shop-row .name-row, .shop-card .name-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;

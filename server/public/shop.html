@@ -17,7 +17,7 @@
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/live.js?v=19zk"></script>
-  <script src="/js/api.js?v=19zw"></script>
+  <script src="/js/api.js?v=19zx"></script>
   <script src="/js/maps.js?v=19zt"></script>
   <script src="/js/track-ui.js?v=19zr"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -702,7 +702,7 @@
         <button type="button" class="st-banner" data-open-stock><b>Stock Management</b><span>Set counts, unlimited, or sold out</span></button>
         ${list.map((it) => `<div class="mi-row" data-edit-item="${esc(it.id)}">
           <img src="${itemImg(it)}" alt="" />
-          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)} · ${esc(stockLine(it))}</div></div>
+          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)} · ${esc(stockLine(it))}${API.offerCaption && API.offerCaption(it) ? ' · ' + esc(API.offerCaption(it)) : ''}</div></div>
           <label class="sw" data-stop><input type="checkbox" data-toggle="${esc(it.id)}" data-on="${it.isAvailable?0:1}" ${it.isAvailable?'checked':''} /><i></i></label>
         </div>`).join('') || '<div class="pad muted">No items match. Tap Add Item.</div>'}
       </div>
@@ -757,6 +757,25 @@
           </select>
           <label>Description</label>
           <textarea id="itemDesc" placeholder="e.g. Rich chocolate cake with cream">${esc(it.desc || it.description || '')}</textarea>
+          <label>Offer</label>
+          <select id="itemOffer">
+            <option value="" ${!(it.offer && it.offer.type) ? 'selected' : ''}>No offer</option>
+            <option value="bogo" ${it.offer && it.offer.type === 'bogo' ? 'selected' : ''}>Buy 1 get 1 free</option>
+            <option value="pct" ${it.offer && it.offer.type === 'pct' ? 'selected' : ''}>Percent off</option>
+            <option value="get" ${it.offer && it.offer.type === 'get' ? 'selected' : ''}>Buy 1 get selected item</option>
+          </select>
+          <div id="offerPctWrap" class="${it.offer && it.offer.type === 'pct' ? '' : 'hidden'}">
+            <label>% Off</label>
+            <input id="itemOfferPct" inputmode="numeric" placeholder="e.g. 25" value="${it.offer && it.offer.type === 'pct' ? esc(it.offer.pct) : ''}" />
+          </div>
+          <div id="offerGetWrap" class="${it.offer && it.offer.type === 'get' ? '' : 'hidden'}">
+            <label>Free item when they buy this</label>
+            <select id="itemOfferGet">
+              <option value="">Select an item</option>
+              ${shopItems().filter((x) => x && x.id && x.id !== it.id).map((x) => `<option value="${esc(x.id)}" ${it.offer && it.offer.getId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+            </select>
+            ${shopItems().filter((x) => x && x.id && x.id !== it.id).length ? '' : '<p class="muted" style="margin:6px 0 0;font-size:12px">Add another menu item first, then pick it here.</p>'}
+          </div>
           <label class="ie-unl"><input type="checkbox" id="itemUnl" ${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'checked' : ''} /> Unlimited stock</label>
           <div id="itemStockWrap" class="${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'hidden' : ''}">
             <label>Stock quantity</label>
@@ -1635,11 +1654,20 @@
       const unl = document.getElementById('itemUnl');
       const wrap = document.getElementById('itemStockWrap');
       if (unl && wrap) unl.onchange = () => { wrap.classList.toggle('hidden', unl.checked); };
+      const offerKind = document.getElementById('itemOffer');
+      const offerPctWrap = document.getElementById('offerPctWrap');
+      const offerGetWrap = document.getElementById('offerGetWrap');
+      if (offerKind) offerKind.onchange = () => {
+        if (offerPctWrap) offerPctWrap.classList.toggle('hidden', offerKind.value !== 'pct');
+        if (offerGetWrap) offerGetWrap.classList.toggle('hidden', offerKind.value !== 'get');
+      };
       const save = root.querySelector('[data-save-item]');
       if (save) save.onclick = async () => {
         if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
         const d = readItemForm();
         if (!d.name) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Enter an item name.'; return; }
+        if (d.offer && d.offer.type === 'pct' && !(d.offer.pct > 0)) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Enter a percent off (1–90).'; return; }
+        if ((document.getElementById('itemOffer') || {}).value === 'get' && !(d.offer && d.offer.getId)) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Select the free item for this offer.'; return; }
         save.disabled = true; save.textContent = 'Saving…';
         try {
           await API.saveItem(d);
@@ -1766,6 +1794,14 @@
       if (unl) d.stockUnlimited = !!unl.checked;
       if (d.stockUnlimited) d.stock = null;
       else if (stock) d.stock = Math.max(0, Math.round(Number(stock.value || 0)));
+      const kind = document.getElementById('itemOffer');
+      const pct = document.getElementById('itemOfferPct');
+      const get = document.getElementById('itemOfferGet');
+      const kv = kind ? kind.value : '';
+      if (kv === 'bogo') d.offer = { type: 'bogo' };
+      else if (kv === 'pct') d.offer = { type: 'pct', pct: Math.max(1, Math.min(90, Math.round(Number(pct && pct.value) || 0))) };
+      else if (kv === 'get' && get && get.value) d.offer = { type: 'get', getId: get.value };
+      else d.offer = null;
       d.shopId = shopId();
       d.isAvailable = d.isAvailable !== false;
       if (d.stockUnlimited === false && Number(d.stock || 0) <= 0) d.isAvailable = false;
