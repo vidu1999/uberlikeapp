@@ -482,15 +482,21 @@
     const st = String((order && order.status) || '');
     const placed = st !== 'cancelled';
     const shopOk = placed && st !== 'pending' && st !== '';
+    const prepOk = shopOk && st !== '';
+    const readyOk = st === 'ready' || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered';
     const riderOk = !!(order && (order.riderName || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered'));
     let now = 'placed';
     if (riderOk) now = 'rider';
+    else if (readyOk) now = 'ready';
+    else if (st === 'preparing') now = 'prepared';
     else if (shopOk) now = 'shop';
     return {
       now: now,
       items: [
         { id: 'placed', label: 'Order placed', on: placed },
         { id: 'shop', label: 'Shop accepted', on: shopOk },
+        { id: 'prepared', label: 'Prepared', on: prepOk },
+        { id: 'ready', label: 'Ready', on: readyOk },
         { id: 'rider', label: 'Rider accepted', on: riderOk },
       ],
     };
@@ -509,7 +515,9 @@
   function stepLine(order) {
     const s = orderSteps(order);
     if (s.now === 'placed') return 'Waiting for shop to accept';
-    if (s.now === 'shop') return 'Shop accepted · waiting for rider';
+    if (s.now === 'shop') return 'Shop accepted';
+    if (s.now === 'prepared') return 'Order prepared';
+    if (s.now === 'ready') return 'Order ready · waiting for rider';
     return 'Rider accepted';
   }
 
