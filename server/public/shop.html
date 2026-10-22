@@ -753,7 +753,7 @@
           <input id="itemPrice" inputmode="decimal" placeholder="2500" value="${it.price != null ? esc(it.price) : ''}" />
           <label>Category</label>
           <select id="itemCat">
-            ${['Food','Drinks','Desserts','Bakery','Pizza','Fast Food','Beverages'].map((c)=>`<option ${ (it.category||'Food')===c?'selected':'' }>${c}</option>`).join('')}
+            ${['Food','Drinks','Desserts','Bakery','Pizza','Fast Food','Beverages','Soup','Ice cream','Coffee','Sandwiches','Breakfast','Grocery'].map((c)=>`<option ${ (it.category||'Food')===c?'selected':'' }>${c}</option>`).join('')}
           </select>
           <label>Description</label>
           <textarea id="itemDesc" placeholder="e.g. Rich chocolate cake with cream">${esc(it.desc || it.description || '')}</textarea>

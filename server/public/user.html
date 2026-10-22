@@ -39,7 +39,11 @@
       { id: 'Burgers', label: 'Burgers', map: 'Fast Food', emoji: '🍔' },
       { id: 'Breakfast', label: 'Breakfast', map: 'Breakfast', emoji: '🥞' },
       { id: 'Fast food', label: 'Fast food', map: 'Fast Food', emoji: '🍟' },
+      { id: 'Soup', label: 'Soup', map: 'Soup', emoji: '🍲' },
+      { id: 'Ice cream', label: 'Ice cream', map: 'Ice cream', emoji: '🍦' },
       { id: 'Bakery', label: 'Bakery', map: 'Bakery', emoji: '🥐' },
+      { id: 'Coffee', label: 'Coffee', map: 'Coffee', emoji: '☕' },
+      { id: 'Sandwiches', label: 'Sandwiches', map: 'Sandwiches', emoji: '🥪' },
       { id: 'Beverages', label: 'Drinks', map: 'Beverages', emoji: '🥤' },
       { id: 'Favourites', label: 'Favourites', map: 'Favourites', emoji: '' },
     ];
@@ -575,19 +579,28 @@
       const k = haversineKm([Number(la), Number(ln)], [Number(s.lat), Number(s.lng)]);
       return Math.max(0.1, Math.round(k * 10) / 10);
     }
+    function shopItemBlob(s) {
+      return (API.items || []).filter((it) => it && s && it.shopId === s.id)
+        .map((it) => [it.name, it.category, it.desc, it.description].join(' ')).join(' ');
+    }
     function shopMatchesCat(s) {
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
       if (cat.id === 'Favourites') return (state.favs || []).map(String).includes(String(s.id));
       if (cat.id === 'All') return true;
       const c = String(s.category || '');
+      const blob = c + ' ' + shopItemBlob(s);
       if (c === cat.map || c === cat.id) return true;
-      if (cat.id === 'Burgers' && /fast food|burger/i.test(c)) return true;
-      if (cat.id === 'Fast food' && /fast food|burger|fried|fries/i.test(c)) return true;
-      if (cat.id === 'Breakfast' && /breakfast|hopper|pancake|egg/i.test(c)) return true;
-      if (cat.id === 'Grocery' && /grocery|supermarket|keells|food city/i.test(c)) return true;
-      if (cat.id === 'Beverages' && /coffee|beverage|drink|tea/i.test(c)) return true;
-      if (cat.id === 'Pizza' && /pizza/i.test(c)) return true;
-      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread/i.test(c)) return true;
+      if (cat.id === 'Burgers' && /fast food|burger/i.test(blob)) return true;
+      if (cat.id === 'Fast food' && /fast food|burger|fried|fries/i.test(blob)) return true;
+      if (cat.id === 'Breakfast' && /breakfast|hopper|pancake|egg/i.test(blob)) return true;
+      if (cat.id === 'Grocery' && /grocery|supermarket|keells|food city/i.test(blob)) return true;
+      if (cat.id === 'Beverages' && /coffee|beverage|drink|tea/i.test(blob)) return true;
+      if (cat.id === 'Pizza' && /pizza/i.test(blob)) return true;
+      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread|croissant/i.test(blob)) return true;
+      if (cat.id === 'Soup' && /soup|broth|rasam|stew/i.test(blob)) return true;
+      if (cat.id === 'Ice cream' && /ice cream|icecream|gelato|kulfi|sundae/i.test(blob)) return true;
+      if (cat.id === 'Coffee' && /coffee|cafe|espresso|cappuccino|latte/i.test(blob)) return true;
+      if (cat.id === 'Sandwiches' && /sandwich|submarine|wrap|baguette/i.test(blob)) return true;
       return false;
     }
     function shopMatchesQuery(s, q) {
@@ -636,8 +649,12 @@
       if (cat.id === 'Breakfast' && /breakfast|hopper|pancake|egg/i.test(ic)) return true;
       if (cat.id === 'Grocery' && /grocery|supermarket/i.test(ic)) return true;
       if (cat.id === 'Pizza' && /pizza/i.test(ic)) return true;
-      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread/i.test(ic)) return true;
+      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread|croissant/i.test(ic)) return true;
       if (cat.id === 'Beverages' && /beverage|drink|coffee|tea|juice/i.test(ic)) return true;
+      if (cat.id === 'Soup' && /soup|broth|rasam|stew/i.test(ic + ' ' + String(it.name || '') + ' ' + String(it.desc || ''))) return true;
+      if (cat.id === 'Ice cream' && /ice cream|icecream|gelato|kulfi|sundae/i.test(ic + ' ' + String(it.name || ''))) return true;
+      if (cat.id === 'Coffee' && /coffee|cafe|espresso|cappuccino|latte/i.test(ic + ' ' + String(it.name || ''))) return true;
+      if (cat.id === 'Sandwiches' && /sandwich|submarine|wrap|baguette/i.test(ic + ' ' + String(it.name || ''))) return true;
       return shopMatchesCat(API.shopOf(it.shopId));
     }
     function filteredItems() {
