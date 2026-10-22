@@ -1633,26 +1633,17 @@
       const mq = document.getElementById('menuQ');
       if (mq) mq.oninput = () => { state.menuQ = mq.value; render({ keepScroll: true }); const n=document.getElementById('menuQ'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
       root.querySelectorAll('[data-set-img]').forEach((b) => b.onclick = () => {
+        state._itemFile = null;
         state.itemDraft = Object.assign({}, readItemForm(), { image: b.dataset.setImg });
         render({ keepScroll: true });
       });
       const pick = root.querySelector('[data-pick-photo]');
       const file = document.getElementById('itemFile');
       if (pick && file) pick.onclick = () => file.click();
-      if (file) file.onchange = async () => {
+      if (file) file.onchange = () => {
         const f = file.files && file.files[0];
         if (!f) return;
-        const err = root.querySelector('[data-item-err]');
-        if (err) err.textContent = 'Saving image…';
-        try {
-          const src = API.storeImage ? await API.storeImage(f, 'item') : '';
-          if (!src) throw new Error('Could not save image');
-          state.itemDraft = Object.assign({}, readItemForm(), { image: src });
-          if (err) err.textContent = '';
-          render({ keepScroll: true });
-        } catch (e) {
-          if (err) err.textContent = (e && e.message) || 'Could not save image.';
-        }
+        pickDraftImage('item', f, '[data-pick-photo]', '[data-item-err]');
       };
       const unl = document.getElementById('itemUnl');
       const wrap = document.getElementById('itemStockWrap');
@@ -1673,6 +1664,12 @@
         if ((document.getElementById('itemOffer') || {}).value === 'get' && !(d.offer && d.offer.getId)) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Select the free item for this offer.'; return; }
         save.disabled = true; save.textContent = 'Saving…';
         try {
+          if (state._itemFile) {
+            const stored = await storedOrPreview(state._itemFile, 'item', d.image);
+            if (stored) d.image = stored;
+            state._itemFile = null;
+          }
+          if (isTempImg(d.image)) throw new Error('Wait for the photo to finish, then Save.');
           await API.saveItem(d);
           state.screen = ''; state.itemDraft = null; state.tab = 'menu';
           render();
@@ -1741,20 +1738,10 @@
       const pickShop = root.querySelector('[data-pick-shop-photo]');
       const shopFile = document.getElementById('shopFile');
       if (pickShop && shopFile) pickShop.onclick = () => shopFile.click();
-      if (shopFile) shopFile.onchange = async () => {
+      if (shopFile) shopFile.onchange = () => {
         const f = shopFile.files && shopFile.files[0];
         if (!f) return;
-        const err = root.querySelector('[data-shop-err]');
-        if (err) err.textContent = 'Saving image…';
-        try {
-          const src = API.storeImage ? await API.storeImage(f, 'shop') : '';
-          if (!src) throw new Error('Could not save image');
-          state.shopDraft = Object.assign({}, readShopForm(), { image: src });
-          if (err) err.textContent = '';
-          render({ keepScroll: true });
-        } catch (e) {
-          if (err) err.textContent = (e && e.message) || 'Could not save image.';
-        }
+        pickDraftImage('shop', f, '[data-pick-shop-photo]', '[data-shop-err]');
       };
       const saveShop = root.querySelector('[data-save-shop]');
       if (saveShop) saveShop.onclick = async () => {
@@ -1762,6 +1749,12 @@
         if (!d.name) { const e = root.querySelector('[data-shop-err]'); if (e) e.textContent = 'Enter a shop name.'; return; }
         saveShop.disabled = true; saveShop.textContent = 'Saving…';
         try {
+          if (state._shopFile) {
+            const stored = await storedOrPreview(state._shopFile, 'shop', d.image);
+            if (stored) d.image = stored;
+            state._shopFile = null;
+          }
+          if (isTempImg(d.image)) throw new Error('Wait for the photo to finish, then Save.');
           await API.saveShop(d);
           state.screen = ''; state.shopDraft = null; state.tab = 'account';
           render();
@@ -1784,6 +1777,56 @@
       if (about) d.promo = about.value.trim();
       d.about = d.promo;
       return d;
+    }
+    function paintPhotoBox(sel, src) {
+      const box = document.querySelector(sel);
+      if (!box || !src) return;
+      const safe = String(src).replace(/"/g, '&quot;');
+      box.innerHTML = '<img src="' + safe + '" alt="" />';
+    }
+    function isTempImg(src) {
+      return /^blob:/i.test(String(src || ''));
+    }
+    async function storedOrPreview(file, kind, preview) {
+      if (API.storeImage && file) {
+        try { return await API.storeImage(file, kind); } catch (_) {}
+      }
+      return preview || '';
+    }
+    async function pickDraftImage(kind, file, boxSel, errSel) {
+      if (!file) return;
+      const preview = URL.createObjectURL(file);
+      const err = document.querySelector(errSel);
+      if (kind === 'item') {
+        if (state._itemBlob) { try { URL.revokeObjectURL(state._itemBlob); } catch (_) {} }
+        state._itemBlob = preview;
+        state._itemFile = file;
+        state.itemDraft = Object.assign({}, readItemForm(), { image: preview });
+      } else {
+        if (state._shopBlob) { try { URL.revokeObjectURL(state._shopBlob); } catch (_) {} }
+        state._shopBlob = preview;
+        state._shopFile = file;
+        state.shopDraft = Object.assign({}, readShopForm(), { image: preview });
+      }
+      paintPhotoBox(boxSel, preview);
+      if (err) err.textContent = '';
+      try {
+        const src = await storedOrPreview(file, kind, preview);
+        if (!src) throw new Error('Could not save image');
+        if (kind === 'item') {
+          if (state.screen !== 'item') return;
+          state.itemDraft = Object.assign({}, readItemForm(), { image: src });
+          if (!isTempImg(src)) state._itemFile = null;
+        } else {
+          if (state.screen !== 'edit-shop') return;
+          state.shopDraft = Object.assign({}, readShopForm(), { image: src });
+          if (!isTempImg(src)) state._shopFile = null;
+        }
+        paintPhotoBox(boxSel, src);
+        render({ keepScroll: true });
+      } catch (e) {
+        if (err) err.textContent = (e && e.message) || 'Could not store image.';
+      }
     }
     function readItemForm() {
       const d = Object.assign({}, state.itemDraft || {});
