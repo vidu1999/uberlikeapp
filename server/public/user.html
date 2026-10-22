@@ -8,9 +8,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
-  <link rel="stylesheet" href="/css/ui.css?v=19a0" />
+  <link rel="stylesheet" href="/css/ui.css?v=19a1" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a4" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a5" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -1252,13 +1252,13 @@
         <div class="menu-hero">
           <img src="${shopImg(shop)}" alt="" />
           ${shopCap(shop)}
-          <button class="back-fab" style="position:absolute;top:12px;left:12px" data-back>←</button>
-          <div class="overlay">
-            <div class="name-row"><h1>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name)}</h1>${heartBtn(shop.id)}</div>
-            <div>${esc(shopRateText(shop))} · ${distKm(shop)} km</div>
-            <div>${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
-            ${shop.address ? `<div>${esc(shop.address)}</div>` : ''}
-          </div>
+          <button class="back-fab menu-back" type="button" data-back aria-label="Back">←</button>
+        </div>
+        <div class="menu-shop">
+          <div class="name-row"><h1>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name)}</h1>${heartBtn(shop.id)}</div>
+          <div class="meta">${esc(shopRateText(shop))} · ${distKm(shop)} km</div>
+          <div class="meta">${esc(shop.category)} · Open · ${esc(shop.hours || '08:00 AM – 10:00 PM')}</div>
+          ${shop.address ? `<div class="meta">${esc(shop.address)}</div>` : ''}
         </div>
         <div class="menu-tabs">
           <button class="${state.menuTab==='menu'?'on':''}" data-mtab="menu">Menu</button>

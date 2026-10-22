@@ -229,6 +229,8 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + env(safe-ar
 }
 .menu-hero .overlay .name-row h1 { flex: 1; min-width: 0; margin: 0; }
 .menu-hero .overlay .heart { color: #fff; }
+.menu-shop .heart { color: #F9A8A8; }
+.menu-shop .heart.on { color: #EF4444; }
 
 .live-pill {
   margin: 8px 16px;
@@ -243,9 +245,14 @@ html[data-role="rider"] .scroll { padding-bottom: calc(var(--bnav) + env(safe-ar
   display: flex; align-items: center; gap: 10px;
   padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 8px;
 }
+.back-row b, .chat-head b, .ie-head h1 {
+  min-width: 0; flex: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .back-fab {
   width: 40px; height: 40px; border: 0; border-radius: 50%; background: #F3F4F6;
   display: grid; place-items: center; cursor: pointer; color: #111; font-size: 18px;
+  flex: none; z-index: 3;
 }
 html[data-role="rider"] .back-fab,
 html[data-role="shop"] .back-fab {
