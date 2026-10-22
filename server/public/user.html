@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19zj" />
   <link rel="stylesheet" href="/css/ui.css?v=19zz" />
   <link rel="stylesheet" href="/css/track.css?v=19zt" />
-  <link rel="stylesheet" href="/css/qb.css?v=19zz" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a1" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -33,12 +33,15 @@
       { img: '/img/onboard-3.jpg', title: 'Track Your Order in Real Time', sub: 'See your order status and live location until it reaches you.' },
     ];
     const CATS = [
-      { id: 'All', label: 'All', map: 'All', img: '' },
-      { id: 'Burgers', label: 'Burgers', map: 'Fast Food', img: '/img/shop-burger.jpg' },
-      { id: 'Pizza', label: 'Pizza', map: 'Pizza', img: '/img/shop-pizza.jpg' },
-      { id: 'Bakery', label: 'Bakery', map: 'Bakery', img: '/img/shop-bakery.jpg' },
-      { id: 'Beverages', label: 'Beverages', map: 'Beverages', img: '/img/iced-coffee.jpg' },
-      { id: 'Favourites', label: 'Favourites', map: 'Favourites', img: '' },
+      { id: 'All', label: 'All', map: 'All', emoji: '🍽️' },
+      { id: 'Grocery', label: 'Grocery', map: 'Grocery', emoji: '🛒' },
+      { id: 'Pizza', label: 'Pizza', map: 'Pizza', emoji: '🍕' },
+      { id: 'Burgers', label: 'Burgers', map: 'Fast Food', emoji: '🍔' },
+      { id: 'Breakfast', label: 'Breakfast', map: 'Breakfast', emoji: '🥞' },
+      { id: 'Fast food', label: 'Fast food', map: 'Fast Food', emoji: '🍟' },
+      { id: 'Bakery', label: 'Bakery', map: 'Bakery', emoji: '🥐' },
+      { id: 'Beverages', label: 'Drinks', map: 'Beverages', emoji: '🥤' },
+      { id: 'Favourites', label: 'Favourites', map: 'Favourites', emoji: '' },
     ];
     const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z" fill="#fff"/><path d="M8 10.5c0-1.2.9-2.2 2.4-2.6V7h1.3v.8c1.4.3 2.4 1.2 2.4 2.4 0 1.6-1.4 2.2-2.7 2.5v2.2c.7-.1 1.3-.4 1.7-.8l.9.8c-.7.7-1.7 1.1-2.6 1.3V17h-1.3v-.8c-1.6-.3-2.6-1.3-2.6-2.7 0-1.5 1.2-2.2 2.6-2.5V10c-.6.2-1.1.5-1.1 1.1H8zm3.7 1.3c.7-.2 1.2-.4 1.2-.9s-.5-.8-1.2-.9v1.8zm-1.3 3.3v-1.8c-.7.2-1.2.5-1.2 1s.5.7 1.2.8z" fill="#00C853"/></svg>';
 
@@ -54,6 +57,7 @@
       screen: 'home',
       query: '',
       category: 'All',
+      ff: { offers: false, open: false, rating: 0, price: '', sort: 'near', menu: '' },
       shopId: null,
       menuTab: 'menu',
       menuCat: 'All',
@@ -578,7 +582,12 @@
       const c = String(s.category || '');
       if (c === cat.map || c === cat.id) return true;
       if (cat.id === 'Burgers' && /fast food|burger/i.test(c)) return true;
+      if (cat.id === 'Fast food' && /fast food|burger|fried|fries/i.test(c)) return true;
+      if (cat.id === 'Breakfast' && /breakfast|hopper|pancake|egg/i.test(c)) return true;
+      if (cat.id === 'Grocery' && /grocery|supermarket|keells|food city/i.test(c)) return true;
       if (cat.id === 'Beverages' && /coffee|beverage|drink|tea/i.test(c)) return true;
+      if (cat.id === 'Pizza' && /pizza/i.test(c)) return true;
+      if (cat.id === 'Bakery' && /bakery|cake|pastry|bread/i.test(c)) return true;
       return false;
     }
     function shopMatchesQuery(s, q) {
@@ -587,10 +596,34 @@
       if (blob.includes(q)) return true;
       return (API.items || []).some((it) => it.shopId === s.id && [it.name, it.category, it.desc, it.description].join(' ').toLowerCase().includes(q));
     }
+    function shopRateVal(s) {
+      if (!(Number(s && s.reviews) > 0)) return -1;
+      return Number(s.rating) || 0;
+    }
+    function shopHasOffer(s) {
+      return !!(s && API.shopOfferCaption && API.shopOfferCaption(s.id));
+    }
+    function shopMatchesFilters(s) {
+      const ff = state.ff || {};
+      if (ff.offers && !shopHasOffer(s)) return false;
+      if (ff.open && s && s.isOpen === false) return false;
+      if (Number(ff.rating) > 0 && shopRateVal(s) < Number(ff.rating)) return false;
+      const fee = shopFeeOf(s);
+      if (ff.price === 'low' && fee > 200) return false;
+      if (ff.price === 'mid' && (fee < 201 || fee > 300)) return false;
+      if (ff.price === 'high' && fee < 301) return false;
+      return true;
+    }
     function filteredShops() {
       const q = state.query.trim().toLowerCase();
-      let shops = (API.shops || []).filter((s) => shopMatchesCat(s) && shopMatchesQuery(s, q));
-      return shops.slice().sort((a, b) => distKm(a) - distKm(b));
+      let shops = (API.shops || []).filter((s) => shopMatchesCat(s) && shopMatchesQuery(s, q) && shopMatchesFilters(s));
+      const sort = (state.ff && state.ff.sort) || 'near';
+      return shops.slice().sort((a, b) => {
+        if (sort === 'rating') return shopRateVal(b) - shopRateVal(a) || (Number(b.reviews) || 0) - (Number(a.reviews) || 0);
+        if (sort === 'fee') return shopFeeOf(a) - shopFeeOf(b);
+        if (sort === 'name') return String(shopNameOf(a)).localeCompare(String(shopNameOf(b)));
+        return distKm(a) - distKm(b);
+      });
     }
     function itemMatchesCat(it) {
       const cat = CATS.find((c) => c.id === state.category) || CATS[0];
@@ -599,6 +632,9 @@
       const ic = String(it.category || '');
       if (ic === cat.id || ic === cat.map) return true;
       if (cat.id === 'Burgers' && /burger|fast food/i.test(ic)) return true;
+      if (cat.id === 'Fast food' && /fast food|burger|fried|fries|pizza/i.test(ic)) return true;
+      if (cat.id === 'Breakfast' && /breakfast|hopper|pancake|egg/i.test(ic)) return true;
+      if (cat.id === 'Grocery' && /grocery|supermarket/i.test(ic)) return true;
       if (cat.id === 'Pizza' && /pizza/i.test(ic)) return true;
       if (cat.id === 'Bakery' && /bakery|cake|pastry|bread/i.test(ic)) return true;
       if (cat.id === 'Beverages' && /beverage|drink|coffee|tea|juice/i.test(ic)) return true;
@@ -609,6 +645,8 @@
       return (API.items || []).filter((it) => {
         if (API.itemOnSale ? !API.itemOnSale(it) : it.isAvailable === false) return false;
         if (!itemMatchesCat(it)) return false;
+        if (!shopMatchesFilters(API.shopOf(it.shopId))) return false;
+        if (state.ff && state.ff.offers && !(it.offer && it.offer.type) && !shopHasOffer(API.shopOf(it.shopId))) return false;
         if (!q) return state.category !== 'All';
         const shop = API.shopOf(it.shopId);
         return [it.name, it.category, it.desc, it.description, shop && shop.name].join(' ').toLowerCase().includes(q);
@@ -873,6 +911,45 @@
         </div>
       </div>`;
     }
+    const FF_CHE = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 9l6 6 6-6"/></svg>';
+    function filtersBar() {
+      const ff = state.ff || {};
+      const chip = (on, attrs, html) => `<button type="button" class="ue-chip${on ? ' on' : ''}" ${attrs}>${html}</button>`;
+      const ratingLab = ff.rating ? (Number(ff.rating).toFixed(1).replace(/\.0$/, '') + '+') : 'Rating';
+      const priceLab = ff.price === 'low' ? 'Rs.200−' : ff.price === 'mid' ? 'Rs.201–300' : ff.price === 'high' ? 'Rs.301+' : 'Price';
+      const sortLab = ff.sort === 'rating' ? 'Highest rated' : ff.sort === 'fee' ? 'Fee' : ff.sort === 'name' ? 'Name' : 'Sort';
+      let pop = '';
+      if (ff.menu === 'rating') {
+        pop = `<div class="ue-ff-mask" data-ff-close><div class="ue-ff-sheet" data-stop>
+          <b>Rating</b>
+          ${[['0','Any'],['3.5','3.5+'],['4','4.0+'],['4.5','4.5+']].map(([v,l]) => `<button type="button" class="${Number(ff.rating)===Number(v)?'on':''}" data-ff-set="rating" data-v="${v}">${l}</button>`).join('')}
+        </div></div>`;
+      } else if (ff.menu === 'price') {
+        pop = `<div class="ue-ff-mask" data-ff-close><div class="ue-ff-sheet" data-stop>
+          <b>Delivery fee</b>
+          ${[['','Any'],['low','Rs.200 or less'],['mid','Rs.201 – 300'],['high','Rs.301+']].map(([v,l]) => `<button type="button" class="${String(ff.price||'')===v?'on':''}" data-ff-set="price" data-v="${v}">${l}</button>`).join('')}
+        </div></div>`;
+      } else if (ff.menu === 'sort') {
+        pop = `<div class="ue-ff-mask" data-ff-close><div class="ue-ff-sheet" data-stop>
+          <b>Sort</b>
+          ${[['near','Near you'],['rating','Highest rated'],['fee','Lowest delivery fee'],['name','Name']].map(([v,l]) => `<button type="button" class="${ff.sort===v?'on':''}" data-ff-set="sort" data-v="${v}">${l}</button>`).join('')}
+          <button type="button" class="${ff.open?'on':''}" data-filter="open">Open now</button>
+        </div></div>`;
+      }
+      return `<div class="u-cats" data-rail="cats">
+          ${CATS.map((c) => `<button class="u-cat ${c.id==='Favourites'?'fav':''} ${state.category===c.id?'on':''}" data-cat="${c.id}">
+            <div class="ico emoji">${c.id==='Favourites' ? SVG.heartOn : (c.emoji || '•')}</div>
+            <span>${c.label}</span>
+          </button>`).join('')}
+        </div>
+        <div class="ue-filters" data-rail="filters">
+          ${chip(!!ff.offers, 'data-filter="offers"', 'Offers')}
+          ${chip(ff.sort === 'rating', 'data-filter="highest"', 'Highest rated')}
+          ${chip(Number(ff.rating) > 0, 'data-ff-open="rating"', '☆ ' + ratingLab + ' ' + FF_CHE)}
+          ${chip(!!ff.price, 'data-ff-open="price"', priceLab + ' ' + FF_CHE)}
+          ${chip(ff.sort !== 'near' || ff.open, 'data-ff-open="sort"', sortLab + ' ' + FF_CHE)}
+        </div>${pop}`;
+    }
     function locPermView() {
       return `<div class="qb-locperm" data-locperm>
         <div class="pin-big"><span class="live-dot"><i></i><i></i><b></b></span></div>
@@ -889,7 +966,9 @@
       const offers = systemOffers();
       const empty = state.category === 'Favourites'
         ? 'No favourite shops yet. Tap the heart next to a shop name.'
-        : 'No shops nearby yet. When a shop registers, they appear here.';
+        : ((state.ff && (state.ff.offers || state.ff.rating || state.ff.price || state.ff.open))
+          ? 'No shops match these filters.'
+          : 'No shops nearby yet. When a shop registers, they appear here.');
       const nearTitle = state.category === 'Favourites' ? 'Favourite shops' : 'Shops near you';
       return `<div class="scroll${cartCount() ? ' has-cartbar' : ''}">
         ${header()}
@@ -900,12 +979,7 @@
         </div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
         ${TrackUI.banner(live)}
-        <div class="u-cats">
-          ${CATS.map((c) => `<button class="u-cat ${c.id==='Favourites'?'fav':''} ${state.category===c.id?'on':''}" data-cat="${c.id}">
-            <div class="ico">${c.id==='Favourites' ? SVG.heartOn : (c.img ? `<img src="${c.img}" alt="" />` : SVG.grid)}</div>
-            <span>${c.label}</span>
-          </button>`).join('')}
-        </div>
+        ${filtersBar()}
         <div class="ue-head">
           <h2>${esc(nearTitle)}</h2>
           <button type="button" class="ue-arrow" data-go-search aria-label="See all shops">${UE_ARROW}</button>
@@ -927,7 +1001,6 @@
       const shops = filteredShops();
       const items = filteredItems();
       const shopHead = q ? 'Shops' : (state.category === 'Favourites' ? 'Favourite Shops' : (state.category === 'All' ? 'Popular Near You' : state.category));
-      const chips = CATS.map((c) => `<button class="s-chip ${state.category===c.id?'on':''}" data-cat="${c.id}">${esc(c.label)}</button>`).join('');
       let body = '';
       if (items.length) {
         body += `<div class="sec-row"><h2>Items</h2></div>` + items.slice(0, 40).map(itemRow).join('');
@@ -940,7 +1013,7 @@
       return `<div class="scroll qb-search-page">
         <div class="back-row"><button class="back-fab" data-tab="home">←</button><b>Search Shops & Items</b></div>
         <div class="u-search">${SVG.search}<input id="q" placeholder="Search for food, shops or items..." value="${esc(state.query)}" /></div>
-        <div class="s-chips">${chips}</div>
+        ${filtersBar()}
         ${body}
       </div>${nav()}`;
     }
@@ -2235,7 +2308,35 @@
           if (n) n.focus();
         };
       }
-      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; render({ keepScroll: true }); });
+      root.querySelectorAll('[data-cat]').forEach((b) => b.onclick = () => { state.category = b.dataset.cat; if (state.ff) state.ff.menu = ''; render({ keepScroll: true }); });
+      if (!state.ff) state.ff = { offers: false, open: false, rating: 0, price: '', sort: 'near', menu: '' };
+      root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        const k = b.dataset.filter;
+        if (k === 'offers') state.ff.offers = !state.ff.offers;
+        if (k === 'open') state.ff.open = !state.ff.open;
+        if (k === 'highest') state.ff.sort = state.ff.sort === 'rating' ? 'near' : 'rating';
+        state.ff.menu = '';
+        render({ keepScroll: true });
+      });
+      root.querySelectorAll('[data-ff-open]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        const k = b.dataset.ffOpen;
+        state.ff.menu = state.ff.menu === k ? '' : k;
+        render({ keepScroll: true });
+      });
+      root.querySelectorAll('[data-ff-set]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        const k = b.dataset.ffSet;
+        const v = b.dataset.v;
+        if (k === 'rating') state.ff.rating = Number(v) || 0;
+        if (k === 'price') state.ff.price = v || '';
+        if (k === 'sort') state.ff.sort = v || 'near';
+        state.ff.menu = '';
+        render({ keepScroll: true });
+      });
+      root.querySelectorAll('[data-ff-close]').forEach((b) => b.onclick = () => { state.ff.menu = ''; render({ keepScroll: true }); });
+      root.querySelectorAll('[data-stop]').forEach((el) => el.onclick = (e) => e.stopPropagation());
       root.querySelectorAll('[data-go-search]').forEach((b) => b.onclick = () => { state.screen = 'search'; render(); });
       root.querySelectorAll('[data-shop]').forEach((b) => b.onclick = () => { if (!b.dataset.shop) return; state.shopId = b.dataset.shop; state.screen = 'shop'; state.menuTab = 'menu'; state.menuCat = 'All'; render(); });
       root.querySelectorAll('[data-fav]').forEach((b) => b.onclick = (e) => {

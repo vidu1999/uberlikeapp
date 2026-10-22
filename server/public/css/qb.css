@@ -476,3 +476,41 @@
   border-radius: 16px; background: #eee; display: block;
 }
 .ue-store-body { padding: 10px 2px 0; }
+
+.u-cat .ico.emoji {
+  background: transparent; font-size: 34px; line-height: 1;
+  width: 58px; height: 58px;
+}
+.u-cat.on .ico.emoji { background: #F3F4F6; }
+.u-cat.fav .ico.emoji { color: #EF4444; background: #FEE2E2; }
+.u-cat.fav.on .ico.emoji { color: #EF4444; background: #FEE2E2; }
+.ue-filters {
+  display: flex; gap: 8px; overflow-x: auto;
+  padding: 8px 16px 12px;
+  scrollbar-width: none;
+}
+.ue-filters::-webkit-scrollbar { display: none; }
+.ue-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid #E5E7EB; background: #fff; color: #111;
+  border-radius: 22px; padding: 8px 14px;
+  font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap;
+}
+.ue-chip.on { background: #F3F4F6; border-color: #F3F4F6; }
+.ue-chip svg { display: block; }
+.ue-ff-mask {
+  position: fixed; inset: 0; background: rgba(17,24,39,.35);
+  z-index: 40; display: flex; align-items: flex-end; justify-content: center;
+}
+.ue-ff-sheet {
+  width: 100%; max-width: 520px; background: #fff; color: #111;
+  border-radius: 18px 18px 0 0; padding: 16px 16px 28px;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.12);
+}
+.ue-ff-sheet b { display: block; font-size: 16px; font-weight: 800; margin: 0 0 10px; }
+.ue-ff-sheet button {
+  display: block; width: 100%; text-align: left; border: 0; background: #fff;
+  padding: 12px 4px; font-weight: 700; font-size: 15px; cursor: pointer;
+  border-bottom: 1px solid #F3F4F6;
+}
+.ue-ff-sheet button.on { color: #00C853; }
