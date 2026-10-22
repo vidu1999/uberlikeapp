@@ -9,14 +9,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zf" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zg" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19aa"></script>
+  <script src="/js/api.js?v=19ab"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -612,6 +612,51 @@
       </div>${nav()}`;
     }
 
+    function docStatus(photo, num, ready) {
+      if (ready) return 'Verified  ✓';
+      if (photo && !num) return 'Photo uploaded · enter the number';
+      if (num && !photo) return 'Number saved · upload photo';
+      if (photo) return 'Uploaded';
+      return 'Tap to upload';
+    }
+    function verifyFormHtml() {
+      const d = riderDocs();
+      const nicOk = !!(d.nic && d.nicPhoto);
+      const licOk = !!(d.licenseId && d.licensePhoto);
+      const vehOk = !!(d.plate && d.registered);
+      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
+      const type = d.vehicleType || 'Motorcycle';
+      return `<div class="rd-block rd-verify-card" style="text-align:left">
+          <h3>Driver verification</h3>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC, licence, and vehicle number. Then tap Save.'}</p>
+          <label class="fld" for="docNic">NIC number</label>
+          <input class="fld" id="docNic" inputmode="text" autocomplete="off" placeholder="123456789V or 12 digits" value="${esc(d.nic)}" />
+          <label class="rd-up">
+            <input type="file" accept="image/*" data-doc-file="nic" />
+            ${/^https?:|^data:/i.test(String(d.nicPhoto || '')) ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : (d.nicPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload NIC photo</span>')}
+          </label>
+          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.nicPhoto, d.nic, nicOk))}</div>
+          <label class="fld" for="docLic">Licence ID</label>
+          <input class="fld" id="docLic" inputmode="text" autocomplete="off" placeholder="Licence number" value="${esc(d.licenseId)}" />
+          <label class="rd-up">
+            <input type="file" accept="image/*" data-doc-file="license" />
+            ${/^https?:|^data:/i.test(String(d.licensePhoto || '')) ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : (d.licensePhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload licence photo</span>')}
+          </label>
+          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.licensePhoto, d.licenseId, licOk))}</div>
+          <label class="fld" for="vehType">Vehicle type</label>
+          <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          <label class="fld" for="vehPlate">Vehicle number</label>
+          <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
+          <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
+          <label class="rd-up">
+            <input type="file" accept="image/*" data-doc-file="reg" />
+            ${/^https?:|^data:/i.test(String(d.regPhoto || '')) ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : (d.regPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload registration book (optional)</span>')}
+          </label>
+          <div class="${vehOk ? 'ok' : 'wait'}">${vehOk ? 'Vehicle registered  ✓' : (d.plate ? 'Number saved · tick registered' : 'Enter vehicle number')}</div>
+          <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-save-verify style="position:static;width:100%;margin:12px 0 0">Save verification</button>
+        </div>`;
+    }
     function profileView() {
       const u = me();
       return `<div class="scroll rd-prof">
@@ -620,15 +665,16 @@
         <h2>${esc(u.name || 'Rider')}</h2>
         <div class="role">Delivery Partner</div>
         <div class="stars">${esc(riderStars())}</div>
-        <div class="rd-badge ${riderVerified() ? 'ok' : 'wait'}">${riderVerified() ? 'Driver verified' : 'Verification pending'}</div>
+        <div class="rd-badge ${riderVerified() ? 'ok' : 'wait'}">${riderVerified() ? 'Driver verified' : 'Add NIC, licence, vehicle'}</div>
         <button class="rd-edit" type="button" data-go="edit">Edit Profile</button>
         <div class="rd-prof-stats">
           <div><b>${done().length}</b><span>Completed</span></div>
           <div><b>${ongoing().length}</b><span>On Going</span></div>
           <div><b>0</b><span>Cancelled</span></div>
         </div>
+        ${verifyFormHtml()}
         <div class="rd-menu-list">
-          <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> My Documents <span>›</span></button>
+          <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> Driver verification <span>›</span></button>
           <button type="button" data-go="vehicle"><span class="mi">${ICO.car}</span> Vehicle Information <span>›</span></button>
           <button type="button" data-go="wallet"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
           <button type="button"><span class="mi">${ICO.gear}</span> Settings <span>›</span></button>
@@ -656,33 +702,10 @@
     }
 
     function docsView() {
-      const d = riderDocs();
-      const nicOk = !!(d.nic && d.nicPhoto);
-      const licOk = !!(d.licenseId && d.licensePhoto);
       return `<div class="scroll rd-list-page rd-docs">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Driver verification</h1></div>
         ${state.needDocs ? '<p class="rd-docs-note">Add NIC, driving licence, and a registered vehicle before you can Accept orders.</p>' : ''}
-        <div class="rd-block">
-          <h3>NIC verification</h3>
-          <label class="fld" for="docNic">NIC number</label>
-          <input class="fld" id="docNic" inputmode="text" autocomplete="off" placeholder="123456789V or 12 digits" value="${esc(d.nic)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" capture="environment" data-doc-file="nic" hidden />
-            ${d.nicPhoto ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : '<span>Tap to upload NIC photo</span>'}
-          </label>
-          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:8px">${nicOk ? 'NIC uploaded  ✓' : 'NIC pending'}</div>
-          <h3>Driving licence</h3>
-          <label class="fld" for="docLic">Licence ID</label>
-          <input class="fld" id="docLic" inputmode="text" autocomplete="off" placeholder="Licence number" value="${esc(d.licenseId)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" capture="environment" data-doc-file="license" hidden />
-            ${d.licensePhoto ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : '<span>Tap to upload licence photo</span>'}
-          </label>
-          <div class="${licOk ? 'ok' : 'wait'}">${licOk ? 'Licence uploaded  ✓' : 'Licence pending'}</div>
-          <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
-          <button class="rd-navbtn" type="button" data-save-docs style="position:static;width:100%;margin:8px 0 0">Save documents</button>
-          <button class="rd-edit" type="button" data-go="vehicle" style="display:block;width:100%;margin:12px 0 0;background:#123D28">Vehicle number ›</button>
-        </div>
+        ${verifyFormHtml()}
       </div>`;
     }
     function vehicleView() {
@@ -700,7 +723,7 @@
           <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
           <label class="fld">Vehicle registration photo</label>
           <label class="rd-up">
-            <input type="file" accept="image/*" capture="environment" data-doc-file="reg" hidden />
+            <input type="file" accept="image/*" data-doc-file="reg" />
             ${d.regPhoto ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : '<span>Tap to upload registration book</span>'}
           </label>
           <div class="kv"><span>License plate</span><b>${esc(d.plate || '—')}</b></div>
@@ -1537,28 +1560,33 @@
           }
         };
       });
-      const saveDocs = root.querySelector('[data-save-docs]');
-      if (saveDocs) saveDocs.onclick = async () => {
+      async function saveVerify(btn) {
         const err = root.querySelector('[data-err]');
         if (err) err.textContent = '';
-        saveDocs.disabled = true;
+        if (btn) btn.disabled = true;
         try {
           const fields = collectDocs();
           if (!fields.nic) throw new Error('Enter your NIC number.');
+          if (!fields.licenseId) throw new Error('Enter your driving licence ID.');
+          if (!fields.plate) throw new Error('Enter your vehicle number.');
+          if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
           const d = riderDocs();
           if (!d.nicPhoto) throw new Error('Upload your NIC photo.');
-          if (!fields.licenseId) throw new Error('Enter your driving licence ID.');
           if (!d.licensePhoto) throw new Error('Upload your driving licence photo.');
           state.needDocs = !riderVerified();
-          state.screen = riderVerified() ? '' : 'vehicle';
+          state.screen = '';
           state.tab = 'profile';
           render(true);
         } catch (e) {
           if (err) err.textContent = (e && e.message) || 'Could not save';
-          saveDocs.disabled = false;
+          if (btn) btn.disabled = false;
         }
-      };
+      }
+      const saveDocs = root.querySelector('[data-save-docs]');
+      if (saveDocs) saveDocs.onclick = () => saveVerify(saveDocs);
+      const saveVerifyBtn = root.querySelector('[data-save-verify]');
+      if (saveVerifyBtn) saveVerifyBtn.onclick = () => saveVerify(saveVerifyBtn);
       const saveVeh = root.querySelector('[data-save-vehicle]');
       if (saveVeh) saveVeh.onclick = async () => {
         const err = root.querySelector('[data-err]');

@@ -1917,7 +1917,7 @@
   function parseLkPlate(raw) {
     const s = String(raw || '').toUpperCase().replace(/\s+/g, ' ').trim();
     if (!s) return '';
-    if (/^(?:(?:WP|SP|CP|NP|EP|NW|SG|UP|NC)\s+)?(?:[A-Z]{2,3}|[0-9]{2,3})[-\s]?\d{4}$/.test(s)) return s;
+    if (/^(?:(?:WP|SP|CP|NP|EP|NW|SG|UP|NC)[-\s]+)?(?:[A-Z]{2,3}|[0-9]{2,3})[-\s]?\d{4}$/.test(s)) return s;
     return '';
   }
   function parseLicenseId(raw) {
@@ -1990,13 +1990,26 @@
       regPhoto: String(next.regPhoto || ''),
       registered: next.registered === true,
     };
-    const patch = { address: RIDER_DOCS_MARK + JSON.stringify(pack) };
-    if (pack.plate) patch.vehicle = pack.vehicleType + ' · ' + pack.plate;
+    function docsPatch(body) {
+      const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
+      if (body.plate) patch.vehicle = body.vehicleType + ' · ' + body.plate;
+      return patch;
+    }
+    let patch = docsPatch(pack);
     if (sbConfigured()) {
       try {
         await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
       } catch (_) {
-        throw new Error('Could not save verification. Try again.');
+        const slim = Object.assign({}, pack);
+        ['nicPhoto', 'licensePhoto', 'regPhoto'].forEach(function (k) {
+          if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
+        });
+        patch = docsPatch(slim);
+        try {
+          await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
+        } catch (e2) {
+          throw new Error('Could not save verification. Try a smaller photo.');
+        }
       }
     }
     Object.assign(u, patch);
