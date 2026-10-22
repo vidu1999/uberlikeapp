@@ -1,0 +1,21 @@
+/*
+  Cache-Control: no-store, no-cache, must-revalidate
+  Permissions-Policy: geolocation=(self), identity-credentials-get=*
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+/js/*
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/css/*
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/*.html
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/webhooks/*
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: no-store
+
+/webhook
+  Content-Type: application/json; charset=utf-8
+  Cache-Control: no-store

@@ -1,0 +1,16 @@
+.git
+.github
+.dart_tool
+.idea
+android
+android.bak
+build
+lib
+test
+image-search
+node_modules
+server/data.json
+.env
+.env.local
+*.apk
+README.md

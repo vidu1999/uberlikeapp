@@ -1,0 +1,13 @@
+{
+  "name": "swiftdrop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live-linked User, Shop, and Rider delivery apps",
+  "scripts": {
+    "start": "node server/index.js",
+    "wipe-demo": "node server/wipe-demo.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

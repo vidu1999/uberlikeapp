@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="en" data-role="rider">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>QuickBite Rider</title>
+  <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/app.css?v=19ze" />
+  <link rel="stylesheet" href="/css/ui.css?v=19ze" />
+  <link rel="stylesheet" href="/css/track.css?v=19zv" />
+</head>
+<body>
+  <div class="app" id="root"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/live.js?v=19zj"></script>
+  <script src="/js/api.js?v=19a9"></script>
+  <script src="/js/maps.js?v=19zu"></script>
+  <script src="/js/track-ui.js?v=19zv"></script>
+  <script src="/js/otp-login.js?v=19zw"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    const APK_SHOP = 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/shop.apk';
+    const MARK = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 2c3.2 4.2 8 7.2 8 12a8 8 0 1 1-16 0c0-4.8 4.8-7.8 8-12z" fill="#fff"/><circle cx="12" cy="14" r="2.2" fill="#00C853"/></svg>';
+    const GOOGLE_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7 12.9 19.6C14.7 15.2 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.3 5.3C39.3 36.1 44 30.7 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>';
+    const ICO = {
+      phone: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+      lock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+      user: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      mail: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>',
+      id: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2"/><path d="M14 10h5M14 14h5"/></svg>',
+      license: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg>',
+      car: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><path d="M4 16v-3l2-5h12l2 5v3"/><circle cx="7" cy="16" r="2"/><circle cx="17" cy="16" r="2"/></svg>',
+      cam: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3"/></svg>',
+      faq: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.7.4-1.4.9-1.4 1.7V14"/><circle cx="12" cy="17" r=".6" fill="#00C853"/></svg>',
+      support: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+      live: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
+      issue: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><circle cx="12" cy="16" r=".6" fill="#00C853"/></svg>',
+      bank: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><path d="M3 10 12 4l9 6"/><path d="M5 10v8h14v-8"/><path d="M3 20h18"/><path d="M9 14v4M15 14v4"/></svg>',
+      gear: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00C853" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+    };
+    const state = {
+      tab: 'home', screen: '',
+      auth: API.user ? 'home' : ((API.verifiedPhone && API.verifiedPhone('rider')) ? 'register' : 'splash'),
+      fromReg: !!(API.verifiedPhone && API.verifiedPhone('rider') && !API.user),
+      orderId: null,
+      filter: 'new', online: true, mapHandle: null, liveLat: null, liveLng: null,
+      loginId: '', loginPw: '',
+      pendingAcceptId: null,
+      reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
+      wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
+      deliverPin: { open: false, orderId: '', err: '', sending: false, sent: false },
+    };
+    const WA_LOGO = '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>';
+    let gpsWatch = null;
+    let gpsStarted = false;
+    const SVG = {
+      home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11.5 12 5l8 6.5V20h-6v-6H10v6H4z"/></svg>',
+      orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.2"/></svg>',
+      earn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V6a5 5 0 0 1 10 0v2"/></svg>',
+      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      bag: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      wallet: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M16 12h4"/></svg>',
+      phone: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+      chat: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>',
+    };
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function oid(id) { return '#' + String(id||'').replace('_','-'); }
+    function me() { return API.user || {}; }
+    function isMine(o) {
+      const u = me();
+      return !!(o && (o.riderId === u.id || (u.phone && o.riderPhone === u.phone)));
+    }
+    function headingToShop(o) {
+      return o && (o.status === 'accepted' || (o.status === 'ready' && o.riderId));
+    }
+    function headingToCustomer(o) {
+      return o && (o.status === 'picked_up' || o.status === 'on_the_way');
+    }
+    function liveJob(o) {
+      return headingToShop(o) || headingToCustomer(o);
+    }
+    function available() {
+      return (API.orders || []).filter((o) => o.status === 'ready' && !o.riderId);
+    }
+    function ongoing() {
+      return (API.orders || []).filter((o) => isMine(o) && (o.status === 'ready' || liveJob(o)));
+    }
+    function activeJob() {
+      return (ongoing() || []).find((o) => o && o.status !== 'delivered' && o.status !== 'cancelled') || null;
+    }
+    function riderBusy() { return !!activeJob(); }
+    function shopPos(o) {
+      const shop = API.shopOf ? API.shopOf(o && o.shopId) : {};
+      const lat = Number(shop && shop.lat);
+      const lng = Number(shop && shop.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) return [lat, lng];
+      const slat = Number(o && o.shopLat);
+      const slng = Number(o && o.shopLng);
+      const dLat = Number(o && o.deliveryLat);
+      const dLng = Number(o && o.deliveryLng);
+      if (Number.isFinite(slat) && Number.isFinite(slng)) {
+        if (Number.isFinite(dLat) && Math.abs(slat - dLat) < 1e-5 && Math.abs(slng - dLng) < 1e-5) return null;
+        return [slat, slng];
+      }
+      return null;
+    }
+    function metersTo(lat, lng, to) {
+      if (lat == null || lng == null || !to) return Infinity;
+      const km = typeof haversineKm === 'function' ? haversineKm([lat, lng], to) : 99;
+      return km * 1000;
+    }
+    const CLOSE_M = 25;
+    function closeToShop(o) {
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, shopPos(o)) < CLOSE_M;
+    }
+    function closeToCust(o) {
+      return metersTo(state.liveLat ?? o.riderLat, state.liveLng ?? o.riderLng, [Number(o.deliveryLat), Number(o.deliveryLng)]) < CLOSE_M;
+    }
+    function tooFarMsg(o, kind) {
+      const hereLat = state.liveLat ?? o.riderLat;
+      const hereLng = state.liveLng ?? o.riderLng;
+      const to = kind === 'shop' ? shopPos(o) : [Number(o.deliveryLat), Number(o.deliveryLng)];
+      const m = metersTo(hereLat, hereLng, to);
+      const where = kind === 'shop' ? 'the shop' : 'the customer';
+      if (!Number.isFinite(m) || m === Infinity) return 'Need live GPS within 25 m of ' + where + ' to confirm.';
+      return Math.round(m) + ' m from ' + where + '. Get within 25 m to confirm.';
+    }
+    function done() {
+      return (API.orders || []).filter((o) => isMine(o) && o.status === 'delivered');
+    }
+    function earnOf(o) {
+      if (API.riderCreditOf) {
+        const c = API.riderCreditOf(o);
+        if (c > 0) return c;
+      }
+      const f = Number(o && o.deliveryFee);
+      if (f > 0) return f;
+      return Math.round(Number(o && o.totalAmount) || 0) || 150;
+    }
+    function greet() {
+      const h = new Date().getHours();
+      if (h < 12) return 'Good Morning';
+      if (h < 17) return 'Good Afternoon';
+      return 'Good Evening';
+    }
+    function firstName() { return String(me().name || 'Rider').split(/\s+/)[0]; }
+    function timeOf(o) {
+      const d = new Date(o.timestamp || o.updatedAt || Date.now());
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function thumb(o) {
+      const it = (o.items || [])[0];
+      if (it && it.id) {
+        const item = (API.items || []).find((i) => i.id === it.id);
+        if (item && item.image) return item.image;
+      }
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      return (shop && shop.image) || '/img/shop-bakery.jpg';
+    }
+    function kmOf(o) {
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      const from = state.liveLat != null
+        ? [state.liveLat, state.liveLng]
+        : (o.riderLat != null ? [Number(o.riderLat), Number(o.riderLng)] : [Number(shop.lat || o.deliveryLat), Number(shop.lng || o.deliveryLng)]);
+      const to = headingToShop(o) ? shopPos(o) : [Number(o.deliveryLat), Number(o.deliveryLng)];
+      if (!from || !to || from[0] == null || to[0] == null) return 2.4;
+      const km = typeof haversineKm === 'function' ? haversineKm(from, to) : 2.4;
+      return Math.max(0.05, km);
+    }
+    function telHref(phone) {
+      if (!phone) return '';
+      const d = String(phone).replace(/\s/g, '');
+      if (d.startsWith('+')) return 'tel:' + d;
+      if (d.startsWith('0')) return 'tel:+94' + d.slice(1);
+      return 'tel:' + d;
+    }
+    function riderPhoto() {
+      const u = me();
+      const p = String(u.photo || '').trim();
+      if (/^https?:\/\//i.test(p) || p.indexOf('/img/') === 0) return p;
+      return '/img/avatar-rider.jpg';
+    }
+    function vehicleInfo() {
+      const raw = String(me().vehicle || '').trim();
+      if (!raw || /^https?:/i.test(raw)) {
+        return { title: 'Motorcycle', plate: '—', type: 'Motorcycle', set: false };
+      }
+      const bits = raw.split(/\s*[·|,]\s*/).map((s) => s.trim()).filter(Boolean);
+      let title = bits[0] || 'Motorcycle';
+      let plate = bits[1] || '—';
+      if (bits.length === 1 && /^[A-Z]{1,3}[\s-]*\d{3,4}$/i.test(title)) {
+        plate = title;
+        title = 'Motorcycle';
+      }
+      return { title, plate, type: 'Motorcycle', set: true };
+    }
+    function riderStars() {
+      const rated = (API.orders || []).filter((o) => isMine(o) && o.ratings && Number(o.ratings.rider) > 0);
+      if (rated.length) {
+        const avg = rated.reduce((s, o) => s + Number(o.ratings.rider), 0) / rated.length;
+        return '★ ' + avg.toFixed(1) + ' (' + rated.length + ')';
+      }
+      const n = done().length;
+      const r = Number(me().rating);
+      if (Number.isFinite(r) && r > 0 && n) return '★ ' + r.toFixed(1) + ' (' + n + ')';
+      if (n) return n + ' deliveries';
+      return 'New rider';
+    }
+
+    function stopLiveGps() {
+      if (gpsWatch != null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(gpsWatch); } catch (_) {}
+      }
+      gpsWatch = null;
+    }
+    function startLiveGps(orderId) {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 800, timeout: 20000 };
+      const push = (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        state.liveLat = lat; state.liveLng = lng;
+        window.QB_LIVE = { lat, lng, acc: pos.coords.accuracy };
+        if (API.setViewOrigin) API.setViewOrigin(lat, lng);
+        if (!orderId) return;
+        const o = (API.orders || []).find((x) => x.id === orderId);
+        if (!o || o.status === 'delivered' || o.status === 'cancelled') return;
+        API.patch(orderId, { riderLat: lat, riderLng: lng });
+      };
+      navigator.geolocation.getCurrentPosition(push, () => {}, opt);
+      if (gpsWatch != null) return;
+      gpsWatch = navigator.geolocation.watchPosition(push, () => {}, opt);
+    }
+    function startRiderGps() {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 };
+      const onPos = (pos) => {
+        state.liveLat = pos.coords.latitude; state.liveLng = pos.coords.longitude;
+        window.QB_LIVE = { lat: state.liveLat, lng: state.liveLng, acc: pos.coords.accuracy };
+        if (API.setViewOrigin) API.setViewOrigin(state.liveLat, state.liveLng);
+        const live = ongoing().find((o) => liveJob(o) && o.status !== 'delivered');
+        if (live) API.patch(live.id, { riderLat: state.liveLat, riderLng: state.liveLng });
+      };
+      if (!gpsStarted) {
+        gpsStarted = true;
+        navigator.geolocation.getCurrentPosition(onPos, () => {}, opt);
+      }
+      if (gpsWatch != null) return;
+      gpsWatch = navigator.geolocation.watchPosition(onPos, () => {}, opt);
+    }
+
+    function nav() {
+      const t = state.tab;
+      return `<nav class="bnav">
+        <button data-tab="home" class="${t==='home'?'on':''}">${SVG.home}Home</button>
+        <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
+        <button data-tab="map" class="${t==='map'?'on':''}">${SVG.map}Map</button>
+        <button data-tab="earn" class="${t==='earn'?'on':''}">${SVG.earn}Earnings</button>
+        <button data-tab="profile" class="${t==='profile'?'on':''}">${SVG.profile}Profile</button>
+      </nav>`;
+    }
+
+    function splash() {
+      return `<div class="rd-splash">
+        <div class="rd-splash-top">
+          <div class="mark">${MARK}</div>
+          <h1>QuickBite</h1>
+          <p class="tag">Delivering Happiness</p>
+        </div>
+        <div class="rd-splash-bot">
+          <div class="meta"><b>Rider App</b><span>Fast · Safe · Reliable</span></div>
+        </div>
+      </div>`;
+    }
+    function loginView() {
+      return `<div class="rd-auth" data-rider-auth="login">
+        <div class="mark">${MARK}</div>
+        <div class="brand">QuickBite<small>Rider</small></div>
+        <h1>Welcome Back</h1>
+        <p class="sub">Sign in to continue delivering with QuickBite.</p>
+        <label>Phone Number</label>
+        <div class="rd-field">${ICO.phone}<input id="loginId" inputmode="tel" placeholder="+94 7X XXX XXXX" value="${esc(state.loginId)}" /></div>
+        <label>Password</label>
+        <div class="rd-field">${ICO.lock}<input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" /></div>
+        <button class="forgot" type="button" data-rider-forgot>Forgot Password?</button>
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-rider-login>Login</button>
+        <div class="or">or</div>
+        <button class="ghost" type="button" data-google>${GOOGLE_LOGO} Continue with Google</button>
+        <button class="ghost wa-btn" type="button" data-wa-login>${WA_LOGO} Continue with WhatsApp</button>
+        <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
+      </div>${waSheet()}`;
+    }
+    function waSheet() {
+      const w = state.wa || {};
+      if (!w.open) return '';
+      const codeStep = w.step === 'code';
+      const acceptMode = w.mode === 'accept';
+      const title = acceptMode ? 'Verify WhatsApp' : 'Continue with WhatsApp';
+      const sub = acceptMode
+        ? 'Verify WhatsApp before you accept an order. We send a 4-digit code to that chat.'
+        : 'Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.';
+      const verifyLabel = acceptMode ? 'Verify &amp; accept' : 'Verify &amp; enter';
+      return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
+        + '<b>' + title + '</b>'
+        + '<p>' + sub + '</p>'
+        + (codeStep
+          ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
+            + '<div class="otp-boxes">'
+            + '<input data-wad="0" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="1" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
+            + '</div><p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-verify>' + verifyLabel + '</button>'
+            + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
+          : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
+            + '<p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-send>Send WhatsApp code</button>'))
+        + '<button class="qb-skip" type="button" data-wa-close>Cancel</button>'
+        + '</div></div>';
+    }
+    function registerView() {
+      const r = state.reg;
+      return `<div class="rd-reg" data-rider-auth="register">
+        <div class="mark">${MARK}</div>
+        <div class="brand">QuickBite<small>Rider</small></div>
+        <h1>Create Account</h1>
+        <p class="sub">Join QuickBite and start earning today!</p>
+        <div class="role-tabs">
+          <button class="${r.role==='rider'?'on':''}" data-regrole="rider">Rider</button>
+          <button class="${r.role==='shop'?'on':''}" data-regrole="shop">Shop</button>
+        </div>
+        <label>Full Name</label>
+        <div class="rd-field">${ICO.user}<input id="regName" placeholder="Enter your name" value="${esc(r.name)}" /></div>
+        <label>Phone Number</label>
+        <div class="rd-field">${ICO.phone}<input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" /></div>
+        <label>Email Address</label>
+        <div class="rd-field">${ICO.mail}<input id="regEmail" placeholder="Enter your email (optional)" value="${esc(r.email)}" /></div>
+        <label>Password</label>
+        <div class="rd-field">${ICO.lock}<input id="regPw" type="password" placeholder="Create a password" value="${esc(r.password)}" /></div>
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-rider-register>${r.role==='shop' ? 'Download Shop App' : 'Register'}</button>
+        <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
+      </div>`;
+    }
+    function otpView() {
+      return OtpLogin.render({
+        role: 'rider',
+        title: 'Enter the 4-digit code',
+        sub: 'WhatsApp sent the code. Enter it to go online.',
+        phone: state.loginId,
+      });
+    }
+    function downloadView() {
+      return `<div class="rd-reg">
+        <div class="mark">🏪</div>
+        <h1>Shop Partner app</h1>
+        <p class="sub">Download the Shop APK, then sign in with your WhatsApp number.</p>
+        <a class="btn-green" href="${APK_SHOP}" style="display:block;text-align:center;text-decoration:none">Download shop.apk</a>
+        <div class="foot"><button type="button" data-go-login>Back to rider login</button></div>
+      </div>`;
+    }
+
+    function jobCard(o, { accept } = {}) {
+      const km = kmOf(o).toFixed(1);
+      const unread = !accept && API.unreadCount && API.unreadCount(o.id, 'rider');
+      return `<div class="rd-card-job" data-open="${esc(o.id)}">
+        ${unread ? '<i class="unread-dot"></i>' : ''}
+        <img src="${esc(thumb(o))}" alt="" />
+        <div class="grow">
+          <b>${esc(oid(o.id))}</b>
+          <div class="sub">${esc(o.shopName || 'Shop')}</div>
+          <div class="sub">${km} km · ${rs(earnOf(o))}</div>
+        </div>
+        ${accept && !riderBusy() ? `<button class="acc" data-pick="${esc(o.id)}">Accept</button>` : (accept && riderBusy() ? `<span class="acc" style="background:#1F2937">Busy</span>` : `<span class="acc" style="background:#1F2937">${esc(timeOf(o))}</span>`)}
+      </div>`;
+    }
+
+    function homeView() {
+      const jobs = available();
+      const today = done();
+      const pay = today.reduce((n, o) => n + earnOf(o), 0);
+      return `<div class="scroll rd-home">
+        <div class="rd-hi">
+          <div class="who">
+            <p class="greet">${greet()},</p>
+            <h1>${esc(firstName())}</h1>
+          </div>
+          <button class="rd-online ${state.online?'':'off'}" data-online type="button"><i></i> ${state.online ? 'Online' : 'Offline'}</button>
+          <img src="${riderPhoto()}" alt="" />
+        </div>
+        <div class="rd-kpis">
+          <div class="rd-kpi"><span>Today's Earnings</span><b>${rs(pay)}</b><small>${today.length} Deliveries</small></div>
+          <div class="rd-kpi"><span>Today's Orders</span><b>${today.length + ongoing().length}</b><small>On Going: ${ongoing().length}</small></div>
+        </div>
+        <div class="rd-short">
+          <button data-tab="orders"><span class="ico">${SVG.bag}</span>New Orders</button>
+          <button data-tab="map"><span class="ico">${SVG.map}</span>Map</button>
+          <button data-go="wallet"><span class="ico">${SVG.wallet}</span>Wallet</button>
+          <button data-tab="profile"><span class="ico">${SVG.profile}</span>Profile</button>
+        </div>
+        <div class="rd-sec"><h2>Available Orders</h2><button data-tab="orders">See all</button></div>
+        ${riderBusy() ? '<div class="pad muted">Finish your current order before accepting another.</div>' : ''}
+        ${state.online ? (jobs.map((o) => jobCard(o, { accept: true })).join('') || '<div class="pad muted">No ready jobs yet. When a shop taps Food is ready, Accept and go to the shop first.</div>')
+          : '<div class="pad muted">Go Online to see nearby orders.</div>'}
+      </div>${nav()}`;
+    }
+
+    function ordersView() {
+      const f = state.filter;
+      const list = f === 'going' ? ongoing() : f === 'done' ? done() : available();
+      return `<div class="scroll rd-home">
+        <div class="rd-head"><h1>Orders</h1></div>
+        <div class="rd-pills">
+          <button class="${f==='new'?'on':''}" data-filter="new">New (${available().length})</button>
+          <button class="${f==='going'?'on':''}" data-filter="going">On Going (${ongoing().length})</button>
+          <button class="${f==='done'?'on':''}" data-filter="done">Completed</button>
+        </div>
+        ${f==='new' && riderBusy() ? '<div class="pad muted">Finish your current order before accepting another.</div>' : ''}
+        ${list.map((o) => jobCard(o, { accept: f==='new' })).join('') || '<div class="pad muted">No orders in this tab.</div>'}
+      </div>${nav()}`;
+    }
+
+    function detailsView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      if (!o) return homeView();
+      const st = API.statusLabel ? API.statusLabel(o.status) : o.status;
+      const phone = o.customerPhone || '';
+      const items = o.items || [];
+      const claimed = isMine(o) || !!o.riderId;
+      const shop = API.shopOf ? API.shopOf(o.shopId) : {};
+      const canNav = isMine(o) && o.status !== 'delivered';
+      const navLabel = headingToCustomer(o) ? 'Navigate to customer' : 'Navigate to shop';
+      const lane = API.chatLane && API.chatLane(o);
+      const peerShop = lane === 'shop';
+      const peerName = peerShop ? ((API.shopTitle && API.shopTitle(shop)) || shop.name || o.shopName || 'Shop') : (o.customerName || 'Customer');
+      const peerPhone = peerShop ? (shop.phone || '') : phone;
+      const peerPhoto = peerShop ? (shop.image || '/img/shop-bakery.jpg') : '/img/avatar-user.jpg';
+      const peerSub = peerShop ? 'Shop · chat until pickup' : (phone || 'WhatsApp customer');
+      const showChat = API.canChat && API.canChat(o, 'rider');
+      return `<div class="scroll rd-details">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Order Details</h1></div>
+        <div class="hero-food">
+          <img src="${esc(thumb(o))}" alt="" />
+          <div class="grow">
+            <b>${esc(oid(o.id))}</b>
+            <div class="sub">${esc(o.shopName || '')}</div>
+            <div class="sub">${rs(o.totalAmount)} · ${kmOf(o).toFixed(1)} km</div>
+            <div class="st">${esc(st)}</div>
+          </div>
+        </div>
+        <div class="rd-cust">
+          <img src="${esc(peerPhoto)}" alt="" />
+          <div class="grow"><b>${esc(peerName)}</b><div class="sub">${esc(peerSub)}</div></div>
+          <div class="acts">
+            ${peerPhone ? `<a class="ico" href="${telHref(peerPhone)}">${SVG.phone}</a>` : ''}
+            ${showChat ? `<button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
+          </div>
+        </div>
+        <div class="rd-block">
+          <h3>Pickup</h3>
+          <b>${esc((API.shopTitle && API.shopTitle(shop)) || shop.name || o.shopName || 'Shop')}</b>
+          <div class="sub">${esc(shop.address || 'Shop pin on the map')}</div>
+        </div>
+        <div class="rd-block">
+          <h3>Delivery Address</h3>
+          <b>${esc(o.address || 'Customer pin on the map')}</b>
+        </div>
+        <div class="rd-block">
+          <h3>Payment</h3>
+          <b>${esc(o.paymentMethod || 'Cash on delivery')}</b>
+          <div class="sub">${(o.paid || (API.isCardMethod && API.isCardMethod(o.paymentMethod))) && o.paymentStatus !== 'refunded'
+            ? 'Paid by card — do not collect cash. Your delivery fee ' + rs(API.riderCreditOf ? API.riderCreditOf(o) : (o.riderCredit || o.deliveryFee || earnOf(o))) + ' is added to your wallet when you mark delivered.'
+            : 'Collect cash on delivery.'}</div>
+        </div>
+        <div class="rd-block">
+          <h3>Order Items</h3>
+          ${items.map((it) => `<div class="rd-item"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(it.name)}</b><div class="sub">x${it.qty} · ${rs(it.price)}</div></div></div>`).join('') || '<div class="sub">No items</div>'}
+        </div>
+        ${!claimed && o.status === 'ready' && !riderBusy() ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">Accept</button>` : ''}
+        ${!claimed && o.status === 'ready' && riderBusy() ? '<p class="pad muted">Finish your current order before accepting another.</p>' : ''}
+        ${canNav && liveJob(o) ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
+        ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
+      </div>`;
+    }
+
+    function liveView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      if (!o) return homeView();
+      if (o.status === 'delivered') return deliveredView();
+      return TrackUI.screen(o, 'rider', { back: 'data-close' }) + deliverPinSheet();
+    }
+    function deliverPinSheet() {
+      const p = state.deliverPin || {};
+      if (!p.open) return '';
+      const sending = !!p.sending;
+      return '<div class="qb-wa-mask" data-deliver-pin><div class="qb-wa-sheet">'
+        + '<b>Verify delivery</b>'
+        + '<p>A 4-digit code was sent to the customer’s WhatsApp. Ask them for it, then enter it here. This is only for card-order delivery confirmation.</p>'
+        + '<div class="otp-boxes">'
+        + '<input data-dpin="0" maxlength="1" inputmode="numeric" />'
+        + '<input data-dpin="1" maxlength="1" inputmode="numeric" />'
+        + '<input data-dpin="2" maxlength="1" inputmode="numeric" />'
+        + '<input data-dpin="3" maxlength="1" inputmode="numeric" />'
+        + '</div>'
+        + '<p class="err" data-dpin-err>' + esc(p.err || (sending ? 'Sending code on WhatsApp…' : '')) + '</p>'
+        + '<button class="btn-green" type="button" data-dpin-ok ' + (sending ? 'disabled' : '') + '>Verify &amp; complete</button>'
+        + '<button class="btn-ghost-qb" type="button" data-dpin-resend ' + (sending ? 'disabled' : '') + '>Resend on WhatsApp</button>'
+        + '<button class="qb-skip" type="button" data-dpin-close>Cancel</button>'
+        + '</div></div>';
+    }
+    function paintDeliverPinErr() {
+      const el = document.querySelector('[data-dpin-err]');
+      const p = state.deliverPin || {};
+      if (el) el.textContent = p.err || (p.sending ? 'Sending code on WhatsApp…' : '');
+    }
+    function ensureDeliverSheet() {
+      const root = document.getElementById('root');
+      const p = state.deliverPin || {};
+      const existing = root && root.querySelector('[data-deliver-pin]');
+      if (!p.open) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (!existing) {
+        root.insertAdjacentHTML('beforeend', deliverPinSheet());
+        bindDeliverPin();
+        return;
+      }
+      paintDeliverPinErr();
+      existing.querySelectorAll('[data-dpin-ok], [data-dpin-resend]').forEach((b) => {
+        b.disabled = !!p.sending;
+      });
+    }
+
+    function deliveredView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId) || {};
+      return `<div class="rd-done">
+        <div class="box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg></div>
+        <h1>Order Delivered!</h1>
+        <p>Great job! You completed the delivery successfully.</p>
+        <div class="pay"><span>Earnings</span><b>${rs(earnOf(o))}</b></div>
+        <button class="ghost" type="button" data-open="${esc(o.id || '')}">View Order Details</button>
+        <button class="btn-green" type="button" data-tab="home">Back to Home</button>
+      </div>`;
+    }
+
+    function earnView() {
+      const list = done();
+      const pay = list.reduce((n, o) => n + earnOf(o), 0);
+      const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const buckets = [0,0,0,0,0,0,0];
+      list.forEach((o) => {
+        const d = new Date(o.timestamp || Date.now());
+        const i = (d.getDay() + 6) % 7;
+        buckets[i] += earnOf(o);
+      });
+      const max = Math.max(1, ...buckets);
+      const dist = list.reduce((n, o) => n + kmOf(o), 0);
+      return `<div class="scroll rd-earn">
+        <div class="rd-head"><h1>Earnings</h1></div>
+        <div class="big"><b>${rs(pay)}</b><span>${list.length} Deliveries · Today</span></div>
+        <div class="rd-chart">${buckets.map((v) => `<i class="${v?'on':''}" style="height:${Math.max(8, Math.round(v/max*110))}px"></i>`).join('')}</div>
+        <div class="rd-days">${days.map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="rd-stats3">
+          <div><b>${list.length}</b><span>Total Deliveries</span></div>
+          <div><b>${dist.toFixed(1)} km</b><span>Total Distance</span></div>
+          <div><b>${list.length ? rs(pay / list.length) : 'Rs. 0'}</b><span>Avg. per Delivery</span></div>
+        </div>
+        <div class="rd-sec"><h2>Recent Transactions</h2></div>
+        ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">Complete a delivery to see earnings.</div>'}
+      </div>${nav()}`;
+    }
+
+    function walletView() {
+      const list = done();
+      const pay = list.reduce((n, o) => n + earnOf(o), 0);
+      return `<div class="scroll rd-earn rd-wallet">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Wallet</h1></div>
+        <div class="bal"><div><span>Available Balance</span><b>${rs(pay)}</b></div><button class="wd" data-withdraw type="button">Withdraw</button></div>
+        <div class="rd-sec"><h2>Transaction</h2></div>
+        ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>Order ${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">No payouts yet.</div>'}
+      </div>${nav()}`;
+    }
+
+    function profileView() {
+      const u = me();
+      return `<div class="scroll rd-prof">
+        <div class="rd-head"><h1></h1></div>
+        <img class="ava" src="${riderPhoto()}" alt="" />
+        <h2>${esc(u.name || 'Rider')}</h2>
+        <div class="role">Delivery Partner</div>
+        <div class="stars">${esc(riderStars())}</div>
+        <button class="rd-edit" type="button" data-go="edit">Edit Profile</button>
+        <div class="rd-prof-stats">
+          <div><b>${done().length}</b><span>Completed</span></div>
+          <div><b>${ongoing().length}</b><span>On Going</span></div>
+          <div><b>0</b><span>Cancelled</span></div>
+        </div>
+        <div class="rd-menu-list">
+          <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> My Documents <span>›</span></button>
+          <button type="button" data-go="vehicle"><span class="mi">${ICO.car}</span> Vehicle Information <span>›</span></button>
+          <button type="button" data-go="wallet"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
+          <button type="button"><span class="mi">${ICO.gear}</span> Settings <span>›</span></button>
+          <button type="button" data-go="help"><span class="mi">${ICO.faq}</span> Help & Support <span>›</span></button>
+        </div>
+        <button class="rd-out" type="button" id="logout">Log Out</button>
+      </div>${nav()}`;
+    }
+
+    function editView() {
+      const u = me();
+      return `<div class="scroll rd-list-page">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Edit Profile</h1></div>
+        <div class="rd-block">
+          <label>Full Name</label>
+          <div class="rd-field" style="background:#0e1c18;border:1px solid #1F2937;border-radius:16px;padding:0 14px;display:flex;align-items:center;gap:10px">${ICO.user}<input id="editName" value="${esc(u.name || '')}" placeholder="Your name" style="border:0;background:transparent;color:#fff;padding:12px 0;width:100%" /></div>
+          <label style="display:block;margin-top:12px">Email</label>
+          <div class="rd-field" style="background:#0e1c18;border:1px solid #1F2937;border-radius:16px;padding:0 14px;display:flex;align-items:center;gap:10px">${ICO.mail}<input id="editEmail" value="${esc(u.email || '')}" placeholder="Email (optional)" style="border:0;background:transparent;color:#fff;padding:12px 0;width:100%" /></div>
+          <label style="display:block;margin-top:12px">Phone</label>
+          <div class="rd-field" style="background:#0e1c18;border:1px solid #1F2937;border-radius:16px;padding:0 14px;display:flex;align-items:center;gap:10px">${ICO.phone}<input value="${esc(u.phone || '')}" readonly style="border:0;background:transparent;color:#9CA3AF;padding:12px 0;width:100%" /></div>
+          <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-save-profile style="position:static;width:100%;margin:12px 0 0">Save</button>
+        </div>
+      </div>`;
+    }
+
+    function docsView() {
+      const photoOk = !!me().photo;
+      const vehOk = vehicleInfo().set;
+      const rows = [
+        [ICO.id, 'NIC / ID Card', false],
+        [ICO.license, 'Driving License', false],
+        [ICO.car, 'Vehicle Registration', vehOk],
+        [ICO.cam, 'Profile Photo', photoOk],
+      ];
+      return `<div class="scroll rd-list-page">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>My Documents</h1></div>
+        ${rows.map((r) => `<div class="rd-row"><span class="mi">${r[0]}</span><div class="grow"><b>${r[1]}</b><div class="sub">${r[2] ? 'Uploaded' : 'Not uploaded'}</div></div><div class="${r[2]?'ok':'wait'}">${r[2] ? 'Verified  ✓' : 'Pending'}</div></div>`).join('')}
+      </div>`;
+    }
+    function vehicleView() {
+      const v = vehicleInfo();
+      return `<div class="scroll rd-list-page rd-veh">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Vehicle Information</h1></div>
+        <div class="rd-block">
+          <img src="/img/rider-moto.jpg?v=19z" alt="" />
+          <b>${esc(v.title)}</b>
+          <div class="kv"><span>License Plate</span><b>${esc(v.plate)}</b></div>
+          <div class="kv"><span>Vehicle Type</span><b>${esc(v.type)}</b></div>
+          <div class="kv"><span>Insurance</span><b>${v.set ? 'On file' : '—'}</b></div>
+          <div class="kv"><span>RC Book</span><b>${v.set ? 'On file' : '—'}</b></div>
+        </div>
+      </div>`;
+    }
+    function helpView() {
+      return `<div class="scroll rd-list-page">
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Help & Support</h1></div>
+        <div class="rd-menu-list">
+          <button type="button"><span class="mi">${ICO.faq}</span> FAQs <span>›</span></button>
+          <button type="button"><span class="mi">${ICO.support}</span> Contact Support <span>›</span></button>
+          <button type="button"><span class="mi">${ICO.live}</span> Live Chat <span>›</span></button>
+          <button type="button"><span class="mi">${ICO.issue}</span> Report an Issue <span>›</span></button>
+        </div>
+        <div class="rd-help-card">
+          <b>QuickBite Rider Support Team</b>
+          <p class="sub" style="color:#9FE7B8;margin:6px 0 0">We are here to help you!</p>
+        </div>
+      </div>`;
+    }
+
+    function chatBubblesHtml() {
+      const msgs = (API.chatMessages && API.chatMessages(state.orderId, 'rider')) || (API.messages || {})[state.orderId] || [];
+      return msgs.map((m) => `<div class="bubble ${m.role==='rider'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
+    }
+    function paintRiderChat(root) {
+      const b = (root || document).querySelector('#bubbles');
+      if (!b) return;
+      const html = chatBubblesHtml();
+      const fp = String((((API.chatMessages && API.chatMessages(state.orderId, 'rider')) || []).length)) + ':' + html.length;
+      if (b.getAttribute('data-fp') === fp) return;
+      const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
+      b.innerHTML = html;
+      b.setAttribute('data-fp', fp);
+      if (atBottom) b.scrollTop = b.scrollHeight;
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      const t = (root || document).querySelector('.chat-head b');
+      if (t && o && API.chatPeerName) t.textContent = API.chatPeerName(o, 'rider');
+      const input = (root || document).querySelector('#chatForm input[name="text"]');
+      if (input && o && API.chatLane) input.placeholder = API.chatLane(o) === 'shop' ? 'Message the shop…' : 'Message the customer…';
+    }
+    function bindChatKeyboard() {
+      const apply = () => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const kb = Math.max(0, (window.innerHeight || document.documentElement.clientHeight) - vv.height - (vv.offsetTop || 0));
+        document.documentElement.style.setProperty('--kb', kb + 'px');
+        const b = document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+      };
+      if (!bindChatKeyboard._on) {
+        bindChatKeyboard._on = true;
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
+        }
+        window.addEventListener('focusin', apply);
+        window.addEventListener('focusout', () => {
+          setTimeout(() => document.documentElement.style.setProperty('--kb', '0px'), 60);
+        });
+      }
+      apply();
+    }
+    function chatView() {
+      const o = (API.orders || []).find((x) => x.id === state.orderId);
+      const quick = (API.quickReplies && API.quickReplies('rider', o)) || [];
+      const peer = (API.chatPeerName && API.chatPeerName(o, 'rider')) || (o && o.customerName) || 'Customer';
+      const lane = (API.chatLane && API.chatLane(o)) || '';
+      const ph = lane === 'shop' ? 'Message the shop…' : 'Message the customer…';
+      return `<div class="chat-page" data-chat-root="${esc(state.orderId || '')}" data-lane="${esc(lane)}">
+        <div class="chat-head"><button class="back-fab" data-close type="button">←</button><b>${esc(peer)}</b></div>
+        <div class="bubbles" id="bubbles">${chatBubblesHtml()}</div>
+        <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+        <form class="composer" id="chatForm">
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="${esc(ph)}" />
+          <button class="btn sm green" type="submit">Send</button>
+        </form>
+      </div>`;
+    }
+
+    function allMapShops() {
+      const byId = {};
+      (API.shops || []).forEach((s) => {
+        if (!s || !s.id) return;
+        const lat = Number(s.lat), lng = Number(s.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const name = (API.shopTitle && API.shopTitle(s)) || s.name || 'Shop';
+        byId[s.id] = { id: s.id, name: name, lat: lat, lng: lng };
+      });
+      return byId;
+    }
+    function shopFromJob(o) {
+      if (!o || !o.shopId) return null;
+      const listed = allMapShops()[o.shopId];
+      if (listed) return listed;
+      const pos = shopPos(o);
+      if (!pos) return null;
+      return { id: o.shopId, name: o.shopName || 'Shop', lat: pos[0], lng: pos[1] };
+    }
+    function overviewShops() {
+      const job = activeJob();
+      if (job) {
+        const one = shopFromJob(job);
+        return one ? [one] : [];
+      }
+      const byId = allMapShops();
+      return Object.keys(byId).map((k) => byId[k]);
+    }
+    function mapDots() {
+      const job = activeJob();
+      const dots = {};
+      if (job && job.shopId) {
+        dots[job.shopId] = 'red';
+        return dots;
+      }
+      overviewShops().forEach((s) => { if (s && s.id) dots[s.id] = 'green'; });
+      return dots;
+    }
+    function mapNoteHtml() {
+      const job = activeJob();
+      if (job) {
+        const name = job.shopName || 'Shop';
+        return `<b data-map-note-title>On a job</b>
+          <div class="sub" data-map-note-sub>${esc(name)} · red pin until delivered. Finish this order before accepting another.</div>`;
+      }
+      const shops = overviewShops();
+      return `<b data-map-note-title>${state.online ? 'You are online' : 'You are offline'}</b>
+          <div class="sub" data-map-note-sub>${shops.length} shops · green pins. Accept one order at a time.</div>`;
+    }
+    function paintMapNote() {
+      const title = document.querySelector('[data-map-note-title]');
+      const sub = document.querySelector('[data-map-note-sub]');
+      if (!title && !sub) return;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = mapNoteHtml();
+      if (title) title.textContent = wrap.querySelector('[data-map-note-title]').textContent;
+      if (sub) sub.textContent = wrap.querySelector('[data-map-note-sub]').textContent;
+    }
+    function openShopFromMap(shopId) {
+      const job = activeJob();
+      if (job && job.shopId === shopId) {
+        state.orderId = job.id;
+        if (liveJob(job)) {
+          state.screen = 'live';
+          startLiveGps(job.id);
+        } else {
+          state.screen = 'details';
+        }
+        render(true);
+        return;
+      }
+      if (job) return;
+      const ready = (available() || []).find((o) => o && o.shopId === shopId);
+      if (!ready) return;
+      state.orderId = ready.id;
+      state.screen = 'details';
+      render(true);
+    }
+    function mapIdleView() {
+      return `<div class="rd-map-empty" data-rider-map style="position:relative;height:100%">
+        <div id="map" class="map" style="position:absolute;inset:0"></div>
+        <div class="rd-map-note">
+          ${mapNoteHtml()}
+        </div>
+      </div>${nav()}`;
+    }
+
+    function killMap() {
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+    }
+    function bindMapChrome(order) {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
+        if (!state.mapHandle) return;
+        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn();
+        else state.mapHandle.zoomOut();
+      });
+      const loc = root.querySelector('[data-locate]');
+      if (loc) loc.onclick = () => { if (state.mapHandle && order) state.mapHandle.locate(order); };
+    }
+
+    async function goOtp(phone) {
+      state.loginId = phone;
+      await API.sendOtp('rider', phone);
+      state.auth = 'otp';
+      render(true);
+    }
+
+    function goRiderRegister() {
+      const phone = (API.user && API.user.phone) || (API.verifiedPhone && API.verifiedPhone('rider')) || state.reg.phone || state.loginId;
+      if (phone) state.reg.phone = phone;
+      if (API.user && API.user.name && !/^(rider|guest|user)$/i.test(String(API.user.name).trim())) {
+        state.reg.name = API.user.name;
+      }
+      if (API.user && API.parkForRegister) API.parkForRegister('rider');
+      state.auth = 'register';
+      state.fromReg = true;
+      render(true);
+    }
+    function pendingRiderFilled() {
+      let p = API._pendingRider || {};
+      try {
+        if (!p.name) {
+          const raw = localStorage.getItem('sd_pending_rider') || sessionStorage.getItem('sd_pending_rider');
+          if (raw) p = Object.assign({}, JSON.parse(raw), p);
+        }
+      } catch (_) {}
+      const name = String((p && p.name) || '').trim();
+      return !!(name && !/^(rider|guest|user)$/i.test(name));
+    }
+    async function afterRiderOtp(out) {
+      const phone = (out && out.phone) || state.loginId || state.reg.phone;
+      const needRider = API.isRiderRegistered && !API.isRiderRegistered();
+      if (out && out.needsRegister && !pendingRiderFilled()) {
+        state.auth = 'register';
+        state.fromReg = true;
+        if (phone) state.reg.phone = phone;
+        render(true);
+        return;
+      }
+      if (pendingRiderFilled() && needRider) {
+        try {
+          await API.completeRiderRegister();
+        } catch (e) {
+          state.auth = 'register';
+          state.fromReg = true;
+          if (phone) state.reg.phone = phone;
+          render(true);
+          const err = document.querySelector('[data-err]');
+          if (err) err.textContent = (e && e.message) || 'Finish rider details.';
+          return;
+        }
+      }
+      state.tab = 'home';
+      state.auth = 'home';
+      state.fromReg = false;
+      startRiderGps();
+      render(true);
+    }
+    function bindRiderOtp() {
+      killMap();
+      const root = document.getElementById('root');
+      root.innerHTML = otpView();
+      OtpLogin.bind({ role: 'rider', onReady: afterRiderOtp });
+      const pi = document.getElementById('phone');
+      if (pi) pi.value = state.loginId;
+      const phoneStep = root.querySelector('[data-step="phone"]');
+      const codeStep = root.querySelector('[data-step="code"]');
+      if (phoneStep) phoneStep.classList.add('hidden');
+      if (codeStep) codeStep.classList.remove('hidden');
+      const sp = root.querySelector('[data-sent-phone]');
+      if (sp) sp.textContent = state.loginId;
+      const back = root.querySelector('[data-back-phone]');
+      if (back) back.onclick = () => { state.auth = state.fromReg ? 'register' : 'login'; render(true); };
+    }
+    function waPrefill() {
+      const p = (me().phone || state.loginId || '').trim();
+      const n = API.normalizePhone ? API.normalizePhone(p) : p;
+      if (API.isPlaceholderPhone && API.isPlaceholderPhone(n)) return '';
+      if (/^07\d{8}$/.test(n)) return n;
+      return '';
+    }
+    function paintWa() {
+      if (API.user) render(true, { keepScroll: true });
+      else render(true);
+    }
+    function askWa(orderId) {
+      state.pendingAcceptId = orderId || null;
+      state.wa = { open: true, step: 'phone', phone: waPrefill(), err: '', mode: 'accept' };
+      paintWa();
+    }
+    function mountWa() {
+      if (!(state.wa && state.wa.open)) return;
+      const root = document.getElementById('root');
+      if (!root.querySelector('[data-wa-sheet]')) root.insertAdjacentHTML('beforeend', waSheet());
+      bindWaSheet();
+    }
+    function needWa(orderId) {
+      if (API.isWhatsAppVerified && API.isWhatsAppVerified()) return false;
+      askWa(orderId);
+      return true;
+    }
+    async function finishDeliver(id) {
+      const o = (API.orders || []).find((x) => x.id === id);
+      if (!o || !headingToCustomer(o)) return false;
+      if (!closeToCust(o)) { alert(tooFarMsg(o, 'cust')); return false; }
+      const drop = { status: 'delivered' };
+      if (state.liveLat != null && state.liveLng != null) { drop.riderLat = state.liveLat; drop.riderLng = state.liveLng; }
+      if (API.needsDeliveryPin && API.needsDeliveryPin(o)) drop.deliveryConfirmed = true;
+      try {
+        await API.patch(id, drop);
+      } catch (e) {
+        alert((e && e.message) || tooFarMsg(o, 'cust'));
+        return false;
+      }
+      stopLiveGps();
+      try { await API.sendMessage(id, 'QuickBite', 'system', 'Order delivered.'); } catch (_) {}
+      state.deliverPin = { open: false, orderId: '', err: '', sending: false, sent: false };
+      state.orderId = id;
+      state.screen = 'delivered';
+      state.filter = 'done';
+      startRiderGps();
+      render(true);
+      return true;
+    }
+    async function startCardDeliver(id) {
+      const o = (API.orders || []).find((x) => x.id === id);
+      if (!o || !headingToCustomer(o)) return;
+      if (!closeToCust(o)) { alert(tooFarMsg(o, 'cust')); return; }
+      state.deliverPin = { open: true, orderId: id, err: '', sending: true, sent: false };
+      ensureDeliverSheet();
+      try {
+        await API.sendDeliveryPin(id);
+        state.deliverPin.sending = false;
+        state.deliverPin.sent = true;
+        state.deliverPin.err = '';
+      } catch (e) {
+        state.deliverPin.sending = false;
+        state.deliverPin.err = (e && e.message) || 'Could not send WhatsApp code.';
+      }
+      ensureDeliverSheet();
+      const first = document.querySelector('[data-dpin="0"]');
+      if (first) setTimeout(() => first.focus(), 50);
+    }
+    function bindDeliverPin() {
+      const sheet = document.querySelector('[data-deliver-pin]');
+      if (!sheet || sheet.dataset.bound === '1') {
+        paintDeliverPinErr();
+        return;
+      }
+      sheet.dataset.bound = '1';
+      const close = sheet.querySelector('[data-dpin-close]');
+      if (close) close.onclick = () => {
+        state.deliverPin = { open: false, orderId: '', err: '', sending: false, sent: false };
+        sheet.remove();
+      };
+      const codeValue = () => [...sheet.querySelectorAll('[data-dpin]')].map((i) => i.value).join('');
+      const verify = sheet.querySelector('[data-dpin-ok]');
+      if (verify) verify.onclick = async () => {
+        const id = state.deliverPin.orderId;
+        const code = codeValue();
+        if (code.length !== 4) {
+          state.deliverPin.err = 'Enter the 4-digit code.';
+          paintDeliverPinErr();
+          return;
+        }
+        verify.disabled = true;
+        try {
+          const ok = await API.verifyDeliveryPin(id, code);
+          if (!ok) {
+            state.deliverPin.err = 'Wrong code. Ask the customer for the WhatsApp delivery code.';
+            paintDeliverPinErr();
+            verify.disabled = false;
+            return;
+          }
+          const done = await finishDeliver(id);
+          if (!done) verify.disabled = false;
+        } catch (e) {
+          state.deliverPin.err = (e && e.message) || 'Could not verify.';
+          paintDeliverPinErr();
+          verify.disabled = false;
+        }
+      };
+      const resend = sheet.querySelector('[data-dpin-resend]');
+      if (resend) resend.onclick = async () => {
+        const id = state.deliverPin.orderId;
+        state.deliverPin.sending = true;
+        state.deliverPin.err = '';
+        paintDeliverPinErr();
+        resend.disabled = true;
+        try {
+          await API.sendDeliveryPin(id);
+          state.deliverPin.sending = false;
+          state.deliverPin.sent = true;
+          state.deliverPin.err = 'Code sent again on WhatsApp.';
+        } catch (e) {
+          state.deliverPin.sending = false;
+          state.deliverPin.err = (e && e.message) || 'Could not resend.';
+        }
+        paintDeliverPinErr();
+        resend.disabled = false;
+      };
+      sheet.querySelectorAll('[data-dpin]').forEach((el) => {
+        el.oninput = () => {
+          el.value = String(el.value || '').replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.getAttribute('data-dpin'));
+          if (el.value && i < 3) {
+            const next = sheet.querySelector('[data-dpin="' + (i + 1) + '"]');
+            if (next) next.focus();
+          }
+          if (codeValue().length === 4 && verify && !state.deliverPin.sending) verify.click();
+        };
+      });
+    }
+    async function acceptOrder(id) {
+      if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
+      if (riderBusy()) {
+        alert('Finish your current order before accepting another.');
+        return;
+      }
+      if (needWa(id)) return;
+      const u = me();
+      const body = { status: 'accepted', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+      if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+      try {
+        await API.patch(id, body);
+      } catch (e) {
+        if (e && e.code === 'WHATSAPP_REQUIRED') { askWa(id); return; }
+        alert((e && e.message) || 'Could not accept');
+        return;
+      }
+      try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
+      state.orderId = id;
+      state.screen = 'live';
+      startLiveGps(id);
+      render(true);
+    }
+    function bindWaSheet() {
+      const sheet = document.querySelector('[data-wa-sheet]');
+      if (!sheet) return;
+      const close = sheet.querySelector('[data-wa-close]');
+      if (close) close.onclick = () => { state.wa.open = false; state.pendingAcceptId = null; paintWa(); };
+      const send = sheet.querySelector('[data-wa-send]');
+      if (send) send.onclick = async () => {
+        const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
+        state.wa.phone = phone;
+        send.disabled = true;
+        send.textContent = 'Sending…';
+        try {
+          const out = await API.sendOtp('rider', phone);
+          state.wa.phone = out.phone || phone;
+          state.loginId = state.wa.phone;
+          state.wa.step = 'code';
+          state.wa.err = '';
+          paintWa();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not send WhatsApp code';
+          paintWa();
+        }
+      };
+      const resend = sheet.querySelector('[data-wa-resend]');
+      if (resend) resend.onclick = async () => {
+        try {
+          await API.sendOtp('rider', state.wa.phone);
+          state.wa.err = 'Code sent again.';
+          paintWa();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not resend';
+          paintWa();
+        }
+      };
+      const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+      async function verifyWa() {
+        const code = codeValue();
+        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; paintWa(); return; }
+        try {
+          const out = await API.verifyOtp('rider', state.wa.phone, code);
+          const acceptId = state.pendingAcceptId;
+          const acceptMode = state.wa.mode === 'accept';
+          state.wa.open = false;
+          state.wa.err = '';
+          state.pendingAcceptId = null;
+          if (acceptMode && acceptId && API.user && !(out && out.needsRegister)) {
+            await acceptOrder(acceptId);
+            return;
+          }
+          await afterRiderOtp(out);
+        } catch (e) {
+          state.wa.err = e.message || 'Could not verify';
+          paintWa();
+        }
+      }
+      const verifyBtn = sheet.querySelector('[data-wa-verify]');
+      if (verifyBtn) verifyBtn.onclick = verifyWa;
+      sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
+        el.oninput = () => {
+          el.value = el.value.replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.dataset.wad);
+          if (el.value && i < 3) {
+            const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
+            if (next) next.focus();
+          }
+          if (codeValue().length === 4) verifyWa();
+        };
+      });
+    }
+    function bindAuth() {
+      const root = document.getElementById('root');
+      const err = root.querySelector('[data-err]');
+      const goReg = root.querySelector('[data-go-reg]');
+      if (goReg) goReg.onclick = () => { state.auth = 'register'; render(true); };
+      const goLogin = root.querySelector('[data-go-login]');
+      if (goLogin) goLogin.onclick = () => { state.auth = 'login'; render(true); };
+      root.querySelectorAll('[data-regrole]').forEach((b) => b.onclick = () => {
+        state.reg.role = b.dataset.regrole;
+        render(true);
+      });
+      const rn = document.getElementById('regName');
+      if (rn) rn.oninput = () => { state.reg.name = rn.value; };
+      const rp = document.getElementById('regPhone');
+      if (rp) rp.oninput = () => { state.reg.phone = rp.value; };
+      const re = document.getElementById('regEmail');
+      if (re) re.oninput = () => { state.reg.email = re.value; };
+      const rw = document.getElementById('regPw');
+      if (rw) rw.oninput = () => { state.reg.password = rw.value; };
+      const lid = document.getElementById('loginId');
+      if (lid) lid.oninput = () => { state.loginId = lid.value; };
+      const lp = document.getElementById('loginPw');
+      if (lp) lp.oninput = () => { state.loginPw = lp.value; };
+      const waOpen = root.querySelector('[data-wa-login]');
+      if (waOpen) waOpen.onclick = () => {
+        state.wa = { open: true, step: 'phone', phone: '', err: '', mode: 'login' };
+        render(true);
+      };
+      bindWaSheet();
+      const forgot = root.querySelector('[data-rider-forgot]');
+      if (forgot) forgot.onclick = () => {
+        if (err) err.textContent = 'Use Continue with WhatsApp or Google to get back in.';
+      };
+      const googleBtn = root.querySelector('[data-google]');
+      if (googleBtn) googleBtn.onclick = async (e) => {
+        e.preventDefault();
+        if (err) err.textContent = '';
+        const html = googleBtn.innerHTML;
+        googleBtn.disabled = true;
+        googleBtn.textContent = 'Opening Google…';
+        try {
+          const profile = await API.googleSignIn();
+          await API.signInGoogle(profile);
+          state.loginId = '';
+          if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+          if (API.isRiderRegistered && !API.isRiderRegistered()) {
+            goRiderRegister();
+            return;
+          }
+          state.auth = 'home';
+          startRiderGps();
+          render(true);
+        } catch (ex) {
+          if (err) err.textContent = ex.message || 'Google sign-in failed';
+          googleBtn.disabled = false;
+          googleBtn.innerHTML = html;
+        }
+      };
+      root.querySelectorAll('[data-rider-login]').forEach((b) => {
+        b.onclick = async () => {
+          const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
+          const pw = ((document.getElementById('loginPw') || {}).value || state.loginPw || '');
+          state.loginId = id;
+          state.loginPw = pw;
+          if (err) err.textContent = '';
+          if (!id) { if (err) err.textContent = 'Enter your phone number.'; return; }
+          b.disabled = true;
+          const label = b.textContent;
+          try {
+            if (id.includes('@') || String(pw).trim()) {
+              if (id.includes('@')) {
+                b.textContent = 'Checking email…';
+                let acc = null;
+                try { acc = await API.findAccount('rider', id); } catch (_) { acc = null; }
+                if (!acc) {
+                  state.reg.email = id;
+                  state.auth = 'register';
+                  state.fromReg = true;
+                  render(true);
+                  const rerr = document.querySelector('[data-err]');
+                  if (rerr) rerr.textContent = 'This email is not registered. Create a rider account, then sign in with email and password.';
+                  return;
+                }
+              }
+              if (!String(pw).trim()) {
+                if (err) err.textContent = 'This email is registered. Enter your password to sign in.';
+                b.disabled = false;
+                b.textContent = label;
+                return;
+              }
+              b.textContent = 'Signing in…';
+              API.setPendingRider(null);
+              state.fromReg = false;
+              await API.signInPassword(id, pw, 'rider');
+              if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+              if (API.isRiderRegistered && !API.isRiderRegistered()) {
+                goRiderRegister();
+                return;
+              }
+              state.auth = 'home';
+              startRiderGps();
+              render(true);
+              return;
+            }
+            b.textContent = 'Sending WhatsApp…';
+            const phone = API.normalizePhone ? API.normalizePhone(id) : id;
+            state.loginId = phone;
+            state.reg.phone = phone;
+            API.setPendingRider(null);
+            state.fromReg = false;
+            await goOtp(phone);
+          } catch (e) {
+            const msg = (e && e.message) || 'Could not sign in';
+            if (e && (e.code === 'NO_ACCOUNT' || /not registered/i.test(msg) || /not .* credentials/i.test(msg))) {
+              if (id.includes('@')) state.reg.email = id;
+              state.auth = 'register';
+              state.fromReg = true;
+              render(true);
+              const rerr = document.querySelector('[data-err]');
+              if (rerr) rerr.textContent = msg;
+              return;
+            }
+            if (err) err.textContent = msg;
+            b.disabled = false;
+            b.textContent = label;
+          }
+        };
+      });
+      const regBtn = root.querySelector('[data-rider-register]');
+      if (regBtn) regBtn.onclick = async () => {
+        state.reg.name = (document.getElementById('regName') || {}).value || '';
+        state.reg.phone = (document.getElementById('regPhone') || {}).value || '';
+        state.reg.email = (document.getElementById('regEmail') || {}).value || '';
+        state.reg.password = (document.getElementById('regPw') || {}).value || '';
+        if (state.reg.role === 'shop') { state.auth = 'download'; render(true); return; }
+        if (err) err.textContent = '';
+        if (!state.reg.name.trim() || !state.reg.phone.trim()) {
+          if (err) err.textContent = 'Enter your name and phone.';
+          return;
+        }
+        const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+        const pending = { name: state.reg.name.trim(), email: state.reg.email.trim(), phone };
+        if (String(state.reg.password || '').trim().length >= 4) pending.password = String(state.reg.password).trim();
+        API.setPendingRider(pending);
+        state.loginId = phone;
+        state.fromReg = true;
+        const verified = API.verifiedPhone && API.verifiedPhone('rider') === phone;
+        regBtn.disabled = true;
+        try {
+          if (verified) {
+            await API.completeRiderRegister();
+            state.tab = 'home';
+            startRiderGps();
+            render(true);
+            return;
+          }
+          await goOtp(phone);
+        } catch (e) {
+          if (err) err.textContent = e.message;
+          regBtn.disabled = false;
+        }
+      };
+    }
+
+    function bind() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
+        state.tab = b.dataset.tab;
+        state.screen = '';
+        if (b.dataset.tab !== 'map') killMap();
+        render(true);
+      });
+      root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(true); });
+      root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(true); });
+      root.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => {
+        if (!b.dataset.open) return;
+        state.orderId = b.dataset.open;
+        state.screen = 'details';
+        render(true);
+      });
+      root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = () => {
+        state.orderId = b.dataset.openLive;
+        state.screen = 'live';
+        startLiveGps(state.orderId);
+        render(true);
+      });
+      const online = root.querySelector('[data-online]');
+      if (online) online.onclick = () => { state.online = !state.online; render(true); };
+      root.querySelectorAll('[data-pick]').forEach((b) => b.onclick = async (e) => {
+        e.stopPropagation();
+        await acceptOrder(b.dataset.pick);
+      });
+      root.querySelectorAll('[data-nav]').forEach((b) => b.onclick = async () => {
+        if (API.isRiderRegistered && !API.isRiderRegistered()) { goRiderRegister(); return; }
+        const id = b.dataset.nav;
+        if (needWa(id)) return;
+        const u = me();
+        const o = (API.orders || []).find((x) => x.id === id);
+        const body = { riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (!o || o.status === 'ready') body.status = 'accepted';
+        if (state.liveLat != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+        try {
+          await API.patch(id, body);
+        } catch (e) {
+          if (e && e.code === 'WHATSAPP_REQUIRED') { askWa(id); return; }
+          alert((e && e.message) || 'Could not start navigation');
+          return;
+        }
+        state.orderId = id;
+        state.screen = 'live';
+        startLiveGps(id);
+        render(true);
+      });
+      root.querySelectorAll('[data-pickup]').forEach((b) => b.onclick = async () => {
+        const id = b.dataset.pickup;
+        if (needWa(id)) return;
+        const o = (API.orders || []).find((x) => x.id === id);
+        if (!o) return;
+        if (!closeToShop(o)) { alert(tooFarMsg(o, 'shop')); return; }
+        const u = me();
+        const body = { status: 'picked_up', riderId: u.id, riderName: u.name, riderPhone: u.phone };
+        if (state.liveLat != null && state.liveLng != null) { body.riderLat = state.liveLat; body.riderLng = state.liveLng; }
+        try {
+          await API.patch(id, body);
+        } catch (e) {
+          alert((e && e.message) || tooFarMsg(o, 'shop'));
+          return;
+        }
+        try { await API.sendMessage(id, 'QuickBite', 'system', 'Order picked up. ' + (u.name || 'Rider') + ' is on the way to you.'); } catch (_) {}
+        state.orderId = id;
+        state.screen = 'live';
+        state.filter = 'going';
+        startLiveGps(id);
+        render(true);
+      });
+      root.querySelectorAll('[data-drop]').forEach((b) => b.onclick = async () => {
+        const id = b.dataset.drop;
+        const o = (API.orders || []).find((x) => x.id === id);
+        if (!o || !headingToCustomer(o)) return;
+        if (!closeToCust(o)) { alert(tooFarMsg(o, 'cust')); return; }
+        if (API.needsDeliveryPin && API.needsDeliveryPin(o)) {
+          await startCardDeliver(id);
+          return;
+        }
+        await finishDeliver(id);
+      });
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        const o = (API.orders || []).find((x) => x.id === b.dataset.chat);
+        if (API.canChat && !API.canChat(o, 'rider')) return;
+        state.orderId = b.dataset.chat;
+        state.screen = 'chat';
+        if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
+        render(true);
+      });
+      root.querySelectorAll('[data-close]').forEach((b) => b.onclick = () => {
+        if (state.screen === 'chat' || state.screen === 'live') { state.screen = 'details'; }
+        else { state.screen = ''; }
+        killMap();
+        render(true);
+      });
+      async function sendRiderChat(text) {
+        const body = String(text || '').trim();
+        if (!body || !state.orderId) return;
+        const form = document.getElementById('chatForm');
+        if (form && form.text) form.text.value = '';
+        try {
+          await API.sendMessage(state.orderId, me().name, 'rider', body);
+        } catch (err) { alert(err.message); return; }
+        if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
+        const keep = document.querySelector('[data-chat-root]');
+        if (keep) paintRiderChat(keep);
+        const input = document.querySelector('#chatForm input[name="text"]');
+        if (input) input.focus();
+      }
+      const form = document.getElementById('chatForm');
+      if (form) {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          await sendRiderChat(form.text && form.text.value);
+        };
+        const input = form.querySelector('input[name="text"]');
+        if (input) {
+          input.setAttribute('inputmode', 'text');
+          input.addEventListener('focus', bindChatKeyboard);
+        }
+      }
+      root.querySelectorAll('[data-quick]').forEach((b) => {
+        b.onclick = () => sendRiderChat(b.getAttribute('data-quick'));
+      });
+      const logout = document.getElementById('logout');
+      if (logout) logout.onclick = () => {
+        stopLiveGps();
+        gpsStarted = false;
+        killMap();
+        API.logout();
+        state.auth = 'login';
+        state.screen = '';
+        render(true);
+      };
+      const wd = root.querySelector('[data-withdraw]');
+      if (wd) wd.onclick = () => { wd.textContent = 'Requested'; };
+      const saveProf = root.querySelector('[data-save-profile]');
+      if (saveProf) saveProf.onclick = async () => {
+        const name = ((document.getElementById('editName') || {}).value || '').trim();
+        const email = ((document.getElementById('editEmail') || {}).value || '').trim();
+        const perr = root.querySelector('[data-err]');
+        if (perr) perr.textContent = '';
+        if (!name) { if (perr) perr.textContent = 'Enter your name.'; return; }
+        saveProf.disabled = true;
+        try {
+          if (API.saveProfile) await API.saveProfile({ name, email });
+          else if (API.user) API.user.name = name;
+          state.screen = '';
+          state.tab = 'profile';
+          render(true);
+        } catch (e) {
+          if (perr) perr.textContent = e.message || 'Could not save';
+          saveProf.disabled = false;
+        }
+      };
+    }
+
+    function render(force, opts) {
+      const root = document.getElementById('root');
+      const keep = !force && !!(opts && opts.keepScroll);
+      const sc0 = root.querySelector('.scroll');
+      const y = keep && sc0 ? sc0.scrollTop : 0;
+      try {
+        if (state.auth === 'otp') {
+          if (keep && root.querySelector('[data-otp-root]')) return;
+          bindRiderOtp();
+          return;
+        }
+        if (!API.user) {
+          if (keep && root.querySelector('[data-rider-auth], [data-otp-root]')) return;
+          killMap();
+          if (state.auth === 'splash') { root.innerHTML = splash(); return; }
+          if (state.auth === 'register') { root.innerHTML = registerView(); bindAuth(); return; }
+          if (state.auth === 'download') { root.innerHTML = downloadView(); bindAuth(); return; }
+          root.innerHTML = loginView();
+          bindAuth();
+          return;
+        }
+        if (API.isRiderRegistered && !API.isRiderRegistered()) {
+          if (API.user && API.user.name && !state.reg.name) state.reg.name = API.user.name;
+          if (API.user && API.user.email && !state.reg.email) state.reg.email = API.user.email;
+          killMap();
+          root.innerHTML = registerView();
+          bindAuth();
+          return;
+        }
+        startRiderGps();
+        if (state.screen === 'chat' && state.orderId) {
+          const oChat = (API.orders || []).find((x) => x.id === state.orderId);
+          if (!oChat || oChat.status === 'cancelled' || (API.canChat && !API.canChat(oChat, 'rider'))) {
+            state.screen = 'details';
+          } else {
+          const keep = root.querySelector('[data-chat-root="' + state.orderId + '"]');
+          const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
+          const lane = (API.chatLane && API.chatLane(oChat)) || '';
+          if (keep && keep.getAttribute('data-lane') === lane && (!force || typing)) {
+            paintRiderChat(keep);
+            return;
+          }
+          killMap();
+          if (API.markChatRead) API.markChatRead(state.orderId, 'rider');
+          root.innerHTML = chatView();
+          bind();
+          bindChatKeyboard();
+          const b = document.getElementById('bubbles');
+          if (b) b.scrollTop = b.scrollHeight;
+          const input = document.querySelector('#chatForm input[name="text"]');
+          if (input) setTimeout(() => input.focus(), 50);
+          return;
+          }
+        }
+        if (state.screen === 'live' && state.orderId) {
+          const o = (API.orders || []).find((x) => x.id === state.orderId);
+          if (o && o.status === 'delivered') {
+            killMap();
+            state.screen = 'delivered';
+          } else if (o) {
+            const existing = root.querySelector('[data-track-root="'+state.orderId+'"]');
+            if (!force && existing && state.mapHandle) {
+              state.mapHandle.update(o);
+              TrackUI.paint(existing, o, 'rider');
+              ensureDeliverSheet();
+              return;
+            }
+            killMap();
+            root.innerHTML = liveView();
+            bind();
+            bindDeliverPin();
+            bindMapChrome(o);
+            const el = document.getElementById('map');
+            if (el) state.mapHandle = mountTrackingMap(el, o);
+            return;
+          }
+        }
+        if (state.tab === 'map' && !state.screen) {
+          const shops = overviewShops();
+          const hot = mapDots();
+          const existing = root.querySelector('[data-rider-map]');
+          if (!force && existing && state.mapHandle && state.mapHandle.update) {
+            state.mapHandle.update({ lat: state.liveLat, lng: state.liveLng, shops: shops, hot: hot });
+            paintMapNote();
+            return;
+          }
+          killMap();
+          root.innerHTML = mapIdleView();
+          bind();
+          const el = document.getElementById('map');
+          if (el && typeof mountRiderOverviewMap === 'function') {
+            state.mapHandle = mountRiderOverviewMap(el, {
+              lat: state.liveLat,
+              lng: state.liveLng,
+              shops: shops,
+              hot: hot,
+              onShop: openShopFromMap,
+            });
+          }
+          return;
+        }
+        killMap();
+        if (state.screen === 'details') root.innerHTML = detailsView();
+        else if (state.screen === 'delivered') root.innerHTML = deliveredView();
+        else if (state.screen === 'wallet') root.innerHTML = walletView();
+        else if (state.screen === 'docs') root.innerHTML = docsView();
+        else if (state.screen === 'vehicle') root.innerHTML = vehicleView();
+        else if (state.screen === 'help') root.innerHTML = helpView();
+        else if (state.screen === 'edit') root.innerHTML = editView();
+        else if (state.tab === 'orders') root.innerHTML = ordersView();
+        else if (state.tab === 'earn') root.innerHTML = earnView();
+        else if (state.tab === 'profile') root.innerHTML = profileView();
+        else root.innerHTML = homeView();
+        bind();
+      } finally {
+        if (API.user) mountWa();
+        if (keep) {
+          const sc = root.querySelector('.scroll');
+          if (sc) sc.scrollTop = y;
+        }
+      }
+    }
+
+    if (API.user) {
+      state.auth = 'home';
+    } else if (API.verifiedPhone && API.verifiedPhone('rider')) {
+      state.auth = 'register';
+      state.reg.phone = API.verifiedPhone('rider');
+      state.fromReg = true;
+    } else {
+      setTimeout(() => {
+        if (!API.user && state.auth === 'splash') { state.auth = 'login'; render(true); }
+      }, 1600);
+    }
+    API.on(() => {
+      if (state.auth === 'otp') return;
+      if (state.wa && state.wa.open) return;
+      if (!API.user && document.querySelector('[data-otp-root], [data-rider-auth]')) return;
+      render(false, { keepScroll: true });
+    });
+    async function consumeGoogleRedirect() {
+      try {
+        if (!API.resumeGoogle) return false;
+        const u = await API.resumeGoogle();
+        if (!u) return false;
+        if (API.isRiderRegistered && !API.isRiderRegistered()) {
+          goRiderRegister();
+          return true;
+        }
+        state.auth = 'home';
+        startRiderGps();
+        render(true);
+        return true;
+      } catch (e) {
+        state.auth = 'login';
+        render(true);
+        const err = document.querySelector('[data-err]');
+        if (err) err.textContent = e.message || 'Google sign-in failed';
+        return true;
+      }
+    }
+    consumeGoogleRedirect().then((ok) => { if (!ok) render(); });
+  </script>
+</body>
+</html>

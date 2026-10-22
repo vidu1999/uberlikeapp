@@ -1,0 +1,2805 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../config.dart';
+import 'pay_cards.dart';
+import 'place.dart';
+import '../models/message.dart';
+import '../models/order.dart';
+import '../models/shop.dart';
+
+class OrderRepository {
+  OrderRepository._();
+  static final OrderRepository instance = OrderRepository._();
+
+  final ValueNotifier<List<Order>> ordersNotifier = ValueNotifier<List<Order>>(<Order>[]);
+  final ValueNotifier<bool> connectedNotifier = ValueNotifier<bool>(false);
+  final ValueNotifier<SessionUser?> userNotifier = ValueNotifier<SessionUser?>(null);
+  final ValueNotifier<List<CartLine>> cartNotifier = ValueNotifier<List<CartLine>>(<CartLine>[]);
+  final ValueNotifier<Set<String>> favsNotifier = ValueNotifier<Set<String>>(<String>{});
+  final Map<String, List<ChatMessage>> messages = {};
+  Map<String, dynamic> _rateBag = const {'shops': <String, dynamic>{}, 'riders': <String, dynamic>{}, 'items': <String, dynamic>{}};
+
+  Timer? _poll;
+  bool _started = false;
+  String? token;
+
+  List<Order> get orders => ordersNotifier.value;
+  final Map<String, Order> _keptOrders = {};
+  final Map<String, int> _chatRead = {};
+  SessionUser? get user => userNotifier.value;
+  Set<String> get favs => favsNotifier.value;
+
+  String _favKey() {
+    final email = (user?.email ?? '').trim().toLowerCase();
+    if (email.isNotEmpty) return 'qb_favs_e_$email';
+    final id = user?.id ?? '';
+    if (id.isNotEmpty) return 'qb_favs_$id';
+    final d = (user?.phone ?? '').replaceAll(RegExp(r'\D'), '');
+    final k = d.length >= 9 ? d.substring(d.length - 9) : (d.isEmpty ? 'guest' : d);
+    return 'qb_favs_$k';
+  }
+
+  Future<void> loadFavs() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      favsNotifier.value = (p.getStringList(_favKey()) ?? const <String>[]).toSet();
+    } catch (_) {}
+  }
+
+  Future<void> toggleFav(String id) async {
+    if (id.isEmpty) return;
+    final next = Set<String>.of(favs);
+    if (!next.add(id)) next.remove(id);
+    favsNotifier.value = next;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setStringList(_favKey(), next.toList());
+    } catch (_) {}
+  }
+
+  Order? orderById(String id) {
+    for (final o in orders) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  static String _normChatRole(String role) => role == 'user' ? 'customer' : role;
+
+  static String? chatLane(Order? o) {
+    if (o == null || o.status == OrderStatus.cancelled) return null;
+    if (o.status == OrderStatus.pickedUp || o.status == OrderStatus.onTheWay || o.status == OrderStatus.delivered) {
+      return 'customer';
+    }
+    final hasRider = (o.riderId != null && o.riderId!.isNotEmpty) || (o.riderName != null && o.riderName!.isNotEmpty);
+    if (hasRider || o.status == OrderStatus.accepted) return 'shop';
+    return null;
+  }
+
+  bool canChat(Order? o, String role) {
+    final lane = chatLane(o);
+    if (lane == null) return false;
+    final r = _normChatRole(role);
+    if (r == 'rider') return true;
+    if (r == 'shop') return lane == 'shop';
+    if (r == 'customer') return lane == 'customer';
+    return false;
+  }
+
+  String messageThread(ChatMessage m, Order? o) {
+    if (m.thread == 'shop' || m.thread == 'customer') return m.thread!;
+    if (m.id.startsWith('qbS.')) return 'shop';
+    if (m.id.startsWith('qbC.')) return 'customer';
+    if (m.role == 'shop') return 'shop';
+    if (m.role == 'customer' || m.role == 'user') return 'customer';
+    if (m.role == 'system') return 'system';
+    return chatLane(o) ?? 'shop';
+  }
+
+  List<ChatMessage> chatMessages(String orderId, String role) {
+    final o = orderById(orderId);
+    final r = _normChatRole(role);
+    final want = r == 'shop' ? 'shop' : r == 'customer' ? 'customer' : (chatLane(o) ?? 'shop');
+    final msgs = messages[orderId] ?? const <ChatMessage>[];
+    return msgs.where((m) {
+      if (m.role == 'system') return true;
+      return messageThread(m, o) == want;
+    }).toList();
+  }
+
+  String chatPeerName(Order? o, String role) {
+    if (o == null) return 'Chat';
+    final r = _normChatRole(role);
+    if (r == 'shop') return o.riderName ?? 'Rider';
+    if (r == 'customer') return o.riderName ?? 'Courier';
+    if (chatLane(o) == 'shop') return o.shopName.isNotEmpty ? o.shopName : 'Shop';
+    return o.customerName;
+  }
+
+  List<String> quickReplies(String role, Order? o) {
+    final r = _normChatRole(role);
+    final lane = chatLane(o);
+    if (r == 'shop') return const ['Food is ready', 'Come to the counter', 'Park in front'];
+    if (r == 'rider' && lane == 'shop') {
+      return const ["On my way to the shop", "I've arrived at the shop", 'Which entrance?'];
+    }
+    if (r == 'rider') {
+      return const ["I'm on my way", "I've arrived", "I'm downstairs", 'Please come to the gate'];
+    }
+    return const ['Where are you?', "I'm at the gate", 'Please call me', 'Leave at the door', 'Thank you'];
+  }
+
+  int unreadCount(String orderId, String myRole) {
+    final r = _normChatRole(myRole);
+    final o = orderById(orderId);
+    if ((r == 'customer' || r == 'shop') && !canChat(o, r)) return 0;
+    final readAt = _chatRead[orderId] ?? 0;
+    return chatMessages(orderId, r).where((m) => m.role != r && m.role != 'system' && m.ts > readAt).length;
+  }
+
+  void markChatRead(String orderId) {
+    _chatRead[orderId] = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  void _maybeUnfreeze() {
+    final u = user;
+    if (u == null || u.role != 'customer') return;
+    final active = orders.any((o) =>
+        (o.userId == u.id || o.customerPhone == u.phone) &&
+        o.status != OrderStatus.delivered &&
+        o.status != OrderStatus.cancelled);
+    if (!active) UserPlace.instance.unfreeze();
+  }
+
+  void seed() => start();
+
+  void start() {
+    if (_started) {
+      refresh();
+      return;
+    }
+    _started = true;
+    loadFavs();
+    PayCards.load(email: user?.email, id: user?.id, phone: user?.phone);
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) => refresh());
+    refresh();
+  }
+
+  Uri? _uri(String path) {
+    final base = AppConfig.normalize(AppConfig.baseUrl);
+    if (base.isEmpty) return null;
+    return Uri.parse('$base$path');
+  }
+
+  String? _otpPhone;
+  String? _otpRole;
+  String? _otpCode;
+  String? _otpBody;
+  DateTime? _otpExp;
+  Map<String, String>? pendingShop;
+  Map<String, String>? pendingRider;
+  bool openShopProfile = false;
+  static const _shopProfKey = 'qb_shop_profile_';
+  static const _shopTitleKey = 'qb_shop_title_';
+  static const _shopNamesKey = 'qb_shop_public_names';
+  String _lockedShopTitle = '';
+  Map<String, String> _shopOwners = {};
+  Map<String, String> _publicNames = {};
+  final Map<String, String> _persistedNames = {};
+
+  Future<void> _rememberShop(String phone, Map<String, String> p) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_shopProfKey${_normPhone(phone)}', jsonEncode(p));
+    } catch (_) {}
+  }
+
+  Future<Map<String, String>?> _recalledShop(String phone) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_shopProfKey${_normPhone(phone)}');
+      if (raw == null || raw.isEmpty) return null;
+      return Map<String, String>.from((jsonDecode(raw) as Map).map((k, v) => MapEntry('$k', '$v')));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _normPhone(String raw) {
+    var d = raw.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('94') && d.length == 11) d = '0${d.substring(2)}';
+    if (d.length == 9 && d.startsWith('7')) d = '0$d';
+    return d;
+  }
+
+  static const _demoShops = {
+    'SHOP_1', 'SHOP_2', 'SHOP_3', 'SHOP_4', 'SHOP_5',
+    'SHOP_6', 'SHOP_7', 'SHOP_8', 'SHOP_9', 'SHOP_10', 'SHOP_11',
+  };
+  static const _demoAccounts = {'USER_1', 'USER_2', 'SHOP_STAFF', 'RIDER_77'};
+  static const _demoPhones = {'0771234567', '0771112222', '0772223333', '0775556666'};
+
+  bool _isPlaceholderName(String? name) {
+    final n = (name ?? '').trim().toLowerCase();
+    return n.isEmpty || n == 'rider' || n == 'guest' || n == 'user' || n == 'shop owner' || n == 'delivery partner';
+  }
+  bool _isDemoShop(String? id) => _demoShops.contains(id);
+  bool _isDemoPhone(String? phone) => _demoPhones.contains(_normPhone(phone ?? ''));
+  bool _isDemoAccountMap(Map<String, dynamic>? a) {
+    if (a == null) return false;
+    return _demoAccounts.contains('${a['id']}') || _isDemoPhone('${a['phone'] ?? ''}');
+  }
+  bool _isDemoUser(SessionUser? u) {
+    if (u == null) return false;
+    return _demoAccounts.contains(u.id) || _isDemoPhone(u.phone);
+  }
+  bool _sameRole(String? a, String? b) {
+    final x = a == 'user' ? 'customer' : a;
+    final y = b == 'user' ? 'customer' : b;
+    return x == y;
+  }
+  String _phoneKey(String raw) {
+    final d = _normPhone(raw);
+    return d.length >= 9 ? d.substring(d.length - 9) : d;
+  }
+  String _roleTag(String? role) {
+    if (role == 'shop') return 'shop';
+    if (role == 'rider') return 'rider';
+    return 'customer';
+  }
+  String _accountIdFor(String phone, String role) => 'ACC_${_roleTag(role)}_${_phoneKey(phone)}';
+  String _shopIdFor(String phone) => 'SHOP_${_phoneKey(phone)}';
+  String shopIdForPhone(String phone) => _shopIdFor(phone);
+
+  bool _isPlaceholderShopName(String? name) {
+    final n = (name ?? '').trim().toLowerCase();
+    return n.isEmpty || n == 'shop' || n == 'my shop' || n == 'new shop' || n == 'shop owner';
+  }
+
+  bool _isOwnerLikeShopName(String? name, SessionUser? u) {
+    if (_isPlaceholderShopName(name)) return true;
+    if (u == null || u.role != 'shop') return false;
+    return name!.trim().toLowerCase() == u.name.trim().toLowerCase();
+  }
+
+  Future<void> _loadShopTitle(String phone) async {
+    _lockedShopTitle = '';
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('$_shopTitleKey${_normPhone(phone)}');
+    } catch (_) {}
+  }
+
+  Future<void> _lockShopTitle(String phone, String name) async {
+    _lockedShopTitle = '';
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('$_shopTitleKey${_normPhone(phone)}');
+    } catch (_) {}
+  }
+
+  String publicShopName(Shop? shop) {
+    final sid = shop?.id ?? user?.shopId ?? '';
+    if (sid.isNotEmpty && (_persistedNames[sid] ?? '').trim().isNotEmpty) {
+      return _persistedNames[sid]!.trim();
+    }
+    final n = (shop?.name ?? user?.shopName ?? '').trim();
+    if (n.isNotEmpty && !_isDemoShopName(n) && n.toLowerCase() != 'my shop') return n;
+    final keep = (user?.shopName ?? '').trim();
+    if (keep.isNotEmpty && keep.toLowerCase() != 'my shop' && !_isDemoShopName(keep)) return keep;
+    return n.isNotEmpty ? n : 'Shop';
+  }
+
+  Shop _shopWithName(Shop s, String name) => Shop(
+        id: s.id,
+        name: name,
+        category: s.category,
+        rating: s.rating,
+        isOpen: s.isOpen,
+        lat: s.lat,
+        lng: s.lng,
+        image: s.image,
+        km: s.km,
+        reviews: s.reviews,
+        hours: s.hours,
+        address: s.address,
+        promo: s.promo,
+      );
+
+  Future<void> _repairShopPublicName() async {
+    final u = user;
+    if (u == null || u.role != 'shop') return;
+    final sid = _linkedShopId(u);
+    if (sid.isEmpty) return;
+    final i = Catalog.shops.indexWhere((s) => s.id == sid);
+    if (i < 0) return;
+    final shop = Catalog.shops[i];
+    final next = shop.name.trim();
+    if (next.isEmpty) return;
+    if ((u.shopName ?? '') != next) {
+      userNotifier.value = SessionUser(
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        role: u.role,
+        address: u.address,
+        vehicle: u.vehicle,
+        shopId: u.shopId,
+        shopName: next,
+        email: u.email,
+        pin: u.pin,
+        photo: u.photo,
+      );
+      await _persist();
+    }
+  }
+
+  Future<void> _loadPublicNames() async {
+    _publicNames = {};
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_shopNamesKey);
+    } catch (_) {}
+  }
+
+  Future<void> _savePublicNames() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_shopNamesKey);
+    } catch (_) {}
+  }
+
+  Future<void> _purgeDemoPrefs() async {
+    _publicNames = {};
+    _lockedShopTitle = '';
+    try {
+      final p = await SharedPreferences.getInstance();
+      final drop = <String>[];
+      for (final k in p.getKeys()) {
+        if (k == _shopNamesKey || k.startsWith(_shopTitleKey)) drop.add(k);
+        if (k.startsWith(_shopProfKey)) {
+          try {
+            final raw = p.getString(k);
+            if (raw == null || raw.isEmpty) continue;
+            final m = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+            if (_isDemoShopName('${m['shopName'] ?? ''}')) {
+              m['shopName'] = '';
+              await p.setString(k, jsonEncode(m));
+            }
+          } catch (_) {}
+        }
+      }
+      for (final k in drop) {
+        await p.remove(k);
+      }
+    } catch (_) {}
+    final u = user;
+    if (u != null && _isDemoShopName(u.shopName)) {
+      userNotifier.value = SessionUser(
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        role: u.role,
+        address: u.address,
+        vehicle: u.vehicle,
+        shopId: u.shopId,
+        shopName: null,
+        email: u.email,
+        pin: u.pin,
+        photo: u.photo,
+      );
+    }
+  }
+
+  bool _leakedShopName(String name, String shopId) {
+    if (_isPlaceholderShopName(name)) return true;
+    final o = (_shopOwners[shopId] ?? '').trim().toLowerCase();
+    return o.isNotEmpty && name.trim().toLowerCase() == o;
+  }
+
+  bool _isDemoShopName(String? name) {
+    final n = (name ?? '').trim().toLowerCase();
+    return n == 'kandy bakers' || n == 'kandy baker' || n == 'kandy bakery' || n == 'demo shop';
+  }
+
+  Future<void> _syncPublicShopNames() async {}
+
+  String _linkedShopId(SessionUser? u) {
+    if (u == null || u.role != 'shop') return '';
+    var sid = (u.shopId ?? '').trim();
+    if (sid == 'null' || _isDemoShop(sid)) sid = '';
+    if (sid.isNotEmpty && _isPlaceholderPhone(u.phone) && sid == _shopIdFor(u.phone)) sid = '';
+    if (sid.isEmpty && u.phone.isNotEmpty && !_isPlaceholderPhone(u.phone)) sid = _shopIdFor(u.phone);
+    return sid;
+  }
+
+  SessionUser _withShopId(SessionUser u) {
+    final sid = _linkedShopId(u);
+    final next = sid.isEmpty ? null : sid;
+    if (next == u.shopId) return u;
+    return SessionUser(
+      id: u.id,
+      name: u.name,
+      phone: u.phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: next,
+      shopName: u.shopName,
+      email: u.email,
+      pin: u.pin,
+      photo: u.photo,
+    );
+  }
+
+  Future<String> _ensureShopRow({bool create = false}) async {
+    var u = user;
+    if (u == null || u.role != 'shop') throw Exception('Not a shop account.');
+    u = _withShopId(u);
+    if (u.shopId != user?.shopId) {
+      userNotifier.value = u;
+      await _persist();
+    }
+    final sid = _linkedShopId(u);
+    if (sid.isEmpty) {
+      if (create) throw Exception('Shop is not linked to this account.');
+      return '';
+    }
+    if (!_isPlaceholderPhone(u.phone) || sid != _shopIdFor(u.phone)) {
+      try {
+        await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'shop_id': sid});
+      } catch (_) {}
+    }
+    final rec = await _recalledShop(u.phone);
+    final p = pendingShop;
+    final pinLat = double.tryParse(p?['lat'] ?? rec?['lat'] ?? '');
+    final pinLng = double.tryParse(p?['lng'] ?? rec?['lng'] ?? '');
+    final pinAddr = (p?['address'] ?? rec?['address'] ?? '').trim();
+    List<dynamic> existing;
+    try {
+      existing = await _sbGet('shops?id=eq.$sid&select=*');
+    } catch (_) {
+      return sid;
+    }
+    if (existing.isEmpty) {
+      if (!create) return sid;
+      var name = (p?['shopName'] ?? '').trim();
+      if (name.isEmpty || _isDemoShopName(name) || _isPlaceholderShopName(name)) {
+        throw Exception('Register your shop first.');
+      }
+      await _sbUpsert('shops', [
+        {
+          'id': sid,
+          'name': name,
+          'category': 'Bakery',
+          'rating': 5,
+          'reviews': 0,
+          'is_open': true,
+          'lat': pinLat,
+          'lng': pinLng,
+          'hours': '08:00 AM – 10:00 PM',
+          'address': pinAddr,
+          'image': '/img/shop-bakery.jpg',
+          'promo': '',
+        }
+      ]);
+    } else {
+      final row = Map<String, dynamic>.from(existing.first as Map);
+      final patch = <String, dynamic>{};
+      if (row['lat'] == null && pinLat != null) patch['lat'] = pinLat;
+      if (row['lng'] == null && pinLng != null) patch['lng'] = pinLng;
+      final haveAddr = '${row['address'] ?? ''}'.trim().isNotEmpty;
+      if (!haveAddr && pinAddr.isNotEmpty) patch['address'] = pinAddr;
+      if (patch.isNotEmpty) {
+        try {
+          await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', patch);
+        } catch (_) {}
+      }
+      pendingShop = null;
+    }
+    return sid;
+  }
+  String _roleLabel(String? role) {
+    if (role == 'shop') return 'Shop';
+    if (role == 'rider') return 'Rider';
+    return 'User';
+  }
+  Never _alreadyThisRole(String role) {
+    final label = _roleLabel(role);
+    throw Exception(
+      'This number already has a $label account. Login instead — you cannot create another $label with the same number. You can still use this number for the other apps.',
+    );
+  }
+
+  Never _alreadyEmail(String role) {
+    final label = _roleLabel(role);
+    throw Exception(
+      'This email already has a $label account. Sign in with that email instead — one email and one WhatsApp number per $label account.',
+    );
+  }
+
+  bool _emailsEqual(String? a, String? b) {
+    final x = (a ?? '').trim().toLowerCase();
+    final y = (b ?? '').trim().toLowerCase();
+    return x.isNotEmpty && y.isNotEmpty && x == y && x.contains('@');
+  }
+
+  Future<List<Map<String, dynamic>>> _allAccounts() async {
+    try {
+      final rows = await _sbGet('accounts?select=*');
+      return rows
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .where((m) => !_isDemoAccountMap(m))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> _lookupPhone(String phone, String role) async {
+    final key = _phoneKey(phone);
+    if (key.isEmpty) return null;
+    final id = _accountIdFor(phone, role);
+    final n = _normPhone(phone);
+    final variants = {n, key, '0$key', '94$key'};
+    final byId = <String, Map<String, dynamic>>{};
+    void add(Map<String, dynamic> m) {
+      if (_isDemoAccountMap(m) || '${m['id']}'.isEmpty) return;
+      if (_phoneKey('${m['phone'] ?? ''}') != key && '${m['id']}' != id) return;
+      if (!_sameRole('${m['role']}', role)) return;
+      if (RegExp(r'^07\d{8}$').hasMatch(n) && _isPlaceholderPhone('${m['phone'] ?? ''}') && '${m['id']}' != id) return;
+      byId['${m['id']}'] = m;
+    }
+    try {
+      for (final raw in await _sbGet('accounts?id=eq.$id&select=*')) {
+        add(Map<String, dynamic>.from(raw as Map));
+      }
+    } catch (_) {}
+    for (final v in variants) {
+      if (v.isEmpty) continue;
+      try {
+        for (final raw in await _sbGet('accounts?phone=eq.$v&select=*')) {
+          add(Map<String, dynamic>.from(raw as Map));
+        }
+      } catch (_) {}
+    }
+    for (final m in await _allAccounts()) {
+      add(m);
+    }
+    if (byId.isEmpty) return null;
+    if (byId[id] != null) return byId[id];
+    for (final m in byId.values) {
+      if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) return m;
+    }
+    return byId.values.first;
+  }
+
+  Future<Map<String, dynamic>?> findAccount(String role, String id) async {
+    await _loadSupabaseConfig();
+    final phone = _normPhone(id);
+    final email = id.contains('@') ? id.trim().toLowerCase() : '';
+    try {
+      if (email.isNotEmpty) {
+        final list = await _allAccounts();
+        for (final m in list) {
+          if ('${m['email'] ?? ''}'.toLowerCase() != email) continue;
+          if (!_sameRole('${m['role']}', role)) continue;
+          return m;
+        }
+      }
+      return await _lookupPhone(phone, role);
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _enterAccount(String role, String phone) async {
+    phone = _normPhone(phone);
+    Map<String, dynamic>? user = await _lookupPhone(phone, role);
+    if (user == null) {
+      try {
+        final byId = await _sbGet('accounts?id=eq.${_accountIdFor(phone, role)}&select=*');
+        if (byId.isNotEmpty) {
+          final acc = Map<String, dynamic>.from(byId.first as Map);
+          if (!_isDemoAccountMap(acc) && _sameRole('${acc['role']}', role)) user = acc;
+        }
+      } catch (_) {}
+    }
+    if (user != null && role == 'shop') {
+      final p0 = pendingShop;
+      if (p0 != null && ((p0['shopName'] ?? '').isNotEmpty || (p0['ownerName'] ?? '').isNotEmpty)) {
+        final pe = (p0['email'] ?? '').trim().toLowerCase();
+        final ee = '${user['email'] ?? ''}'.trim().toLowerCase();
+        if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+          throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
+        }
+      }
+    }
+    var createdShop = false;
+    if (user == null && role == 'shop') {
+      final p = pendingShop;
+      if (p == null || ((p['shopName'] ?? '').isEmpty && (p['ownerName'] ?? '').isEmpty)) {
+        throw Exception('Register your shop first.');
+      }
+      final shopId = _shopIdFor(phone);
+      final pinLat = double.tryParse(p['lat'] ?? '');
+      final pinLng = double.tryParse(p['lng'] ?? '');
+      final pinAddr = (p['address'] ?? '').trim();
+      if (pinLat == null || pinLng == null) {
+        throw Exception('Pin your shop on the map.');
+      }
+      if (pinAddr.isEmpty) {
+        throw Exception('Enter the shop address.');
+      }
+      final typed = (p['shopName'] ?? '').trim();
+      if (typed.isEmpty || _isDemoShopName(typed) || _isPlaceholderShopName(typed)) {
+        throw Exception('Enter your shop name.');
+      }
+      Map<String, dynamic> shop = {
+        'id': shopId,
+        'name': typed,
+        'category': 'Bakery',
+        'rating': 5,
+        'reviews': 0,
+        'is_open': true,
+        'lat': pinLat,
+        'lng': pinLng,
+        'km': 0,
+        'eta': '20–35 min',
+        'fee': 200,
+        'hours': '08:00 AM – 10:00 PM',
+        'address': pinAddr,
+        'image': '/img/shop-bakery.jpg',
+        'promo':
+            'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.',
+      };
+      try {
+        final existing = await _sbGet('shops?id=eq.$shopId&select=*');
+        if (existing.isNotEmpty) {
+          final pendEmail = (p['email'] ?? '').trim().toLowerCase();
+          var allowed = false;
+          try {
+            final owners = await _sbGet('accounts?shop_id=eq.$shopId&select=*');
+            for (final raw in owners) {
+              final m = Map<String, dynamic>.from(raw as Map);
+              if (!_sameRole('${m['role']}', 'shop') || _isDemoAccountMap(m)) continue;
+              final e = '${m['email'] ?? ''}'.trim().toLowerCase();
+              if (pendEmail.isNotEmpty && e == pendEmail) {
+                allowed = true;
+                break;
+              }
+              if (_normPhone('${m['phone'] ?? ''}') == phone) {
+                allowed = true;
+                break;
+              }
+            }
+          } catch (_) {}
+          if (!allowed) {
+            throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
+          }
+          final ex = Map<String, dynamic>.from(existing.first as Map);
+          shop = {...shop, ...ex};
+        } else {
+          await _sbUpsert('shops', [shop]);
+          await _lockShopTitle(phone, '${shop['name']}');
+        }
+      } catch (e) {
+        if (e is Exception && e.toString().contains('already has a Shop')) rethrow;
+      }
+      Catalog.set([...Catalog.shops, Shop.fromJson(shop)], Catalog.items);
+      final pendEmail = (p['email'] ?? '').trim().toLowerCase();
+      Map<String, dynamic>? googleRow;
+      if (pendEmail.contains('@')) {
+        googleRow = await findAccount('shop', pendEmail);
+        if (googleRow != null) {
+          final gp = _normPhone('${googleRow['phone'] ?? ''}');
+          if (!_isPlaceholderPhone(gp) && gp != phone) {
+            _alreadyEmail('shop');
+          }
+        }
+      }
+      if (googleRow != null && (_isPlaceholderPhone('${googleRow['phone'] ?? ''}') || _normPhone('${googleRow['phone'] ?? ''}') == phone)) {
+        user = {
+          ...googleRow,
+          'name': (p['ownerName'] ?? '').trim().isNotEmpty ? p['ownerName'] : (googleRow['name'] ?? 'Shop Owner'),
+          'phone': phone,
+          'email': pendEmail.isNotEmpty ? pendEmail : '${googleRow['email'] ?? ''}',
+          'pin': _withWaPin('${googleRow['pin'] ?? 'google'}'),
+          'role': 'shop',
+          'shop_id': shopId,
+        };
+        try {
+          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', {
+            'phone': phone,
+            'name': user['name'],
+            'email': user['email'],
+            'pin': user['pin'],
+            'shop_id': shopId,
+          });
+        } catch (_) {}
+      } else {
+        user = {
+          'id': _accountIdFor(phone, 'shop'),
+          'name': p['ownerName'] ?? 'Shop Owner',
+          'phone': phone,
+          'email': pendEmail,
+          'pin': 'otp',
+          'role': 'shop',
+          'shop_id': shopId,
+        };
+        try {
+          await _sbWrite('accounts', 'POST', [user]);
+        } catch (_) {
+          final again = await _lookupPhone(phone, 'shop');
+          if (again != null) {
+            final ae = '${again['email'] ?? ''}'.trim().toLowerCase();
+            if (pendEmail.isNotEmpty && ae.isNotEmpty && ae != pendEmail) {
+              _alreadyThisRole('shop');
+            }
+            user = again;
+          }
+        }
+      }
+      user!['shopName'] = shop['name'];
+      await _rememberShop(phone, {
+        'shopId': shopId,
+        'shopName': '${shop['name']}',
+        'ownerName': '${user['name']}',
+        'address': '${shop['address']}',
+        'lat': '${shop['lat']}',
+        'lng': '${shop['lng']}',
+      });
+      pendingShop = null;
+      createdShop = true;
+    }
+    if (user != null && role == 'rider') {
+      final pr = pendingRider;
+      final name = (pr?['name'] ?? '').trim();
+      final patch = <String, dynamic>{};
+      if (name.isNotEmpty && !_isPlaceholderName(name)) {
+        user['name'] = name;
+        patch['name'] = name;
+      }
+      if ((pr?['email'] ?? '').isNotEmpty) {
+        user['email'] = pr!['email'];
+        patch['email'] = pr['email'];
+      }
+      final pw = (pr?['password'] ?? '').toString().trim();
+      if (pw.length >= 4) {
+        patch['pin'] = 'p:$pw|wa';
+        user['pin'] = patch['pin'];
+      }
+      if (patch.isNotEmpty) {
+        try {
+          await _sbWrite('accounts?id=eq.${user['id']}', 'PATCH', patch);
+        } catch (_) {}
+      }
+      pendingRider = null;
+    }
+    if (user == null && role == 'rider') {
+      final pr = pendingRider;
+      final name = (pr?['name'] ?? '').trim();
+      if (_isPlaceholderName(name)) throw Exception('Register as a rider first.');
+      final pw = (pr?['password'] ?? '').toString().trim();
+      final veh = (pr?['vehicle'] ?? '').toString().trim();
+      user = {
+        'id': _accountIdFor(phone, 'rider'),
+        'name': name,
+        'phone': phone,
+        'email': pr?['email'] ?? '',
+        'role': 'rider',
+        'pin': pw.length >= 4 ? 'p:$pw|wa' : 'otp',
+        'address': 'Sri Lanka',
+      };
+      if (veh.isNotEmpty && !veh.startsWith('http')) user!['vehicle'] = veh;
+      pendingRider = null;
+      try {
+        await _sbWrite('accounts', 'POST', [user]);
+      } catch (_) {
+        final again = await _lookupPhone(phone, 'rider');
+        if (again != null) user = again;
+      }
+    }
+    if (user == null) {
+      final pr = pendingRider;
+      user = {
+        'id': _accountIdFor(phone, role),
+        'name': pr?['name'] ?? 'Guest',
+        'phone': phone,
+        'email': pr?['email'] ?? '',
+        'role': role,
+        'pin': 'otp',
+        'address': 'Sri Lanka',
+      };
+      pendingRider = null;
+      try {
+        await _sbWrite('accounts', 'POST', [user]);
+      } catch (_) {
+        final again = await _lookupPhone(phone, role);
+        if (again != null) user = again;
+      }
+    }
+    if (user == null) {
+      throw Exception('Could not save this account. Try again.');
+    }
+    token = 'sb_${user['id']}';
+    if (role == 'shop') {
+      user['shopId'] = user['shopId'] ?? user['shop_id'];
+      if (user['shopId'] == null || '${user['shopId']}'.isEmpty) {
+        final rec = await _recalledShop(phone);
+        if (rec != null) {
+          user['shop_id'] = rec['shopId'];
+          user['shopId'] = rec['shopId'];
+          user['shopName'] = rec['shopName'];
+        }
+      }
+      if ((user['shopName'] == null || '${user['shopName']}'.isEmpty) && user['shopId'] != null) {
+        for (final s in Catalog.shops) {
+          if (s.id == user['shopId']) user['shopName'] = s.name;
+        }
+      }
+      openShopProfile = createdShop;
+    }
+    var session = SessionUser.fromJson(user);
+    if (role == 'shop') session = _withShopId(session);
+    if (this.user?.id != session.id) {
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
+      cartNotifier.value = <CartLine>[];
+    }
+    userNotifier.value = session;
+    await loadFavs();
+    await PayCards.load(email: session.email, id: session.id, phone: session.phone);
+    connectedNotifier.value = true;
+    await _persist();
+    if (role == 'shop') {
+      try {
+        await _ensureShopRow();
+      } catch (_) {}
+    }
+    await refresh();
+  }
+
+  Future<Map<String, dynamic>?> sendOtp(String role, String phone) async {
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    if (phone.length < 10) throw Exception('Enter a valid mobile number');
+    final code = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    _otpPhone = phone;
+    _otpRole = role;
+    _otpCode = code;
+    _otpBody = 'Your QuickBite code is $code. Don\'t share this WhatsApp message.';
+    _otpExp = DateTime.now().add(const Duration(minutes: 5));
+    final token = 'wa_${DateTime.now().millisecondsSinceEpoch}';
+    try {
+      await _sbWrite('otp_codes', 'POST', [
+        {
+          'id': token,
+          'phone': phone,
+          'role': role,
+          'code': code,
+          'body': _otpBody,
+          'expires_at': _otpExp!.toUtc().toIso8601String(),
+          'attempts': 0,
+        }
+      ]);
+    } catch (_) {}
+    await _sendWhatsApp(phone, _otpBody!);
+    return {'ok': true, 'phone': phone, 'smsToken': token, 'channel': 'whatsapp'};
+  }
+
+  String _e164(String phone) {
+    var d = phone.replaceAll(RegExp(r'\D'), '');
+    if (d.startsWith('0') && d.length == 10) d = '94${d.substring(1)}';
+    return d;
+  }
+
+  Future<void> _sendWhatsApp(String phone, String body) async {
+    final to = _e164(phone);
+    const id = '710722770031';
+    const token = '81a5c51bd44b48a08367d01f3ca546b5a4e7409696654a8b9a';
+    const hosts = <String>['7107.api.green-api.com', 'api.green-api.com'];
+    String? last;
+    for (final host in hosts) {
+      try {
+        final uri = Uri(
+          scheme: 'https',
+          host: host,
+          path: '/waInstance$id/sendMessage/$token',
+        );
+        final res = await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'chatId': '$to@c.us', 'message': body}),
+            )
+            .timeout(const Duration(seconds: 20));
+        if (res.statusCode >= 200 && res.statusCode < 300) return;
+        last = 'WhatsApp send failed (${res.statusCode})';
+      } catch (e) {
+        last = e.toString();
+      }
+    }
+    throw Exception('Could not send WhatsApp to +$to. ${last ?? ''}');
+  }
+
+  Future<String?> readSms(String smsToken) async {
+    if (_otpBody != null) return _otpBody;
+    try {
+      final rows = await _sbGet('otp_codes?id=eq.$smsToken&select=body');
+      if (rows.isNotEmpty) {
+        return Map<String, dynamic>.from(rows.first as Map)['body']?.toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<bool> verifyOtp(String role, String phone, String code) async {
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    code = code.replaceAll(RegExp(r'\D'), '');
+    var match = _otpPhone == phone &&
+        _otpCode == code &&
+        _otpExp != null &&
+        DateTime.now().isBefore(_otpExp!);
+    if (!match) {
+      try {
+        final rows = await _sbGet(
+          'otp_codes?phone=eq.$phone&role=eq.$role&code=eq.$code&select=*',
+        );
+        if (rows.isNotEmpty) {
+          final rec = Map<String, dynamic>.from(rows.first as Map);
+          final exp = DateTime.tryParse('${rec['expires_at'] ?? ''}');
+          if (exp != null && DateTime.now().isBefore(exp.toLocal())) match = true;
+        }
+      } catch (_) {}
+    }
+    if (!match) return false;
+    if (role == 'customer' && _pendingPassword != null) {
+      final row = _pendingPassword!;
+      _pendingPassword = null;
+      await _enterRow(row);
+      await attachWhatsApp(phone);
+      return true;
+    }
+    if (role == 'customer' && user != null && _sameRole(user!.role, 'customer')) {
+      await attachWhatsApp(phone);
+      return true;
+    }
+    if (role == 'rider' && user != null && _sameRole(user!.role, 'rider')) {
+      await attachWhatsApp(phone);
+      return true;
+    }
+    if (role == 'shop' || role == 'rider') {
+      final existing = await _lookupPhone(phone, role);
+      final registeringShop = role == 'shop' &&
+          pendingShop != null &&
+          ((pendingShop!['shopName'] ?? '').isNotEmpty || (pendingShop!['ownerName'] ?? '').isNotEmpty);
+      final registeringRider = role == 'rider' && !_isPlaceholderName(pendingRider?['name']);
+      if (existing != null) {
+        if (registeringShop) {
+          final pe = (pendingShop!['email'] ?? '').trim().toLowerCase();
+          final ee = '${existing['email'] ?? ''}'.trim().toLowerCase();
+          if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+            throw Exception('This number already has a Shop account. Login instead — you cannot create another Shop with the same number. You can still use this number for the other apps.');
+          }
+        } else if (registeringRider) {
+          final pe = (pendingRider?['email'] ?? '').trim().toLowerCase();
+          final ee = '${existing['email'] ?? ''}'.trim().toLowerCase();
+          if (!(pe.isNotEmpty && ee.isNotEmpty && pe == ee)) {
+            throw Exception('This number already has a Rider account. Login instead — you cannot create another Rider with the same number. You can still use this number for the other apps.');
+          }
+        } else {
+          needsShopRegister = false;
+          needsRiderRegister = false;
+          verifiedPhone = null;
+          pendingShop = null;
+          await _clearVerified();
+        }
+        await _enterAccount(role, phone);
+        return true;
+      }
+      verifiedPhone = phone;
+      needsShopRegister = role == 'shop';
+      needsRiderRegister = role == 'rider';
+      if (role == 'shop' &&
+          pendingShop != null &&
+          ((pendingShop!['shopName'] ?? '').isNotEmpty || (pendingShop!['ownerName'] ?? '').isNotEmpty)) {
+        await _enterAccount('shop', phone);
+        needsShopRegister = false;
+        verifiedPhone = null;
+        await _clearVerified();
+        return true;
+      }
+      await _persistVerified(role, phone);
+      return true;
+    }
+    await _enterAccount(role, phone);
+    return true;
+  }
+
+  String _googlePhone(String sub, [String email = '']) {
+    final seed = '$sub|${email.toLowerCase()}';
+    var d = sub.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) {
+      var n = 0;
+      for (final u in seed.codeUnits) {
+        n = (n * 31 + u) & 0x7fffffff;
+      }
+      d = n.toString();
+    }
+    if (d.length >= 8) {
+      d = d.substring(d.length - 8);
+    } else {
+      d = d.padLeft(8, '0');
+    }
+    return '99$d';
+  }
+
+  String _emailKey(String email) {
+    final s = email.trim().toLowerCase();
+    var n = 0;
+    for (final u in s.codeUnits) {
+      n = (n * 31 + u) & 0x7fffffff;
+    }
+    return n.toRadixString(36);
+  }
+
+  String _accountIdForEmail(String email, String role) => 'ACC_${_roleTag(role)}_e_${_emailKey(email)}';
+
+  Future<void> signInWithGoogle({required String email, required String name, required String sub, String? photo, String role = 'customer'}) async {
+    await _loadSupabaseConfig();
+    email = email.trim().toLowerCase();
+    name = name.trim();
+    photo = (photo ?? '').trim();
+    if (!email.contains('@')) throw Exception('Google did not share an email for this account.');
+    role = _roleTag(role);
+    Map<String, dynamic>? row;
+    bool matches(Map<String, dynamic> m) {
+      return '${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m);
+    }
+    final hits = <String, Map<String, dynamic>>{};
+    Future<void> collect(String q) async {
+      try {
+        for (final raw in await _sbGet(q)) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if (!matches(m) || '${m['id']}'.isEmpty) continue;
+          hits['${m['id']}'] = m;
+        }
+      } catch (_) {}
+    }
+    await collect('accounts?email=eq.${Uri.encodeComponent(email)}&role=eq.$role&select=*');
+    await collect('accounts?id=eq.${Uri.encodeComponent(_accountIdForEmail(email, role))}&select=*');
+    try {
+      for (final m in await _allAccounts()) {
+        if (matches(m) && '${m['id']}'.isNotEmpty) hits['${m['id']}'] = m;
+      }
+    } catch (_) {}
+    final list = hits.values.toList();
+    for (final m in list) {
+      if ('${m['shop_id'] ?? m['shopId'] ?? ''}'.isNotEmpty) { row = m; break; }
+    }
+    if (row == null) {
+      for (final m in list) {
+        if (!_isPlaceholderPhone('${m['phone'] ?? ''}')) { row = m; break; }
+      }
+    }
+    row ??= list.isNotEmpty ? list.first : null;
+    if (row == null && sub.isNotEmpty) {
+      final byPhone = await _lookupPhone(_googlePhone(sub, email), role);
+      if (byPhone != null && '${byPhone['email'] ?? ''}'.toLowerCase() == email) row = byPhone;
+    }
+    if (row == null) {
+      row = {
+        'id': _accountIdForEmail(email, role),
+        'name': name.isEmpty ? email.split('@').first : name,
+        'phone': _googlePhone(sub, email),
+        'email': email,
+        'pin': 'google',
+        'role': role,
+        'address': 'Sri Lanka',
+        if (photo.isNotEmpty) 'vehicle': photo,
+        if (photo.isNotEmpty) 'photo': photo,
+      };
+      try {
+        await _sbWrite('accounts', 'POST', [row]);
+      } catch (_) {
+        try {
+          final existing = await _sbGet('accounts?id=eq.${Uri.encodeComponent('${row!['id']}')}&select=*');
+          if (existing.isNotEmpty) row = Map<String, dynamic>.from(existing.first as Map);
+        } catch (_) {
+          row = await _lookupPhone(_googlePhone(sub, email), role) ?? row;
+        }
+      }
+    } else {
+      final patch = <String, dynamic>{'email': email};
+      if (photo.isNotEmpty) patch['vehicle'] = photo;
+      if (role == 'shop') {
+        if (name.isNotEmpty && _isPlaceholderName('${row['name'] ?? ''}')) patch['name'] = name;
+      } else if (name.isNotEmpty) {
+        patch['name'] = name;
+      }
+      try {
+        await _sbWrite('accounts?id=eq.${row['id']}', 'PATCH', patch);
+      } catch (_) {}
+      row.addAll(patch);
+    }
+    final acc = row;
+    if (acc == null || '${acc['id']}'.isEmpty) {
+      throw Exception('Could not open this Google account.');
+    }
+    if (photo.isNotEmpty) acc['photo'] = photo;
+    if (role != 'shop' && name.isNotEmpty) acc['name'] = name;
+    acc['email'] = email;
+    await _enterRow(acc);
+  }
+
+  String _passwordPhone(String email) {
+    var d = email.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) {
+      var n = 0;
+      for (final u in email.codeUnits) {
+        n = (n * 31 + u) & 0x7fffffff;
+      }
+      d = n.toString();
+    }
+    if (d.length >= 8) {
+      d = d.substring(d.length - 8);
+    } else {
+      d = d.padLeft(8, '0');
+    }
+    return '98$d';
+  }
+
+  String _pinSecret(String? pin) {
+    var s = (pin ?? '').replaceFirst(RegExp(r'\|wa$'), '');
+    if (s.startsWith('p:')) return s.substring(2);
+    return s;
+  }
+
+  String _withWaPin(String? pin) {
+    final s = pin ?? 'otp';
+    if (s == 'otp' || s == 'wa' || s.endsWith('|wa')) return s;
+    return '$s|wa';
+  }
+
+  bool isWhatsAppVerified([SessionUser? u]) {
+    u ??= user;
+    if (u == null) return false;
+    final pin = u.pin ?? '';
+    if (pin == 'otp' || pin == 'wa' || pin.endsWith('|wa')) return true;
+    return RegExp(r'^07\d{8}$').hasMatch(_normPhone(u.phone));
+  }
+
+  Future<void> _enterRow(Map<String, dynamic> row) async {
+    final nextId = '${row['id']}';
+    if (user?.id != nextId) {
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
+      cartNotifier.value = <CartLine>[];
+    }
+    token = 'sb_$nextId';
+    var session = SessionUser.fromJson(row);
+    if (session.role == 'shop') session = _withShopId(session);
+    userNotifier.value = session;
+    await loadFavs();
+    await PayCards.load(email: user?.email, id: user?.id, phone: user?.phone);
+    connectedNotifier.value = true;
+    await _persist();
+    await refresh();
+  }
+
+  Future<void> saveProfile({String? name, String? email}) async {
+    final u = user;
+    if (u == null) throw Exception('Sign in first');
+    final patch = <String, dynamic>{};
+    if (name != null) {
+      final n = name.trim();
+      if (n.isEmpty) throw Exception('Enter your name.');
+      patch['name'] = n;
+    }
+    if (email != null) patch['email'] = email.trim().toLowerCase();
+    if (patch.isEmpty) return;
+    try {
+      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', patch);
+    } catch (_) {}
+    userNotifier.value = SessionUser(
+      id: u.id,
+      name: (patch['name'] as String?) ?? u.name,
+      phone: u.phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: u.shopId,
+      shopName: u.shopName,
+      email: patch.containsKey('email') ? patch['email'] as String : u.email,
+      pin: u.pin,
+      photo: u.photo,
+    );
+    await _persist();
+  }
+
+  Map<String, dynamic>? _pendingPassword;
+
+  bool _isPasswordOnlyUnverified(Map<String, dynamic>? row, [SessionUser? u]) {
+    if (row != null) {
+      if (isWhatsAppVerified(SessionUser.fromJson(row))) return false;
+      final secret = _pinSecret('${row['pin'] ?? ''}');
+      if (secret.isEmpty || secret == 'google' || secret == 'otp' || secret == 'wa') return false;
+      return true;
+    }
+    if (u == null) return false;
+    if (isWhatsAppVerified(u)) return false;
+    final secret = _pinSecret(u.pin);
+    if (secret.isEmpty || secret == 'google' || secret == 'otp' || secret == 'wa') return false;
+    return true;
+  }
+
+  Future<String> signInPassword(String id, String password, {String role = 'customer'}) async {
+    await _loadSupabaseConfig();
+    role = _roleTag(role);
+    password = password.trim();
+    if (password.length < 4) throw Exception('Enter your password.');
+    Map<String, dynamic>? row;
+    final email = id.trim().toLowerCase();
+    if (email.contains('@')) {
+      try {
+        for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.$role&select=*')) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if ('${m['email'] ?? ''}'.toLowerCase() == email && _sameRole('${m['role']}', role) && !_isDemoAccountMap(m)) {
+            row = m;
+            break;
+          }
+        }
+      } catch (_) {}
+    } else {
+      row = await _lookupPhone(id, role);
+    }
+    final who = role == 'shop' ? 'Shop' : role == 'rider' ? 'Rider' : 'User';
+    if (row == null) {
+      throw Exception('This email is not registered. Create an account, then sign in with email and password.');
+    }
+    final secret = _pinSecret('${row['pin'] ?? ''}');
+    if (secret == 'google') throw Exception('This account uses Google. Tap Continue with Google.');
+    if (secret == 'otp' || secret == 'wa' || secret.isEmpty) {
+      throw Exception('This account uses WhatsApp. Tap Continue with WhatsApp.');
+    }
+    if (secret != password) throw Exception('Wrong email or password.');
+    await _enterRow(row);
+    return 'app';
+  }
+
+  Future<void> signUpPassword({required String name, required String email, required String password}) async {
+    await _loadSupabaseConfig();
+    email = email.trim().toLowerCase();
+    password = password.trim();
+    name = name.trim();
+    if (!email.contains('@')) throw Exception('Enter your email address.');
+    if (password.length < 4) throw Exception('Create a password (at least 4 characters).');
+    Map<String, dynamic>? existing;
+    try {
+      for (final raw in await _sbGet('accounts?email=ilike.${Uri.encodeComponent(email)}&role=eq.customer&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        if ('${m['email'] ?? ''}'.toLowerCase() == email && !_isDemoAccountMap(m)) {
+          existing = m;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (existing != null) throw Exception('This email already has a User account. Sign in instead.');
+    final phone = _passwordPhone(email);
+    final row = <String, dynamic>{
+      'id': _accountIdForEmail(email, 'customer'),
+      'name': name.isEmpty ? email.split('@').first : name,
+      'phone': phone,
+      'email': email,
+      'pin': 'p:$password',
+      'role': 'customer',
+      'address': 'Sri Lanka',
+    };
+    try {
+      await _sbWrite('accounts', 'POST', [row]);
+    } catch (_) {
+      final hit = await _lookupPhone(phone, 'customer');
+      if (hit != null) {
+        _pendingPassword = hit;
+        return;
+      }
+    }
+    _pendingPassword = row;
+  }
+
+  Future<void> attachWhatsApp(String phone) async {
+    await _loadSupabaseConfig();
+    phone = _normPhone(phone);
+    if (!RegExp(r'^07\d{8}$').hasMatch(phone)) throw Exception('Enter a valid WhatsApp number');
+    final u = user;
+    if (u == null) throw Exception('Sign in first');
+    final role = _sameRole(u.role, 'rider') ? 'rider' : _sameRole(u.role, 'shop') ? 'shop' : 'customer';
+    if (isWhatsAppVerified(u) && _normPhone(u.phone) == phone) return;
+    final taken = await _lookupPhone(phone, role);
+    if (taken != null && '${taken['id']}' != u.id) {
+      if (!_emailsEqual(u.email, '${taken['email'] ?? ''}')) {
+        _alreadyThisRole(role);
+      }
+      final patch = <String, dynamic>{'pin': _withWaPin('${taken['pin'] ?? u.pin ?? 'otp'}')};
+      if (u.name.isNotEmpty && ('${taken['name']}' == 'Guest' || '${taken['name']}'.isEmpty)) patch['name'] = u.name;
+      if ((u.shopId ?? '').isNotEmpty && '${taken['shop_id'] ?? taken['shopId'] ?? ''}'.isEmpty) {
+        patch['shop_id'] = u.shopId;
+      }
+      try {
+        await _sbWrite('accounts?id=eq.${taken['id']}', 'PATCH', patch);
+      } catch (_) {}
+      taken.addAll(patch);
+      await _enterRow(taken);
+      return;
+    }
+    final nextPin = _withWaPin(u.pin ?? 'google');
+    try {
+      await _sbWrite('accounts?id=eq.${u.id}', 'PATCH', {'phone': phone, 'pin': nextPin});
+    } catch (_) {}
+    userNotifier.value = SessionUser(
+      id: u.id,
+      name: u.name,
+      phone: phone,
+      role: u.role,
+      address: u.address,
+      vehicle: u.vehicle,
+      shopId: u.shopId,
+      shopName: u.shopName,
+      email: u.email,
+      pin: nextPin,
+      photo: u.photo,
+    );
+    await _persist();
+  }
+
+  bool _catalogReady = false;
+  bool needsShopRegister = false;
+  bool needsRiderRegister = false;
+  bool promptShopRegister = false;
+  String? verifiedPhone;
+
+  Future<void> completeShopRegister() async {
+    final phone = verifiedPhone;
+    if (phone == null || phone.isEmpty) throw Exception('Verify WhatsApp first.');
+    final p = pendingShop;
+    if (p == null || ((p['shopName'] ?? '').trim().isEmpty && (p['ownerName'] ?? '').trim().isEmpty)) {
+      throw Exception('Register your shop first.');
+    }
+    await _enterAccount('shop', phone);
+    needsShopRegister = false;
+    verifiedPhone = null;
+    await _clearVerified();
+  }
+
+  Future<void> completeRiderRegister() async {
+    final phone = verifiedPhone;
+    if (phone == null || phone.isEmpty) throw Exception('Verify WhatsApp first.');
+    final p = pendingRider;
+    if (_isPlaceholderName(p?['name'])) throw Exception('Register as a rider first.');
+    await _enterAccount('rider', phone);
+    needsRiderRegister = false;
+    verifiedPhone = null;
+    await _clearVerified();
+  }
+
+  bool get isShopRegistered {
+    final u = user;
+    if (u == null || u.role != 'shop') return false;
+    final sid = _linkedShopId(u);
+    if (sid.isEmpty || _isDemoShop(sid)) return false;
+    for (final s in Catalog.shops) {
+      if (s.id == sid) return true;
+    }
+    if (!_catalogReady) return true;
+    return false;
+  }
+
+  bool get isRiderRegistered {
+    final u = user;
+    if (u == null || u.role != 'rider') return false;
+    return !_isPlaceholderName(u.name);
+  }
+
+  Future<void> parkForRegister(String role) async {
+    final u = user;
+    if (u == null) {
+      if (role == 'shop') promptShopRegister = true;
+      needsShopRegister = role == 'shop';
+      needsRiderRegister = role == 'rider';
+      return;
+    }
+    if (role == 'shop') promptShopRegister = true;
+    needsShopRegister = role == 'shop' && !isShopRegistered;
+    needsRiderRegister = role == 'rider' && !isRiderRegistered;
+    if (role == 'shop') {
+      pendingShop = {
+        ...?pendingShop,
+        if (u.name.isNotEmpty) 'ownerName': u.name,
+        if ((u.email ?? '').isNotEmpty) 'email': u.email!,
+        if ((u.photo ?? '').isNotEmpty) 'photo': u.photo!,
+      };
+    }
+    if (role == 'rider') {
+      pendingRider = {
+        ...?pendingRider,
+        if (u.name.isNotEmpty) 'name': u.name,
+        if ((u.email ?? '').isNotEmpty) 'email': u.email!,
+      };
+    }
+    await _persist();
+  }
+
+  Future<bool> login(String role, {String? phone, String pin = '1234'}) async {
+    await _loadSupabaseConfig();
+    if (phone != null && phone.isNotEmpty) {
+      final taken = await _lookupPhone(phone, role);
+      if (taken != null) {
+        token = 'sb_${taken['id']}';
+        userNotifier.value = SessionUser.fromJson(taken);
+        connectedNotifier.value = true;
+        await _persist();
+        await refresh();
+        return true;
+      }
+    }
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) {
+      try {
+        var q = 'accounts?select=*&role=eq.$role';
+        if (phone != null && phone.isNotEmpty) q += '&phone=eq.${_normPhone(phone)}';
+        final rows = await _sbGet(q);
+        Map<String, dynamic>? picked;
+        for (final raw in rows) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          if (_isDemoAccountMap(m)) continue;
+          if ('${m['pin']}' == pin) {
+            picked = m;
+            break;
+          }
+          picked ??= m;
+        }
+        if (picked != null) {
+          token = 'sb_${picked['id']}';
+          userNotifier.value = SessionUser.fromJson(picked);
+          connectedNotifier.value = true;
+          await _persist();
+          await refresh();
+          return true;
+        }
+      } catch (_) {}
+    }
+    final uri = _uri('/api/login');
+    if (uri == null) return false;
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'role': role, 'phone': phone, 'pin': pin}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        token = data['token']?.toString();
+        userNotifier.value = SessionUser.fromJson(Map<String, dynamic>.from(data['user'] as Map));
+        connectedNotifier.value = true;
+        await _persist();
+        await refresh();
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  void logout() {
+    userNotifier.value = null;
+    token = null;
+    pendingShop = null;
+    pendingRider = null;
+    needsShopRegister = false;
+    needsRiderRegister = false;
+    promptShopRegister = false;
+    verifiedPhone = null;
+    _keptOrders.clear();
+    ordersNotifier.value = <Order>[];
+    messages.clear();
+    cartNotifier.value = <CartLine>[];
+    favsNotifier.value = <String>{};
+    _clearVerified();
+    _persist();
+  }
+
+  static const _sessionKey = 'qb_session';
+  static const _verifiedKey = 'qb_verified';
+
+  Future<void> _persistVerified(String role, String phone) async {
+    if (_isPlaceholderPhone(phone)) {
+      await _clearVerified();
+      return;
+    }
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_verifiedKey, jsonEncode({'role': role, 'phone': phone}));
+    } catch (_) {}
+  }
+
+  Future<void> _clearVerified() async {
+    verifiedPhone = null;
+    needsShopRegister = false;
+    needsRiderRegister = false;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_verifiedKey);
+    } catch (_) {}
+  }
+
+  Future<void> restore() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      const gen = '19y';
+      if (p.getString('qb_gen') != gen) {
+        await p.setString('qb_gen', gen);
+      }
+      final vraw = p.getString(_verifiedKey);
+      if (vraw != null && vraw.isNotEmpty) {
+        final v = jsonDecode(vraw) as Map<String, dynamic>;
+        final role = '${v['role'] ?? ''}';
+        final phone = '${v['phone'] ?? ''}';
+        if (phone.isNotEmpty && !_isPlaceholderPhone(phone)) {
+          verifiedPhone = phone;
+          needsShopRegister = role == 'shop';
+          needsRiderRegister = role == 'rider';
+        } else if (phone.isNotEmpty) {
+          await p.remove(_verifiedKey);
+        }
+      }
+      final raw = p.getString(_sessionKey);
+      if (raw == null || raw.isEmpty) return;
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final u = SessionUser.fromJson(m);
+      if (_isDemoUser(u)) {
+        await p.remove(_sessionKey);
+        return;
+      }
+      token = m['token']?.toString();
+      _keptOrders.clear();
+      ordersNotifier.value = <Order>[];
+      messages.clear();
+      userNotifier.value = u.role == 'shop' ? _withShopId(u) : u;
+      if (userNotifier.value != null) await _clearVerified();
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final u = userNotifier.value;
+      if (u == null) {
+        await p.remove(_sessionKey);
+        return;
+      }
+      await p.setString(
+        _sessionKey,
+        jsonEncode({...u.toJson(), 'token': token}),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _loadSupabaseConfig() async {
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) return;
+    final uri = _uri('/api/config');
+    if (uri == null) return;
+    try {
+      final res = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final u = '${data['supabaseUrl'] ?? ''}';
+        final k = '${data['supabaseAnon'] ?? ''}';
+        if (u.isNotEmpty) AppConfig.supabaseUrl = u;
+        if (k.isNotEmpty) AppConfig.supabaseAnon = k;
+      }
+    } catch (_) {}
+  }
+
+  Uri? _sb(String table) {
+    final base = AppConfig.normalize(AppConfig.supabaseUrl);
+    if (base.isEmpty || AppConfig.supabaseAnon.isEmpty) return null;
+    return Uri.parse('$base/rest/v1/$table');
+  }
+
+  Future<List<dynamic>> _sbGet(String table) async {
+    final uri = _sb(table);
+    if (uri == null) return const [];
+    final res = await http
+        .get(uri, headers: {
+          'apikey': AppConfig.supabaseAnon,
+          'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+        })
+        .timeout(const Duration(seconds: 8));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Supabase $table ${res.statusCode}');
+    }
+    final data = jsonDecode(res.body);
+    return data is List ? data : const [];
+  }
+
+  Future<void> _sbWrite(String path, String method, Object body) async {
+    final uri = _sb(path);
+    if (uri == null) return;
+    final headers = {
+      'apikey': AppConfig.supabaseAnon,
+      'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation,resolution=merge-duplicates',
+    };
+    final encoded = jsonEncode(body);
+    final res = method == 'PATCH'
+        ? await http.patch(uri, headers: headers, body: encoded).timeout(const Duration(seconds: 8))
+        : await http.post(uri, headers: headers, body: encoded).timeout(const Duration(seconds: 8));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Supabase $path ${res.statusCode}');
+    }
+  }
+
+  Future<void> _sbUpsert(String table, Object rows) => _sbWrite('$table?on_conflict=id', 'POST', rows);
+
+  Future<void> _sbDelete(String path) async {
+    final uri = _sb(path);
+    if (uri == null) return;
+    await http.delete(uri, headers: {
+      'apikey': AppConfig.supabaseAnon,
+      'Authorization': 'Bearer ${AppConfig.supabaseAnon}',
+      'Prefer': 'return=minimal',
+    }).timeout(const Duration(seconds: 8));
+  }
+
+  Future<void> _wipeDemo() async {
+    await _purgeDemoPrefs();
+    const shopsIn =
+        '"SHOP_1","SHOP_2","SHOP_3","SHOP_4","SHOP_5","SHOP_6","SHOP_7","SHOP_8","SHOP_9","SHOP_10","SHOP_11"';
+    final itemsIn = List.generate(33, (i) => '"I${i + 1}"').join(',');
+    const phonesIn = '"0771234567","0771112222","0772223333","0775556666"';
+    final paths = [
+      'messages?order_id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?id=in.("ORD-1001","ORD-1002","ORD-1003","ORD-1004","ORD-NONE")',
+      'orders?shop_id=in.($shopsIn)',
+      'orders?user_id=in.("USER_1","USER_2")',
+      'orders?customer_phone=in.($phonesIn)',
+      'menu_items?shop_id=in.($shopsIn)',
+      'menu_items?id=in.($itemsIn)',
+      'shops?id=in.($shopsIn)',
+      'accounts?id=in.("USER_1","USER_2","SHOP_STAFF","RIDER_77")',
+      'accounts?phone=in.($phonesIn)',
+      'otp_codes?phone=in.($phonesIn)',
+    ];
+    for (final p in paths) {
+      try {
+        await _sbDelete(p);
+      } catch (_) {}
+    }
+    for (final title in ['Kandy Bakers', 'Kandy Baker', 'Kandy Bakery', 'Demo Shop']) {
+      try {
+        await _sbDelete('shops?name=eq.${Uri.encodeComponent(title)}');
+      } catch (_) {}
+      try {
+        await _sbWrite('orders?shop_name=eq.${Uri.encodeComponent(title)}', 'PATCH', {'shop_name': ''});
+      } catch (_) {}
+    }
+  }
+
+  bool _wipedAll = false;
+  Future<void> _oneShotEmptyDb() async {
+    if (_wipedAll) return;
+    if (user != null) {
+      _wipedAll = true;
+      return;
+    }
+    const gen = '19y';
+    try {
+      for (final raw in await _sbGet('app_state?id=eq.qb_empty&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final p = m['payload'];
+        if (p is Map && '${p['v']}' == gen) {
+          _wipedAll = true;
+          return;
+        }
+      }
+    } catch (_) {}
+    try {
+      final accs = await _sbGet('accounts?select=id&limit=1');
+      if (accs.isNotEmpty) {
+        _wipedAll = true;
+        try {
+          await _sbWrite('app_state', 'POST', [
+            {'id': 'qb_empty', 'payload': {'v': gen, 'at': DateTime.now().millisecondsSinceEpoch}},
+          ]);
+        } catch (_) {}
+        return;
+      }
+    } catch (_) {
+      _wipedAll = true;
+      return;
+    }
+    const tables = ['messages', 'orders', 'menu_items', 'shops', 'accounts', 'otp_codes', 'app_state'];
+    for (var attempt = 0; attempt < 6; attempt++) {
+      for (final t in tables) {
+        try {
+          await _sbDelete('$t?id=not.is.null');
+        } catch (_) {}
+        if (t == 'messages') {
+          try { await _sbDelete('messages?order_id=not.is.null'); } catch (_) {}
+        }
+        if (t == 'accounts') {
+          for (final q in ['accounts?pin=eq.google', 'accounts?email=not.is.null', 'accounts?phone=not.is.null', 'accounts?role=eq.shop', 'accounts?role=eq.customer', 'accounts?role=eq.rider']) {
+            try { await _sbDelete(q); } catch (_) {}
+          }
+        }
+        try {
+          final rows = await _sbGet('$t?select=*&limit=1000');
+          for (final raw in rows) {
+            final row = Map<String, dynamic>.from(raw as Map);
+            final id = '${row['id'] ?? ''}';
+            if (id.isEmpty) continue;
+            try {
+              if (t == 'messages' && row['order_id'] != null) {
+                await _sbDelete('messages?order_id=eq.${Uri.encodeComponent('${row['order_id']}')}&id=eq.${Uri.encodeComponent(id)}');
+              } else {
+                await _sbDelete('$t?id=eq.${Uri.encodeComponent(id)}');
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+      var shops = <dynamic>[];
+      var items = <dynamic>[];
+      var accs = <dynamic>[];
+      try { shops = await _sbGet('shops?select=id&limit=5'); } catch (_) {}
+      try { items = await _sbGet('menu_items?select=id&limit=5'); } catch (_) {}
+      try { accs = await _sbGet('accounts?select=id&limit=5'); } catch (_) {}
+      if (shops.isEmpty && items.isEmpty && accs.isEmpty) {
+        _wipedAll = true;
+        try {
+          await _sbWrite('app_state', 'POST', [
+            {'id': 'qb_empty', 'payload': {'v': gen, 'at': DateTime.now().millisecondsSinceEpoch}},
+          ]);
+        } catch (_) {}
+        return;
+      }
+    }
+  }
+
+  List<Shop> _scopeShops(Iterable<Shop> shops) {
+    var list = shops.where((s) => !_isDemoShop(s.id) && !_isDemoShopName(s.name)).toList();
+    final u = user;
+    if (u != null && u.role == 'shop') {
+      final sid = _linkedShopId(u);
+      if (sid.isNotEmpty) list = list.where((s) => s.id == sid).toList();
+    }
+    return list;
+  }
+
+  List<CatalogItem> _scopeItems(Iterable<CatalogItem> items) {
+    var list = items.where((i) => !_isDemoShop(i.shopId)).toList();
+    final u = user;
+    if (u != null && u.role == 'shop') {
+      final sid = _linkedShopId(u);
+      if (sid.isNotEmpty) list = list.where((i) => i.shopId == sid).toList();
+    }
+    return list;
+  }
+
+  bool _isPlaceholderPhone(String phone) {
+    final p = _normPhone(phone);
+    if (p.isEmpty) return true;
+    if (RegExp(r'^07\d{8}$').hasMatch(p)) return false;
+    return RegExp(r'^99\d{8}$').hasMatch(p) || RegExp(r'^98\d{8}$').hasMatch(p);
+  }
+
+  bool _orderMine(Order o, SessionUser? u) {
+    if (u == null) return false;
+    if (u.role == 'customer' || u.role == 'user') {
+      final email = (u.email ?? '').trim().toLowerCase();
+      final oEmail = (o.customerEmail ?? '').trim().toLowerCase();
+      if (!isWhatsAppVerified(u)) {
+        if (email.isNotEmpty && oEmail.isNotEmpty && email == oEmail) return true;
+        return o.userId == u.id;
+      }
+      if (o.userId == u.id) return true;
+      final p = _normPhone(o.customerPhone ?? '');
+      final mine = _normPhone(u.phone);
+      return p.isNotEmpty && mine.isNotEmpty && !_isPlaceholderPhone(mine) && (p == mine || _phoneKey(p) == _phoneKey(mine));
+    }
+    if (u.role == 'shop') {
+      final sid = _linkedShopId(u);
+      return sid.isNotEmpty && o.shopId == sid;
+    }
+    if (u.role == 'rider') {
+      if (o.riderId == u.id || o.riderPhone == u.phone) return true;
+      if (o.status == OrderStatus.ready && (o.riderId == null || o.riderId!.isEmpty)) return true;
+      return false;
+    }
+    return false;
+  }
+
+  List<Order> _mergeKept(List<Order> list) {
+    if (_keptOrders.isEmpty) return list;
+    final merged = list.map((o) {
+      final k = _keptOrders[o.id];
+      if (k == null) {
+        _keptOrders[o.id] = o;
+        return o;
+      }
+      final status = OrderStatusX.later(o.status, k.status);
+      final next = status == o.status ? o : o.copyWith(status: status);
+      _keptOrders[o.id] = next;
+      return next;
+    }).toList();
+    final ids = merged.map((o) => o.id).toSet();
+    final extra = _keptOrders.values
+        .where((o) => !ids.contains(o.id) && !_isDemoOrder(o) && _orderMine(o, user))
+        .toList();
+    if (extra.isEmpty) return merged;
+    return [...extra, ...merged];
+  }
+
+  List<Order> _retainStatus(List<Order> incoming) {
+    final prev = {for (final o in orders) o.id: o};
+    return incoming.map((o) {
+      final p = prev[o.id];
+      if (p == null) return o;
+      final status = OrderStatusX.later(o.status, p.status);
+      var next = status == o.status ? o : o.copyWith(status: status);
+      if (!next.rated && p.rated) {
+        next = next.copyWith(shopRating: p.shopRating, riderRating: p.riderRating, itemRatings: p.itemRatings);
+      }
+      return next;
+    }).toList();
+  }
+
+  List<Order> _scopeOrders(Iterable<Order> list) {
+    var next = list.where((o) => !_isDemoOrder(o)).toList();
+    next = next.map((o) {
+      final live = (_persistedNames[o.shopId] ?? '').trim();
+      if (live.isNotEmpty && live != o.shopName) return o.copyWith(shopName: live);
+      for (final s in Catalog.shops) {
+        if (s.id == o.shopId && s.name.trim().isNotEmpty && !_isDemoShopName(s.name)) {
+          if (s.name != o.shopName) return o.copyWith(shopName: s.name);
+          return o;
+        }
+      }
+      if (_isDemoShopName(o.shopName)) return o.copyWith(shopName: 'Shop');
+      return o;
+    }).toList();
+    final u = user;
+    if (u == null) return <Order>[];
+    next = next.where((o) => _orderMine(o, u)).toList();
+    if (u.role == 'customer' || u.role == 'user') return _mergeKept(next);
+    return next;
+  }
+
+  Map<String, dynamic> _orderRow(Order o) => {
+        'id': o.id,
+        'user_id': o.userId,
+        'shop_id': o.shopId,
+        'shop_name': o.shopName,
+        'customer_name': o.customerName,
+        'customer_phone': o.customerPhone,
+        'address': o.address,
+        'status': o.status.apiName,
+        'total_amount': o.totalAmount,
+        'data': o.toJson(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+  Future<void> _hydrateUser() async {
+    final u = user;
+    if (u == null || u.id.isEmpty) return;
+    try {
+      var rows = await _sbGet('accounts?id=eq.${Uri.encodeComponent(u.id)}&select=*');
+      if (rows.isEmpty && (u.email ?? '').contains('@')) {
+        try {
+          rows = await _sbGet('accounts?email=eq.${Uri.encodeComponent(u.email!.trim().toLowerCase())}&role=eq.${_roleTag(u.role)}&select=*');
+        } catch (_) {}
+      }
+      if (rows.isEmpty) return;
+      final m = Map<String, dynamic>.from(rows.first as Map);
+      if (_isDemoAccountMap(m)) return;
+      var next = SessionUser.fromJson(m);
+      if (next.role == 'shop') {
+        final accName = (next.shopName ?? '').trim();
+        final prevName = (u.shopName ?? '').trim();
+        String? keep;
+        if (prevName.isNotEmpty && prevName.toLowerCase() != 'my shop' && !_isDemoShopName(prevName)) {
+          keep = prevName;
+        } else if (accName.isNotEmpty && accName.toLowerCase() != 'my shop' && !_isDemoShopName(accName)) {
+          keep = accName;
+        }
+        next = _withShopId(SessionUser(
+          id: next.id,
+          name: next.name,
+          phone: next.phone,
+          role: next.role,
+          address: next.address,
+          vehicle: next.vehicle,
+          shopId: next.shopId ?? u.shopId,
+          shopName: keep,
+          email: next.email ?? u.email,
+          pin: next.pin,
+          photo: next.photo ?? u.photo,
+        ));
+      }
+      userNotifier.value = next;
+      await _persist();
+    } catch (_) {}
+  }
+
+  Future<List<dynamic>> _fetchMyOrderRows() async {
+    final u = user;
+    if (u == null) return <dynamic>[];
+    try {
+      if (u.role == 'customer' || u.role == 'user') {
+        if (!isWhatsAppVerified(u)) {
+          final seen = <String>{};
+          final out = <dynamic>[];
+          Future<void> add(String q) async {
+            try {
+              for (final raw in await _sbGet(q)) {
+                final m = Map<String, dynamic>.from(raw as Map);
+                final id = '${m['id'] ?? ''}';
+                if (id.isEmpty || !seen.add(id)) continue;
+                out.add(m);
+              }
+            } catch (_) {}
+          }
+          await add('orders?user_id=eq.${Uri.encodeComponent(u.id)}&select=*');
+          final email = (u.email ?? '').trim().toLowerCase();
+          if (email.isNotEmpty) {
+            await add('orders?data->>customerEmail=eq.${Uri.encodeComponent(email)}&select=*');
+          }
+          return out;
+        }
+        final parts = <String>['user_id.eq.${u.id}'];
+        final p = _normPhone(u.phone);
+        if (p.isNotEmpty && !_isPlaceholderPhone(p)) parts.add('customer_phone.eq.$p');
+        return await _sbGet('orders?or=(${parts.join(',')})&select=*');
+      }
+      if (u.role == 'shop') {
+        final sid = _linkedShopId(u);
+        if (sid.isEmpty) return <dynamic>[];
+        return await _sbGet('orders?shop_id=eq.${Uri.encodeComponent(sid)}&select=*');
+      }
+      if (u.role == 'rider') {
+        final parts = <String>['status.eq.ready'];
+        if (u.id.isNotEmpty) {
+          parts.add('rider_id.eq.${u.id}');
+          parts.add('data->>riderId.eq.${u.id}');
+        }
+        final p = _normPhone(u.phone);
+        if (p.isNotEmpty) parts.add('data->>riderPhone.eq.$p');
+        return await _sbGet('orders?or=(${parts.join(',')})&select=*');
+      }
+    } catch (_) {}
+    try {
+      return await _sbGet('orders?select=*');
+    } catch (_) {
+      return <dynamic>[];
+    }
+  }
+
+  Future<bool> _refreshFromSupabase() async {
+    try {
+      await _purgeDemoPrefs();
+      await _oneShotEmptyDb();
+      await _wipeDemo();
+      await _hydrateUser();
+      if (user?.role == 'shop') {
+        try {
+          await _ensureShopRow();
+        } catch (_) {}
+      }
+      final u = user;
+      var shopQ = 'shops?select=*&order=id.asc';
+      var itemQ = 'menu_items?select=*&order=id.asc';
+      if (u != null && u.role == 'shop') {
+        final sid = _linkedShopId(u);
+        if (sid.isNotEmpty) {
+          shopQ = 'shops?id=eq.${Uri.encodeComponent(sid)}&select=*';
+          itemQ = 'menu_items?shop_id=eq.${Uri.encodeComponent(sid)}&select=*';
+        }
+      }
+      final shopRows = await _sbGet(shopQ);
+      final itemRows = await _sbGet(itemQ);
+      final orderRows = await _fetchMyOrderRows();
+      try {
+        await _loadRateBag();
+      } catch (_) {}
+      var shops = _scopeShops(shopRows.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map))));
+      shops = shops.map((s) {
+        final want = (_persistedNames[s.id] ?? '').trim();
+        final named = (want.isNotEmpty && want != s.name) ? _shopWithName(s, want) : s;
+        return _shopWithRates(named);
+      }).toList();
+      final items = _scopeItems(itemRows.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))).map(_itemWithRates).toList();
+      Catalog.set(shops, items);
+      _catalogReady = true;
+      ordersNotifier.value = _retainStatus(
+        _scopeOrders(
+          orderRows.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+        ),
+      );
+      try {
+        await _syncPublicShopNames();
+      } catch (_) {}
+      if (user?.role == 'shop') {
+        try {
+          await _repairShopPublicName();
+        } catch (_) {}
+      }
+      messages.clear();
+      final ids = orders.map((o) => o.id).where((id) => id.isNotEmpty).toList();
+      if (ids.isNotEmpty) {
+        try {
+          final inList = ids.map((id) => '"${id.replaceAll('"', '')}"').join(',');
+          final msgRows = await _sbGet('messages?order_id=in.($inList)&select=*');
+          for (final raw in msgRows) {
+            final m = Map<String, dynamic>.from(raw as Map);
+            final oid = '${m['order_id'] ?? ''}';
+            if (oid.isEmpty) continue;
+            (messages[oid] ??= <ChatMessage>[]).add(
+              ChatMessage(
+                id: '${m['id']}',
+                from: '${m['sender'] ?? m['from'] ?? ''}',
+                role: '${m['role'] ?? ''}',
+                text: '${m['body'] ?? m['text'] ?? ''}',
+                ts: (m['ts'] as num?)?.toInt() ?? 0,
+                thread: m['thread']?.toString(),
+              ),
+            );
+          }
+        } catch (_) {}
+      }
+      connectedNotifier.value = true;
+      _maybeUnfreeze();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> refresh() async {
+    await _loadSupabaseConfig();
+    if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnon.isNotEmpty) {
+      final ok = await _refreshFromSupabase();
+      if (ok) return;
+    }
+    final uri = _uri('/api/state');
+    if (uri == null) {
+      connectedNotifier.value = false;
+      return;
+    }
+    try {
+      final res = await http.get(uri).timeout(const Duration(seconds: 6));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final rawOrders = (data['orders'] as List?) ?? const [];
+        ordersNotifier.value = _retainStatus(
+          _scopeOrders(
+            rawOrders.map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))),
+          ),
+        );
+        final rawShops = (data['shops'] as List?) ?? const [];
+        final rawItems = (data['items'] as List?) ?? const [];
+        Catalog.set(
+          _scopeShops(rawShops.map((e) => Shop.fromJson(Map<String, dynamic>.from(e as Map)))),
+          _scopeItems(rawItems.map((e) => CatalogItem.fromJson(Map<String, dynamic>.from(e as Map)))),
+        );
+        _catalogReady = true;
+        messages.clear();
+        final allow = orders.map((o) => o.id).toSet();
+        final rawMsg = data['messages'];
+        if (rawMsg is Map) {
+          rawMsg.forEach((k, v) {
+            if (v is List && allow.contains('$k')) {
+              messages['$k'] = v
+                  .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+                  .toList();
+            }
+          });
+        }
+        connectedNotifier.value = true;
+        _maybeUnfreeze();
+        return;
+      }
+    } catch (_) {}
+    connectedNotifier.value = false;
+  }
+
+  Order? byId(String id) {
+    for (final o in orders) {
+      if (o.id == id) return o;
+    }
+    return null;
+  }
+
+  void addToCart(CatalogItem item) {
+    final cart = [...cartNotifier.value];
+    cart.removeWhere((c) => c.shopId != item.shopId);
+    final i = cart.indexWhere((c) => c.id == item.id);
+    if (i >= 0) {
+      cart[i].qty += 1;
+    } else {
+      cart.add(CartLine(id: item.id, shopId: item.shopId, name: item.name, price: item.price));
+    }
+    cartNotifier.value = cart;
+  }
+
+  void changeQty(String id, int delta) {
+    final cart = [...cartNotifier.value];
+    final i = cart.indexWhere((c) => c.id == id);
+    if (i < 0) return;
+    cart[i].qty += delta;
+    if (cart[i].qty <= 0) cart.removeAt(i);
+    cartNotifier.value = cart;
+  }
+
+  double get cartTotal => cartNotifier.value.fold(0, (s, c) => s + c.price * c.qty);
+
+  Future<Order?> checkout({
+    required String address,
+    String note = '',
+    String paymentMethod = 'Cash on delivery',
+    double? deliveryLat,
+    double? deliveryLng,
+    double? deliveryFee,
+    Map<String, dynamic>? payment,
+  }) async {
+    final cart = cartNotifier.value;
+    if (cart.isEmpty) return null;
+    if (!isWhatsAppVerified()) {
+      throw Exception('WHATSAPP_REQUIRED');
+    }
+    final u = user;
+    final dlat = deliveryLat ?? UserPlace.instance.lat;
+    final dlng = deliveryLng ?? UserPlace.instance.lng;
+    final payload = {
+      'shopId': cart.first.shopId,
+      'userId': u?.id ?? '',
+      'customerName': u?.name ?? 'Guest',
+      'customerPhone': u?.phone ?? '',
+      'customerEmail': u?.email ?? '',
+      'address': address,
+      'note': note,
+      'paymentMethod': paymentMethod,
+      'deliveryLat': dlat,
+      'deliveryLng': dlng,
+      'deliveryFee': deliveryFee ?? 200,
+      'items': cart.map((e) => e.toJson()).toList(),
+      if (payment != null) 'payment': payment,
+    };
+    final uri = _uri('/api/orders');
+    if (uri != null) {
+      try {
+        final res = await http
+            .post(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload))
+            .timeout(const Duration(seconds: 8));
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
+          await _pushOrder(created);
+          cartNotifier.value = [];
+          _keepOrder(created);
+          await refresh();
+          _keepOrder(created);
+          return created;
+        }
+      } catch (_) {}
+    }
+    final shop = Catalog.shops.where((s) => s.id == cart.first.shopId).toList();
+    final fee = deliveryFee ?? 200;
+    final pay = payment;
+    final created = Order(
+      id: 'ORD-${DateTime.now().millisecondsSinceEpoch}',
+      userId: u?.id ?? '',
+      shopId: cart.first.shopId,
+      status: OrderStatus.pending,
+      items: cart.map((e) => DeliveryItem(id: e.id, name: e.name, qty: e.qty, price: e.price)).toList(),
+      totalAmount: cartTotal + fee,
+      deliveryLat: dlat,
+      deliveryLng: dlng,
+      timestamp: DateTime.now(),
+      shopName: shop.isNotEmpty ? shop.first.name : 'Shop',
+      customerName: u?.name ?? 'Guest',
+      customerPhone: u?.phone,
+      address: address,
+      shopLat: shop.isNotEmpty ? shop.first.lat : null,
+      shopLng: shop.isNotEmpty ? shop.first.lng : null,
+      shopAddress: shop.isNotEmpty ? shop.first.address : null,
+      paymentMethod: paymentMethod,
+      paid: pay != null,
+      paymentStatus: pay != null ? '${pay['status'] ?? 'captured'}' : '',
+      paymentId: pay?['paymentId']?.toString(),
+      shopCredit: (pay?['shopCredit'] as num?)?.toDouble() ?? 0,
+      riderCredit: (pay?['riderCredit'] as num?)?.toDouble() ?? 0,
+    );
+    await _pushOrder(created);
+    cartNotifier.value = [];
+    _keepOrder(created);
+    await refresh();
+    _keepOrder(created);
+    return created;
+  }
+
+  void _keepOrder(Order created) {
+    final prev = _keptOrders[created.id];
+    final keep = prev == null ? created : created.copyWith(status: OrderStatusX.later(prev.status, created.status));
+    _keptOrders[created.id] = keep;
+    if (orders.any((o) => o.id == created.id)) return;
+    ordersNotifier.value = [keep, ...orders];
+  }
+
+  Future<Order> addOrder(Order order) async {
+    final uri = _uri('/api/orders');
+    if (uri != null) {
+      try {
+        final res = await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'shopId': order.shopId,
+                'userId': order.userId,
+                'customerName': order.customerName,
+                'address': user?.address ?? 'New Town, Anuradhapura',
+                'deliveryLat': order.deliveryLat,
+                'deliveryLng': order.deliveryLng,
+                'items': order.items.map((e) => e.toJson()).toList(),
+              }),
+            )
+            .timeout(const Duration(seconds: 8));
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          final created = Order.fromJson(Map<String, dynamic>.from(jsonDecode(res.body) as Map));
+          await refresh();
+          return created;
+        }
+      } catch (_) {}
+    }
+    return order;
+  }
+
+  Future<void> updateStatus(String id, OrderStatus status) async {
+    await _patch(id, {'status': status.apiName});
+  }
+
+  bool _isDemoOrder(Order o) {
+    if (RegExp(r'^ORD-100[1-4]$').hasMatch(o.id) || o.id == 'ORD-NONE') return true;
+    if (_isDemoShop(o.shopId) || _demoAccounts.contains(o.userId) || _isDemoPhone(o.customerPhone)) return true;
+    return false;
+  }
+
+  Future<void> assignRider(String id, {String? riderId, String? riderName, String? riderPhone}) async {
+    final u = user;
+    if (u != null && u.role == 'rider' && !isRiderRegistered) {
+      throw Exception('Register as a rider first, then accept orders.');
+    }
+    if (u != null && u.role == 'rider' && !isWhatsAppVerified(u)) {
+      throw Exception('WHATSAPP_REQUIRED');
+    }
+    await _patch(id, {
+      'riderId': riderId ?? u?.id,
+      'riderName': riderName ?? u?.name,
+      'riderPhone': riderPhone ?? u?.phone,
+    });
+  }
+
+  Future<void> updateRiderLocation(String id, double lat, double lng) async {
+    await _patch(id, {'riderLat': lat, 'riderLng': lng});
+  }
+
+  Future<void> sendMessage(String orderId, String text, String role, String from) async {
+    final body = text.trim();
+    if (body.isEmpty) return;
+    final r = _normChatRole(role);
+    final o = orderById(orderId);
+    if (r != 'system' && !canChat(o, r)) {
+      throw Exception(
+        r == 'customer'
+            ? 'Chat opens after the rider picks up your order.'
+            : r == 'shop'
+                ? 'Chat with the rider is open until pickup.'
+                : 'Chat is not available for this order.',
+      );
+    }
+    final lane = r == 'system' ? null : chatLane(o);
+    final prefix = lane == 'shop' ? 'qbS.' : lane == 'customer' ? 'qbC.' : 'm';
+    final msg = ChatMessage(
+      id: '$prefix${DateTime.now().millisecondsSinceEpoch}',
+      from: from,
+      role: r,
+      text: body,
+      ts: DateTime.now().millisecondsSinceEpoch,
+      thread: lane,
+    );
+    (messages[orderId] ??= <ChatMessage>[]).add(msg);
+    ordersNotifier.value = List<Order>.of(orders);
+    final uri = _uri('/api/orders/$orderId/messages');
+    if (uri != null) {
+      try {
+        await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'from': from, 'role': r, 'text': body, 'thread': lane}),
+            )
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+    try {
+      await _sbWrite('messages', 'POST', [
+        {
+          'id': msg.id,
+          'order_id': orderId,
+          'sender': from,
+          'role': r,
+          'body': body,
+          'ts': msg.ts,
+        }
+      ]);
+    } catch (_) {}
+    await refresh();
+    final list = messages[orderId] ?? <ChatMessage>[];
+    if (!list.any((m) => m.id == msg.id || (m.text == msg.text && m.role == msg.role))) {
+      (messages[orderId] ??= <ChatMessage>[]).add(msg);
+      ordersNotifier.value = List<Order>.of(orders);
+    }
+  }
+
+  Future<void> saveShop({
+    required String id,
+    required String name,
+    String category = 'Bakery',
+    String hours = '08:00 AM – 10:00 PM',
+    String about = '',
+    String? image,
+    bool isOpen = true,
+  }) async {
+    final u = user;
+    var sid = id;
+    if (sid.isEmpty || sid == 'null' || _isDemoShop(sid)) {
+      sid = u != null ? _linkedShopId(u) : '';
+    }
+    if (sid.isEmpty || _isDemoShop(sid)) throw Exception('Missing shop');
+    Shop? prev;
+    for (final s in Catalog.shops) {
+      if (s.id == sid) prev = s;
+    }
+    final nextName = name.trim();
+    if (nextName.isEmpty) throw Exception('Enter a shop name.');
+    if (_isDemoShopName(nextName) || _isPlaceholderShopName(nextName)) {
+      throw Exception('Choose your shop name — not a demo name.');
+    }
+    final row = {
+      'id': sid,
+      'name': nextName,
+      'category': category,
+      'rating': prev?.rating ?? 5,
+      'reviews': prev?.reviews ?? 0,
+      'is_open': isOpen,
+      'lat': prev?.lat,
+      'lng': prev?.lng,
+      'hours': hours,
+      'address': prev?.address ?? '',
+      'image': image ?? prev?.image ?? '/img/shop-bakery.jpg',
+      'promo': about,
+    };
+    _persistedNames[sid] = nextName;
+    try {
+      await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {
+        'name': nextName,
+        'category': category,
+        'hours': hours,
+        'promo': about,
+        'image': row['image'],
+        'is_open': isOpen,
+      });
+    } catch (_) {}
+    await _sbUpsert('shops', [row]);
+    try {
+      await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'name': nextName});
+    } catch (_) {}
+    try {
+      await _sbWrite('orders?shop_id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'shop_name': nextName});
+    } catch (_) {}
+    await _purgeDemoPrefs();
+    if (u != null && u.phone.isNotEmpty) {
+      final rec = await _recalledShop(u.phone) ?? {};
+      await _rememberShop(u.phone, {
+        'shopId': sid,
+        'shopName': nextName,
+        'ownerName': rec['ownerName'] ?? u.name,
+        'address': '${row['address'] ?? rec['address'] ?? ''}',
+        'lat': '${row['lat'] ?? rec['lat'] ?? ''}',
+        'lng': '${row['lng'] ?? rec['lng'] ?? ''}',
+      });
+    }
+    await refresh();
+    final i = Catalog.shops.indexWhere((s) => s.id == sid);
+    if (i >= 0 && Catalog.shops[i].name.trim() != nextName) {
+      _persistedNames[sid] = nextName;
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {'name': nextName});
+      } catch (_) {}
+      final shops = [...Catalog.shops];
+      shops[i] = _shopWithName(shops[i], nextName);
+      Catalog.set(shops, Catalog.items);
+    }
+  }
+
+  Future<void> saveItem({
+    String? id,
+    required String name,
+    required double price,
+    String category = 'Food',
+    String desc = '',
+    String? image,
+    bool available = true,
+    String? shopId,
+  }) async {
+    if (user == null || user!.role != 'shop') {
+      throw Exception('Register as a shop owner first, then add items.');
+    }
+    if (name.trim().isEmpty) throw Exception('Enter an item name.');
+    var sid = shopId ?? '';
+    if (sid.isEmpty || sid == 'SHOP_1' || sid == 'null') {
+      sid = user?.shopId ?? '';
+    }
+    try {
+      sid = await _ensureShopRow();
+    } catch (_) {
+      throw Exception('Register your shop first, then add items.');
+    }
+    if (sid.isEmpty || !isShopRegistered) {
+      throw Exception('Register your shop first, then add items.');
+    }
+    final itemId = (id != null && id.isNotEmpty) ? id : 'ITM_${DateTime.now().millisecondsSinceEpoch}';
+    await _sbUpsert('menu_items', [
+      {
+        'id': itemId,
+        'shop_id': sid,
+        'name': name.trim(),
+        'category': category,
+        'price': price,
+        'is_available': available,
+        'description': desc,
+        'image': (image != null && image.isNotEmpty) ? image : '/img/shop-bakery.jpg',
+      }
+    ]);
+    await refresh();
+  }
+
+  Future<void> toggleItem(String id, bool available) async {
+    final uri = _uri('/api/items/$id');
+    if (uri != null) {
+      try {
+        await http
+            .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode({'isAvailable': available}))
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+    try {
+      await _sbWrite('menu_items?id=eq.$id', 'PATCH', {'is_available': available});
+    } catch (_) {}
+    await refresh();
+  }
+
+  Map<String, dynamic> _rateGroup(String key) {
+    final raw = _rateBag[key];
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return <String, dynamic>{};
+  }
+
+  ({double rating, int n})? _bagAvg(String group, String id) {
+    if (id.isEmpty) return null;
+    final rec = _rateGroup(group)[id];
+    if (rec is! Map) return null;
+    final n = (rec['n'] as num?)?.toInt() ?? 0;
+    final sum = (rec['sum'] as num?)?.toDouble() ?? 0;
+    if (n <= 0) return null;
+    return (rating: (sum / n * 10).round() / 10, n: n);
+  }
+
+  ({double rating, int n})? itemRateOf(String id) => _bagAvg('items', id);
+
+  void _bumpBag(String group, String id, int stars) {
+    if (id.isEmpty || stars < 1) return;
+    final bag = Map<String, dynamic>.from(_rateGroup(group));
+    final rec = bag[id];
+    final n = rec is Map ? ((rec['n'] as num?)?.toInt() ?? 0) : 0;
+    final sum = rec is Map ? ((rec['sum'] as num?)?.toDouble() ?? 0) : 0;
+    bag[id] = {'sum': sum + stars, 'n': n + 1};
+    _rateBag = {
+      'shops': group == 'shops' ? bag : _rateGroup('shops'),
+      'riders': group == 'riders' ? bag : _rateGroup('riders'),
+      'items': group == 'items' ? bag : _rateGroup('items'),
+    };
+  }
+
+  Future<void> _loadRateBag() async {
+    try {
+      for (final raw in await _sbGet('app_state?id=eq.qb_ratings&select=*')) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        dynamic p = m['payload'];
+        if (p is String) {
+          try {
+            p = jsonDecode(p);
+          } catch (_) {
+            p = null;
+          }
+        }
+        if (p is! Map) continue;
+        final map = Map<String, dynamic>.from(p);
+        _rateBag = {
+          'shops': Map<String, dynamic>.from(map['shops'] as Map? ?? const {}),
+          'riders': Map<String, dynamic>.from(map['riders'] as Map? ?? const {}),
+          'items': Map<String, dynamic>.from(map['items'] as Map? ?? const {}),
+        };
+        return;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveRateBag() async {
+    try {
+      await _sbUpsert('app_state', [
+        {'id': 'qb_ratings', 'payload': _rateBag},
+      ]);
+    } catch (_) {
+      try {
+        await _sbWrite('app_state?id=eq.qb_ratings', 'PATCH', {'payload': _rateBag});
+      } catch (_) {}
+    }
+  }
+
+  Shop _shopWithRates(Shop s) {
+    final rec = _bagAvg('shops', s.id);
+    if (rec == null) return s;
+    return Shop(
+      id: s.id,
+      name: s.name,
+      category: s.category,
+      rating: rec.rating,
+      isOpen: s.isOpen,
+      lat: s.lat,
+      lng: s.lng,
+      image: s.image,
+      km: s.km,
+      reviews: rec.n,
+      hours: s.hours,
+      address: s.address,
+      promo: s.promo,
+    );
+  }
+
+  CatalogItem _itemWithRates(CatalogItem i) {
+    final rec = itemRateOf(i.id) ?? itemRateOf(i.name);
+    if (rec == null) return i;
+    return CatalogItem(
+      id: i.id,
+      shopId: i.shopId,
+      name: i.name,
+      category: i.category,
+      price: i.price,
+      isAvailable: i.isAvailable,
+      desc: i.desc,
+      image: i.image,
+      rating: rec.rating,
+      reviews: rec.n,
+    );
+  }
+
+  Future<void> rateOrder({
+    required String orderId,
+    required int shopStars,
+    int riderStars = 0,
+    Map<String, int> itemStars = const <String, int>{},
+  }) async {
+    shopStars = orderStar(shopStars);
+    riderStars = orderStar(riderStars);
+    if (shopStars < 1) throw Exception('Tap stars to rate the shop.');
+    final o = byId(orderId);
+    if (o == null || o.status != OrderStatus.delivered) {
+      throw Exception('Rate after the order is delivered.');
+    }
+    if (o.rated) return;
+    final cleanItems = <String, int>{};
+    for (final it in o.items) {
+      final k = it.rateKey;
+      if (k.isEmpty || cleanItems.containsKey(k)) continue;
+      final s = orderStar(itemStars[k] ?? itemStars[it.id] ?? itemStars[it.name]);
+      if (s >= 1) cleanItems[k] = s;
+    }
+    final next = o.copyWith(shopRating: shopStars, riderRating: riderStars, itemRatings: cleanItems);
+    final list = List<Order>.of(orders);
+    final i = list.indexWhere((x) => x.id == orderId);
+    if (i >= 0) list[i] = next;
+    _keptOrders[orderId] = next;
+    ordersNotifier.value = list;
+    try {
+      await _sbWrite('orders?id=eq.$orderId', 'PATCH', _orderRow(next));
+    } catch (_) {}
+    await _loadRateBag();
+    final sid = next.shopId;
+    if (sid.isNotEmpty && _bagAvg('shops', sid) == null) {
+      Shop? shop;
+      for (final s in Catalog.shops) {
+        if (s.id == sid) {
+          shop = s;
+          break;
+        }
+      }
+      if (shop != null && shop.reviews > 0) {
+        _bumpBag('shops', sid, 0);
+        final bag = Map<String, dynamic>.from(_rateGroup('shops'));
+        bag[sid] = {'sum': shop.rating * shop.reviews, 'n': shop.reviews};
+        _rateBag = {'shops': bag, 'riders': _rateGroup('riders'), 'items': _rateGroup('items')};
+      }
+    }
+    _bumpBag('shops', sid, shopStars);
+    if ((next.riderId ?? '').isNotEmpty && riderStars >= 1) {
+      _bumpBag('riders', next.riderId!, riderStars);
+    }
+    cleanItems.forEach((k, s) => _bumpBag('items', k, s));
+    await _saveRateBag();
+    final shopRec = _bagAvg('shops', sid);
+    if (sid.isNotEmpty && shopRec != null) {
+      try {
+        await _sbWrite('shops?id=eq.${Uri.encodeComponent(sid)}', 'PATCH', {
+          'rating': shopRec.rating,
+          'reviews': shopRec.n,
+        });
+      } catch (_) {}
+    }
+    final rid = next.riderId ?? '';
+    final riderRec = _bagAvg('riders', rid);
+    if (rid.isNotEmpty && riderRec != null) {
+      try {
+        await _sbWrite('accounts?id=eq.${Uri.encodeComponent(rid)}', 'PATCH', {'rating': riderRec.rating});
+      } catch (_) {}
+    }
+    await refresh();
+  }
+
+  Future<void> _pushOrder(Order o) async {
+    try {
+      await _sbUpsert('orders', [_orderRow(o)]);
+    } catch (_) {
+      try {
+        await _sbWrite('orders', 'POST', [_orderRow(o)]);
+      } catch (_) {}
+    }
+  }
+
+  final Map<String, Future<void>> _patchTail = {};
+  final Map<String, Map<String, dynamic>> _locPend = {};
+  final Map<String, Timer> _locTimer = {};
+
+  bool _locOnly(Map<String, dynamic> body) {
+    if (body.isEmpty) return false;
+    return body.keys.every((k) => k == 'riderLat' || k == 'riderLng');
+  }
+
+  void _applyPatchLocal(String id, Map<String, dynamic> body) {
+    final list = List<Order>.of(orders);
+    final i = list.indexWhere((o) => o.id == id);
+    if (i < 0) return;
+    final cur = list[i];
+    int? shopRating;
+    int? riderRating;
+    Map<String, int>? itemRatings;
+    final rawRates = body['ratings'];
+    if (rawRates is Map) {
+      shopRating = orderStar(rawRates['shop']);
+      riderRating = orderStar(rawRates['rider']);
+      final itemMap = <String, int>{};
+      final items = rawRates['items'];
+      if (items is Map) {
+        items.forEach((k, v) {
+          final s = orderStar(v);
+          if (s >= 1) itemMap['$k'] = s;
+        });
+      }
+      itemRatings = itemMap;
+    }
+    var next = cur.copyWith(
+      status: body['status'] != null ? OrderStatusX.fromApi(body['status']?.toString()) : cur.status,
+      riderId: body['riderId']?.toString() ?? cur.riderId,
+      riderName: body['riderName']?.toString() ?? cur.riderName,
+      riderPhone: body['riderPhone']?.toString() ?? cur.riderPhone,
+      riderLat: (body['riderLat'] as num?)?.toDouble() ?? cur.riderLat,
+      riderLng: (body['riderLng'] as num?)?.toDouble() ?? cur.riderLng,
+      shopRating: shopRating,
+      riderRating: riderRating,
+      itemRatings: itemRatings,
+    );
+    next = next.copyWith(status: OrderStatusX.later(cur.status, next.status));
+    if (cur.status == OrderStatus.delivered) {
+      next = next.copyWith(status: OrderStatus.delivered);
+    }
+    list[i] = next;
+    _keptOrders[id] = next;
+    ordersNotifier.value = list;
+  }
+
+  Future<void> _enqueuePatch(String id, Future<void> Function() task) async {
+    final prev = _patchTail[id] ?? Future.value();
+    final next = prev.then((_) => task(), onError: (_) => task());
+    _patchTail[id] = next;
+    await next;
+  }
+
+  Future<void> _writePatch(String id, Map<String, dynamic> body) async {
+    _applyPatchLocal(id, body);
+    final current = byId(id);
+    if (current != null && _locOnly(body) && current.status == OrderStatus.delivered) return;
+    final uri = _uri('/api/orders/$id');
+    if (uri != null) {
+      try {
+        await http
+            .patch(uri, headers: {'Content-Type': 'application/json'}, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 8));
+      } catch (_) {}
+    }
+    if (current != null) {
+      try {
+        await _sbWrite('orders?id=eq.$id', 'PATCH', _orderRow(current));
+      } catch (_) {}
+    }
+    if (!_locOnly(body)) {
+      final want = current?.status;
+      await refresh();
+      final after = byId(id);
+      if (want != null && after != null && OrderStatusX.later(after.status, want) != after.status) {
+        _applyPatchLocal(id, {'status': want.apiName});
+      }
+    }
+  }
+
+  Future<void> _patch(String id, Map<String, dynamic> body) async {
+    if (_locOnly(body)) {
+      _applyPatchLocal(id, body);
+      final cur = byId(id);
+      if (cur != null && cur.status == OrderStatus.delivered) return;
+      _locPend[id] = {...?_locPend[id], ...body};
+      _locTimer[id] ??= Timer(const Duration(milliseconds: 1200), () {
+        _locTimer.remove(id);
+        final extra = _locPend.remove(id);
+        if (extra != null) {
+          _enqueuePatch(id, () => _writePatch(id, extra));
+        }
+      });
+      return;
+    }
+    _locTimer.remove(id)?.cancel();
+    final pending = _locPend.remove(id);
+    final merged = pending == null ? body : {...pending, ...body};
+    await _enqueuePatch(id, () => _writePatch(id, merged));
+  }
+}
+
+class Catalog {
+  static List<Shop> shops = <Shop>[];
+  static List<CatalogItem> items = <CatalogItem>[];
+  static final ValueNotifier<int> version = ValueNotifier<int>(0);
+
+  static void set(List<Shop> nextShops, List<CatalogItem> nextItems) {
+    shops = nextShops;
+    items = nextItems;
+    version.value++;
+  }
+}

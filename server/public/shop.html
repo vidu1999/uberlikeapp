@@ -1,0 +1,1890 @@
+<!DOCTYPE html>
+<html lang="en" data-role="shop">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>Shop Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/app.css?v=19zn" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zn" />
+  <link rel="stylesheet" href="/css/track.css?v=19zv" />
+</head>
+<body>
+  <div class="app" id="root"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="/js/live.js?v=19zk"></script>
+  <script src="/js/api.js?v=19a9"></script>
+  <script src="/js/maps.js?v=19zu"></script>
+  <script src="/js/track-ui.js?v=19zv"></script>
+  <script src="/js/otp-login.js?v=19zw"></script>
+  <script>
+    const state = {
+      tab: 'dash', filter: 'all', trackId: null, mapHandle: null,
+      screen: '', orderId: null, itemId: null, menuQ: '', menuCat: 'All',
+      anRange: 'today', anFrom: '', anTo: '',
+      itemDraft: null, shopDraft: null,
+      auth: 'login',
+      fromReg: false,
+      reg: { shopName: '', ownerName: '', phone: '', email: '', photo: '', address: '', lat: null, lng: null, liveLat: null, liveLng: null, acc: null, custom: false, addrDirty: false },
+      regMap: null,
+      loginId: '',
+      loginPw: '',
+      wa: { open: false, step: 'phone', phone: '', err: '' },
+    };
+    const STORE_MARK = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 3l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>';
+    const GOOGLE_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7 12.9 19.6C14.7 15.2 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.3C29.3 35.1 26.8 36 24 36c-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.3 5.3C39.3 36.1 44 30.7 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>';
+    const WA_LOGO = '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>';
+    const FOOD_IMGS = [
+      '/img/shop-burger.jpg', '/img/shop-pizza.jpg', '/img/shop-bakery.jpg', '/img/cake-chocolate.jpg',
+      '/img/cake-vanilla.jpg', '/img/iced-coffee.jpg', '/img/kottu.jpg', '/img/cookies.jpg',
+    ];
+    function shopId() {
+      if (API.user && API.user.shopId) return API.user.shopId;
+      if (API.user && API.user.phone && API.shopIdFor) {
+        if (API.isPlaceholderPhone && API.isPlaceholderPhone(API.user.phone)) return '';
+        return API.shopIdFor(API.user.phone);
+      }
+      return '';
+    }
+    function isRealWaPhone(p) {
+      const n = API.normalizePhone ? API.normalizePhone(p || '') : String(p || '').replace(/\D/g, '');
+      return /^07\d{8}$/.test(n);
+    }
+    function lockRegPhone(p) {
+      const v = API.verifiedPhone && API.verifiedPhone('shop');
+      if (!isRealWaPhone(v) || !isRealWaPhone(p)) return false;
+      const a = API.normalizePhone ? API.normalizePhone(v) : v;
+      const b = API.normalizePhone ? API.normalizePhone(p) : p;
+      return a === b;
+    }
+    function itemImg(it) { return (it && it.image) || '/img/shop-bakery.jpg'; }
+    function stockInfo(it) {
+      if (API.itemStock) return API.itemStock(it);
+      if (it && it.stockUnlimited === false) return { unlimited: false, stock: Math.max(0, Number(it.stock) || 0) };
+      return { unlimited: true, stock: 0 };
+    }
+    function stockLine(it) {
+      const st = stockInfo(it);
+      if (st.unlimited) return 'Unlimited';
+      if (st.stock <= 0) return 'Sold out';
+      return 'Stock: ' + st.stock;
+    }
+    function menuBucket(cat) {
+      const c = String(cat || '').toLowerCase();
+      if (/drink|beverage|coffee|juice|tea|ice/.test(c)) return 'Drinks';
+      if (/dessert|cake|sweet|cookie|bakery|pastry/.test(c)) return 'Desserts';
+      return 'Food';
+    }
+    function shopItems() {
+      const sid = String(shopId() || '');
+      return API.items.filter((it) => String(it.shopId || '') === sid);
+    }
+    function shopOrders() {
+      const sid = shopId();
+      return API.orders.filter((o) => o.shopId === sid);
+    }
+    function cardPaid(o) {
+      if (!o || o.status === 'cancelled' || o.paymentStatus === 'refunded') return false;
+      return !!(o.paid || (API.isCardMethod && API.isCardMethod(o.paymentMethod)));
+    }
+    function shopShare(o) { return API.shopCreditOf ? API.shopCreditOf(o) : Number(o.shopCredit || o.subtotal || 0); }
+    function riderShare(o) { return API.riderCreditOf ? API.riderCreditOf(o) : Number(o.riderCredit || o.deliveryFee || 0); }
+    function shopWalletBal() {
+      return shopOrders().filter(cardPaid).reduce((n, o) => n + shopShare(o), 0);
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
+    function oid(id) { return '#' + String(id||'').replace('_','-'); }
+    function myShop() {
+      const sid = shopId();
+      const s = API.shops.find((x) => x.id === sid) || {};
+      return {
+        id: sid,
+        name: (function () {
+          const fromShop = String(s.name || '').trim();
+          const fromUser = String((API.user && API.user.shopName) || '').trim();
+          const n = fromShop || fromUser;
+          if (!n || /^my shop$/i.test(n)) return fromShop || fromUser || 'Shop';
+          return n;
+        })(),
+        category: s.category || 'Bakery',
+        rating: Number(s.rating || 0),
+        reviews: Number(s.reviews || 0),
+        hours: s.hours || '08:00 AM – 10:00 PM',
+        image: s.image || '/img/shop-bakery.jpg',
+        address: s.address || '',
+        isOpen: s.isOpen !== false,
+        promo: s.promo || '',
+      };
+    }
+    function shopName() {
+      const s = myShop();
+      return (API.shopTitle && API.shopTitle(s)) || s.name;
+    }
+    function shopTags(s) {
+      const c = String((s && s.category) || 'Bakery');
+      if (/baker/i.test(c)) return 'Bakery • Cakes • Pastries';
+      return c;
+    }
+    function shopAbout(s) {
+      const p = String((s && (s.promo || s.about)) || '');
+      if (!p || /buy 1/i.test(p)) {
+        return 'Freshly baked cakes, pastries and desserts made with love. We use the best ingredients to bring happiness to your table.';
+      }
+      return p;
+    }
+    function timeOf(o) {
+      const d = new Date(o.timestamp || Date.now());
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    function thumb(o) {
+      const it = (o.items || [])[0];
+      if (it && it.id) {
+        const item = API.items.find((i) => i.id === it.id);
+        if (item && item.image) return item.image;
+      }
+      const shop = API.shopOf(o.shopId);
+      return shop.image || '/img/shop-bakery.jpg';
+    }
+    function badgeText(o) {
+      if (o.status === 'pending') return 'New';
+      if (o.status === 'ready') return 'Ready';
+      if (o.status === 'accepted') return 'Rider accepted';
+      if (o.status === 'picked_up' || o.status === 'on_the_way') return 'Picked up';
+      return API.statusLabel(o.status);
+    }
+    function orderTs(o) {
+      const t = Date.parse((o && (o.timestamp || o.updatedAt)) || '') || 0;
+      return t;
+    }
+    function startDay(d) {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    }
+    function endDay(d) {
+      const x = new Date(d);
+      x.setHours(23, 59, 59, 999);
+      return x;
+    }
+    function anBounds() {
+      const now = new Date();
+      const today0 = startDay(now);
+      const day = 86400000;
+      const r = state.anRange || 'today';
+      if (r === '7') {
+        const from = new Date(today0.getTime() - 6 * day);
+        return { from: from, to: now, prevFrom: new Date(from.getTime() - 7 * day), prevTo: from };
+      }
+      if (r === '30') {
+        const from = new Date(today0.getTime() - 29 * day);
+        return { from: from, to: now, prevFrom: new Date(from.getTime() - 30 * day), prevTo: from };
+      }
+      if (r === 'custom') {
+        const from = state.anFrom ? startDay(state.anFrom) : new Date(today0.getTime() - 13 * day);
+        const to = state.anTo ? endDay(state.anTo) : now;
+        const span = Math.max(day, to.getTime() - from.getTime());
+        return { from: from, to: to, prevFrom: new Date(from.getTime() - span), prevTo: from };
+      }
+      return {
+        from: today0,
+        to: now,
+        prevFrom: new Date(today0.getTime() - day),
+        prevTo: today0,
+      };
+    }
+    function liveOrders() {
+      return shopOrders().filter((o) => o && o.status !== 'cancelled');
+    }
+    function ordersIn(from, to) {
+      const a = from.getTime();
+      const b = to.getTime();
+      return liveOrders().filter((o) => {
+        const t = orderTs(o);
+        return t >= a && t <= b;
+      });
+    }
+    function orderRev(o) {
+      return Number(o.subtotal != null ? o.subtotal : (o.totalAmount || 0)) || 0;
+    }
+    function pctChange(cur, prev) {
+      if (!prev) return cur ? 100 : 0;
+      return Math.round(((cur - prev) / prev) * 100);
+    }
+    function timeAgo(ts) {
+      const s = Math.max(0, (Date.now() - Number(ts || 0)) / 1000);
+      if (s < 45) return 'Now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      const d = Math.floor(s / 86400);
+      return d === 1 ? '1d ago' : d + 'd ago';
+    }
+    function salesPoints(from, to, list) {
+      const span = Math.max(1, to.getTime() - from.getTime());
+      const day = 86400000;
+      let n = 7;
+      if (span <= day + 60000) n = 6;
+      else if (span <= 8 * day) n = Math.max(2, Math.round(span / day));
+      else n = 7;
+      const step = span / Math.max(1, n - 1);
+      const pts = [];
+      for (let i = 0; i < n; i++) {
+        const a = from.getTime() + (i === 0 ? 0 : step * (i - 0.5));
+        const b = from.getTime() + (i === n - 1 ? span : step * (i + 0.5));
+        const v = list.filter((o) => {
+          const t = orderTs(o);
+          return t >= a && t <= b;
+        }).reduce((s, o) => s + orderRev(o), 0);
+        const mid = new Date(from.getTime() + step * i);
+        let lab = '';
+        if (span <= day + 60000) lab = mid.toLocaleTimeString('en-US', { hour: 'numeric' });
+        else if (n <= 8) lab = mid.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2);
+        else lab = (mid.getMonth() + 1) + '/' + mid.getDate();
+        pts.push({ v: v, lab: lab });
+      }
+      return pts;
+    }
+    function salesChart(pts) {
+      const w = 320;
+      const h = 128;
+      const padX = 12;
+      const padY = 16;
+      const max = Math.max(1, ...pts.map((p) => p.v));
+      const n = Math.max(1, pts.length - 1);
+      const coords = pts.map((p, i) => {
+        const x = padX + (i / n) * (w - padX * 2);
+        const y = h - padY - (p.v / max) * (h - padY * 2);
+        return { x: x, y: y };
+      });
+      const line = coords.map((c) => c.x.toFixed(1) + ',' + c.y.toFixed(1)).join(' ');
+      const area = padX + ',' + (h - padY) + ' ' + line + ' ' + (w - padX) + ',' + (h - padY);
+      const dots = coords.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="3.5" fill="#00C853" />`).join('');
+      const labs = pts.map((p, i) => {
+        const x = padX + (i / n) * (w - padX * 2);
+        return `<text x="${x.toFixed(1)}" y="${h - 2}" text-anchor="middle" fill="#9CA3AF" font-size="9">${esc(p.lab)}</text>`;
+      }).join('');
+      return `<svg class="an-svg" viewBox="0 0 ${w} ${h}">${''
+        }<polyline fill="rgba(0,200,83,.12)" stroke="none" points="${area}" />${''
+        }<polyline fill="none" stroke="#00C853" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${line}" />${''
+        }${dots}${labs}</svg>`;
+    }
+    function topSold(list) {
+      const bag = {};
+      list.forEach((o) => {
+        (o.items || []).forEach((it) => {
+          const id = String(it.id || it.name || '');
+          if (!id) return;
+          if (!bag[id]) bag[id] = { id: it.id, name: it.name || 'Item', qty: 0, image: it.image || '' };
+          bag[id].qty += Number(it.qty || 1);
+        });
+      });
+      return Object.keys(bag).map((k) => {
+        const row = bag[k];
+        const menu = (API.items || []).find((i) => i.id === row.id);
+        if (menu && menu.image) row.image = menu.image;
+        return row;
+      }).sort((a, b) => b.qty - a.qty).slice(0, 5);
+    }
+    function shopNotes() {
+      const notes = [];
+      liveOrders().forEach((o) => {
+        const placed = orderTs(o) || Date.now();
+        notes.push({
+          id: 'new-' + o.id,
+          kind: 'order',
+          icon: 'bag',
+          title: 'New Order ' + oid(o.id),
+          body: (o.customerName || 'Customer') + ' placed a new order',
+          ts: placed,
+          orderId: o.id,
+        });
+        if (o.status && o.status !== 'pending') {
+          const st = Date.parse(o.updatedAt || '') || placed + 1;
+          const label = (API.statusLabel && API.statusLabel(o.status)) || badgeText(o);
+          notes.push({
+            id: 'st-' + o.id + '-' + o.status,
+            kind: 'status',
+            icon: 'bike',
+            title: 'Order ' + oid(o.id),
+            body: 'Status changed to ' + label,
+            ts: st,
+            orderId: o.id,
+          });
+        }
+        if (o.status === 'delivered' && o.ratings && o.ratings.shop) {
+          notes.push({
+            id: 'rv-' + o.id,
+            kind: 'review',
+            icon: 'star',
+            title: 'New Review',
+            body: 'You received a ' + o.ratings.shop + ' star review',
+            ts: Date.parse(o.ratings.at || o.updatedAt || '') || placed,
+            orderId: o.id,
+          });
+        }
+      });
+      shopItems().forEach((it) => {
+        const st = stockInfo(it);
+        if (st.unlimited) return;
+        if (st.stock <= 0) {
+          notes.push({
+            id: 'out-' + it.id,
+            kind: 'stock',
+            icon: 'alert',
+            title: 'Sold out',
+            body: it.name + ' is unavailable (0 left)',
+            ts: Date.now() - 1000,
+            stock: true,
+          });
+        } else if (st.stock <= 5) {
+          notes.push({
+            id: 'low-' + it.id,
+            kind: 'stock',
+            icon: 'alert',
+            title: 'Low Stock Alert',
+            body: it.name + ' is running low (' + st.stock + ' left)',
+            ts: Date.now() - 2000,
+            stock: true,
+          });
+        }
+      });
+      notes.sort((a, b) => b.ts - a.ts);
+      return notes.slice(0, 40);
+    }
+    function notesUnread() {
+      return liveOrders().filter((o) => o.status === 'pending').length
+        + shopItems().filter((it) => {
+          const st = stockInfo(it);
+          return !st.unlimited && st.stock <= 5;
+        }).length;
+    }
+    const SVG = {
+      dash: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
+      orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>',
+      profile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg>',
+      bell: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg>',
+      store: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg>',
+      clip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
+      chef: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M8 14h8v6H8z"/><path d="M6 14c0-5 3-8 6-8s6 3 6 8"/></svg>',
+      check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="m5 12 5 5 9-10"/></svg>',
+      bike: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17 10 8h6l4 9"/></svg>',
+      chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l3-4 3 2 5-7"/></svg>',
+    };
+    function nav() {
+      const t = state.tab;
+      return `<nav class="bnav">
+        <button data-tab="dash" class="${t==='dash'?'on':''}">${SVG.dash}Home</button>
+        <button data-tab="orders" class="${t==='orders'?'on':''}">${SVG.orders}Orders</button>
+        <button data-tab="menu" class="${t==='menu'?'on':''}">${SVG.menu}Menu</button>
+        <button data-tab="analytics" class="${t==='analytics'?'on':''}">${SVG.chart}Analytics</button>
+        <button data-tab="account" class="${t==='account'?'on':''}">${SVG.profile}Profile</button>
+      </nav>`;
+    }
+    function loginView() {
+      return `<div class="sp-auth" data-shop-auth="login">
+        <div class="sp-mark">${STORE_MARK}</div>
+        <h1>Welcome Back!</h1>
+        <p class="sub">Login to your shop account</p>
+        <label>Email or Phone Number</label>
+        <input id="loginId" placeholder="Email or Phone Number" value="${esc(state.loginId)}" autocomplete="username" />
+        <label>Password</label>
+        <input id="loginPw" type="password" placeholder="Password" value="${esc(state.loginPw)}" autocomplete="current-password" />
+        <button class="forgot" type="button" data-shop-forgot>Forgot Password?</button>
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-shop-login>Login</button>
+        <div class="or">or</div>
+        <button class="ghost" type="button" data-google>${GOOGLE_LOGO} Continue with Google</button>
+        <button class="ghost wa-btn" type="button" data-wa-login>${WA_LOGO} Continue with WhatsApp</button>
+        <div class="foot">Don't have an account? <button type="button" data-go-reg>Sign Up</button></div>
+      </div>${waSheet()}`;
+    }
+    function waSheet() {
+      const w = state.wa || {};
+      if (!w.open) return '';
+      const codeStep = w.step === 'code';
+      return '<div class="qb-wa-mask" data-wa-sheet><div class="qb-wa-sheet">'
+        + '<b>Continue with WhatsApp</b>'
+        + '<p>Enter your WhatsApp number. We send a 4-digit code to that chat, then you are in.</p>'
+        + (codeStep
+          ? ('<p class="sub">Code sent to ' + esc(w.phone) + '</p>'
+            + '<div class="otp-boxes">'
+            + '<input data-wad="0" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="1" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="2" maxlength="1" inputmode="numeric" />'
+            + '<input data-wad="3" maxlength="1" inputmode="numeric" />'
+            + '</div><p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-verify>Verify &amp; enter</button>'
+            + '<button class="btn-ghost-qb" type="button" data-wa-resend>Resend on WhatsApp</button>')
+          : ('<input id="waPhone" placeholder="07X XXX XXXX" value="' + esc(w.phone || '') + '" />'
+            + '<p class="err">' + esc(w.err || '') + '</p>'
+            + '<button class="btn-green" type="button" data-wa-send>Send WhatsApp code</button>'))
+        + '<button class="qb-skip" type="button" data-wa-close>Cancel</button>'
+        + '</div></div>';
+    }
+    function killRegMap() {
+      if (state.regMap) { try { state.regMap.destroy(); } catch (_) {} state.regMap = null; }
+    }
+    function startShopGps() {
+      if (!navigator.geolocation) return;
+      const opt = { enableHighAccuracy: true, maximumAge: 0, timeout: 25000 };
+      const onFix = async (pos) => {
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        const acc = Number(pos.coords.accuracy || 999);
+        if (state.reg.acc != null && state.reg.acc <= 12 && acc > 40) return;
+        state.reg.liveLat = lat; state.reg.liveLng = lng; state.reg.acc = acc;
+        if (state.regMap && state.regMap.setLive) state.regMap.setLive(lat, lng, acc);
+        if (!state.reg.custom) {
+          state.reg.lat = lat; state.reg.lng = lng;
+          if (state.regMap && state.regMap.goLive) state.regMap.goLive(lat, lng, 18);
+          if (!state.reg.addrDirty && typeof reversePlace === 'function') {
+            const label = await reversePlace(lat, lng);
+            if (!state.reg.custom && !state.reg.addrDirty) {
+              state.reg.address = label;
+              const inp = document.getElementById('regAddr');
+              if (inp && document.activeElement !== inp) inp.value = label;
+            }
+          }
+        }
+        const accEl = document.querySelector('[data-reg-acc]');
+        if (accEl) accEl.textContent = 'Live GPS ±' + Math.max(1, Math.round(acc)) + ' m · drag the pin';
+      };
+      navigator.geolocation.getCurrentPosition(onFix, () => {
+        const accEl = document.querySelector('[data-reg-acc]');
+        if (accEl) accEl.textContent = 'Allow location, then drag the pin';
+      }, opt);
+      if (!startShopGps._on) {
+        startShopGps._on = true;
+        navigator.geolocation.watchPosition(onFix, () => {}, opt);
+      }
+    }
+    function bindRegMap() {
+      const el = document.getElementById('regMap');
+      if (!el || typeof mountLocationPicker !== 'function') return;
+      killRegMap();
+      state.regMap = mountLocationPicker(el, {
+        lat: state.reg.lat,
+        lng: state.reg.lng,
+        liveLat: state.reg.liveLat,
+        liveLng: state.reg.liveLng,
+      });
+      if (state.regMap && state.regMap.onMoveEnd) {
+        state.regMap.onMoveEnd(async (lat, lng) => {
+          state.reg.custom = true;
+          state.reg.lat = lat;
+          state.reg.lng = lng;
+          if (state.reg.addrDirty) return;
+          const label = typeof reversePlace === 'function' ? await reversePlace(lat, lng) : (lat.toFixed(5) + ', ' + lng.toFixed(5));
+          state.reg.address = label;
+          const inp = document.getElementById('regAddr');
+          if (inp && document.activeElement !== inp) inp.value = label;
+        });
+      }
+      const liveBtn = document.querySelector('[data-reg-live]');
+      if (liveBtn) liveBtn.onclick = () => {
+        if (state.reg.liveLat == null) { startShopGps(); return; }
+        state.reg.custom = false;
+        if (state.regMap && state.regMap.goLive) state.regMap.goLive(state.reg.liveLat, state.reg.liveLng, 18);
+        state.reg.lat = state.reg.liveLat; state.reg.lng = state.reg.liveLng;
+        if (!state.reg.addrDirty && typeof reversePlace === 'function') {
+          reversePlace(state.reg.liveLat, state.reg.liveLng).then((label) => {
+            state.reg.address = label;
+            const inp = document.getElementById('regAddr');
+            if (inp) inp.value = label;
+          });
+        }
+      };
+      startShopGps();
+    }
+    function registerView() {
+      const r = state.reg;
+      const acc = r.acc != null ? ('Live GPS ±' + Math.max(1, Math.round(r.acc)) + ' m · drag the pin') : 'Allow location, then drag the pin';
+      return `<div class="sp-auth" data-shop-auth="register">
+        <div class="sp-mark">${STORE_MARK}</div>
+        <h1>Create Your Shop Account</h1>
+        <p class="sub">Join QuickBite and start receiving orders</p>
+        <label>Shop Name</label>
+        <input id="regShop" placeholder="e.g. your shop name" value="${esc(r.shopName)}" />
+        <label>Owner Name</label>
+        <input id="regOwner" placeholder="e.g. Nimal Perera" value="${esc(r.ownerName)}" />
+        <label>Live location</label>
+        <div class="sp-map-wrap"><div id="regMap" class="sp-map"></div><button type="button" class="sp-live" data-reg-live title="Live location">◎</button></div>
+        <p class="sp-map-meta" data-reg-acc>${esc(acc)}</p>
+        <label>Address</label>
+        <input id="regAddr" placeholder="Street, city" value="${esc(r.address)}" />
+        <label>Phone Number</label>
+        <input id="regPhone" placeholder="+94 7X XXX XXXX" value="${esc(r.phone)}" ${lockRegPhone(r.phone) ? 'readonly' : ''} />
+        <p class="err" data-err></p>
+        <button class="btn-green" type="button" data-shop-register>Register</button>
+        <div class="foot">Already have an account? <button type="button" data-go-login>Login</button></div>
+      </div>`;
+    }
+    function otpView() {
+      return OtpLogin.render({
+        role: 'shop',
+        title: 'Enter the 4-digit code',
+        sub: 'WhatsApp sent the code. Enter it to open your dashboard.',
+        phone: state.loginId,
+      });
+    }
+    function orderCard(o) {
+      const items = (o.items||[]).map((i)=>i.name+' x'+i.qty).join(', ');
+      return `<div class="sd-order" data-open-order="${esc(o.id)}">
+        <img src="${thumb(o)}" alt="" />
+        <div class="grow">
+          <div class="oid">${esc(oid(o.id))}</div>
+          <div class="sub">${esc(timeOf(o))} · ${!/cash/i.test(String(o.paymentMethod||'')) && /visa|master|amex|card|••••|unionpay|jcb/i.test(String(o.paymentMethod||'')) ? 'Card paid' : 'COD'} · ${esc(items)}</div>
+          <div class="rs">${rs(o.totalAmount)}</div>
+          <div class="sd-acts">
+            ${o.status==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
+              <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
+            ${o.status==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
+            ${o.status==='accepted' || o.status==='picked_up' || o.status==='on_the_way' || o.status==='delivered' ? `<button class="btn sm" data-track="${esc(o.id)}">Track</button>` : ''}
+          </div>
+        </div>
+        <span class="badge ${o.status}">${esc(badgeText(o))}</span>
+      </div>`;
+    }
+    function dashView() {
+      const orders = shopOrders();
+      const pending = orders.filter((o) => o.status === 'pending').length;
+      const preparing = orders.filter((o) => o.status === 'preparing').length;
+      const ready = orders.filter((o) => o.status === 'ready').length;
+      const onway = orders.filter((o) => o.status === 'accepted' || o.status === 'picked_up' || o.status === 'on_the_way').length;
+      const list = orders.filter((o) => {
+        if (state.filter === 'prep') return o.status === 'preparing';
+        if (state.filter === 'ready') return o.status === 'ready';
+        if (state.filter === 'way') return o.status === 'accepted' || o.status === 'picked_up' || o.status === 'on_the_way';
+        return true;
+      });
+      return `<div class="scroll">
+        <div class="sd-head">
+          <div class="sd-logo">${SVG.store}</div>
+          <h1>Shop Dashboard</h1>
+          <button class="sd-bell" type="button" data-notes>${SVG.bell}${notesUnread() ? '<i class="nt-dot"></i>' : ''}</button>
+        </div>
+        <div class="sd-shop">${esc(shopName())} <span class="open-pill"><i></i> Open</span></div>
+        <div class="sd-hero">
+          <img src="/img/shop-bakery.jpg" alt="" />
+          <div class="copy">
+            <h2>Good Food<br>Happy Customers</h2>
+            <p>Manage your orders and grow your business</p>
+          </div>
+        </div>
+        <div class="sd-stats">
+          <div class="sd-stat teal"><div class="si">${SVG.clip}</div><b>${pending}</b><span>New Orders</span></div>
+          <div class="sd-stat gold"><div class="si">${SVG.chef}</div><b>${preparing}</b><span>Preparing</span></div>
+          <div class="sd-stat purple"><div class="si">${SVG.check}</div><b>${ready}</b><span>Ready</span></div>
+          <div class="sd-stat green"><div class="si">${SVG.bike}</div><b>${onway}</b><span>On Delivery</span></div>
+        </div>
+        <div class="sd-tabs">
+          <button class="${state.filter==='all'?'on':''}" data-filter="all">All Orders</button>
+          <button class="${state.filter==='prep'?'on':''}" data-filter="prep">Preparing</button>
+          <button class="${state.filter==='ready'?'on':''}" data-filter="ready">Ready</button>
+          <button class="${state.filter==='way'?'on':''}" data-filter="way">On Delivery</button>
+        </div>
+        ${list.map(orderCard).join('') || '<div class="pad muted">No tickets in this tab. Place an order in the User app.</div>'}
+      </div>${nav()}`;
+    }
+    function ordersView() {
+      const list = shopOrders().filter((o) => {
+        if (state.filter === 'pending') return o.status === 'pending';
+        if (state.filter === 'prep') return o.status === 'preparing';
+        if (state.filter === 'ready') return o.status === 'ready';
+        return true;
+      });
+      return `<div class="scroll ol-list">
+        <div class="sd-head"><div class="sd-logo">${SVG.store}</div><h1>Orders</h1></div>
+        <div class="ol-pills">
+          <button class="${state.filter==='all'?'on':''}" data-filter="all">All</button>
+          <button class="${state.filter==='pending'?'on':''}" data-filter="pending">Pending</button>
+          <button class="${state.filter==='prep'?'on':''}" data-filter="prep">Preparing</button>
+          <button class="${state.filter==='ready'?'on':''}" data-filter="ready">Ready</button>
+        </div>
+        ${list.map(orderCard).join('') || '<div class="pad muted">No orders in this tab.</div>'}
+      </div>${nav()}`;
+    }
+    function analyticsView() {
+      const b = anBounds();
+      const cur = ordersIn(b.from, b.to);
+      const prev = ordersIn(b.prevFrom, b.prevTo);
+      const n = cur.length;
+      const pn = prev.length;
+      const rev = cur.reduce((s, o) => s + orderRev(o), 0);
+      const prevRev = prev.reduce((s, o) => s + orderRev(o), 0);
+      const dN = n - pn;
+      const dP = pctChange(rev, prevRev);
+      const pts = salesPoints(b.from, b.to, cur);
+      const top = topSold(cur);
+      const range = state.anRange || 'today';
+      const nLabel = range === 'today' ? "Today's Orders" : (range === '7' ? 'Last 7 days' : (range === '30' ? 'Last 30 days' : 'Orders'));
+      const nHint = range === 'today'
+        ? (dN === 0 ? 'Same as yesterday' : ((dN > 0 ? '+' : '') + dN + ' from yesterday'))
+        : (dN === 0 ? 'Same as previous period' : ((dN > 0 ? '+' : '') + dN + ' vs last period'));
+      return `<div class="scroll an-page">
+        <div class="sd-head">
+          <div class="sd-logo">${SVG.store}</div>
+          <h1>Analytics</h1>
+          <button class="sd-bell" type="button" data-notes>${SVG.bell}${notesUnread() ? '<i class="nt-dot"></i>' : ''}</button>
+        </div>
+        <div class="an-pills">
+          ${[['today','Today'],['7','7 Days'],['30','30 Days'],['custom','Custom']].map((p) =>
+            `<button type="button" class="${range===p[0]?'on':''}" data-an="${p[0]}">${p[1]}</button>`
+          ).join('')}
+        </div>
+        ${range === 'custom' ? `<div class="an-custom">
+          <input id="anFrom" type="date" value="${esc(state.anFrom || '')}" />
+          <span>to</span>
+          <input id="anTo" type="date" value="${esc(state.anTo || '')}" />
+        </div>` : ''}
+        <div class="an-kpis">
+          <div class="an-kpi">
+            <span>${esc(nLabel)}</span>
+            <b>${n}</b>
+            <small class="${dN>=0?'up':'dn'}">${esc(nHint)}</small>
+          </div>
+          <div class="an-kpi">
+            <span>Total Revenue</span>
+            <b>${rs(rev)}</b>
+            <small class="${dP>=0?'up':'dn'}">${dP>0?'+':''}${dP}%</small>
+          </div>
+        </div>
+        <div class="an-card">
+          <h3>Sales Overview</h3>
+          ${n ? salesChart(pts) : '<p class="muted">No sales in this period.</p>'}
+        </div>
+        <div class="an-card">
+          <h3>Top Selling Items</h3>
+          ${top.map((it) => `<div class="an-top">
+            <img src="${itemImg(it)}" alt="" />
+            <div class="grow"><b>${esc(it.name)}</b></div>
+            <span>${it.qty} sold</span>
+          </div>`).join('') || '<p class="muted">No items sold in this period.</p>'}
+        </div>
+      </div>${nav()}`;
+    }
+    function notesView() {
+      const list = shopNotes();
+      return `<div class="scroll nt-page">
+        <div class="nt-head">
+          <button class="back" type="button" data-close-notes>←</button>
+          <h1>Notifications</h1>
+        </div>
+        ${list.map((n) => `<button type="button" class="nt-row" data-note="${esc(n.id)}" data-note-order="${esc(n.orderId || '')}" data-note-stock="${n.stock ? '1' : ''}">
+          <div class="nt-ico ${esc(n.icon)}">${n.icon==='star' ? '★' : (n.icon==='alert' ? '!' : (n.icon==='bike' ? '🛵' : '🛍️'))}</div>
+          <div class="grow">
+            <b>${esc(n.title)}</b>
+            <div class="sub">${esc(n.body)}</div>
+          </div>
+          <small>${esc(timeAgo(n.ts))}</small>
+        </button>`).join('') || '<div class="pad muted">No notifications yet. New orders, low stock, and reviews show up here.</div>'}
+      </div>${nav()}`;
+    }
+    function menuView() {
+      const q = (state.menuQ || '').trim().toLowerCase();
+      const list = shopItems().filter((it) => {
+        if (state.menuCat !== 'All' && menuBucket(it.category) !== state.menuCat) return false;
+        if (q && !String(it.name).toLowerCase().includes(q) && !String(it.category).toLowerCase().includes(q)) return false;
+        return true;
+      });
+      return `<div class="scroll mi-page">
+        <div class="mi-head"><h1>Menu Items</h1><button type="button" class="mi-stock-btn" data-open-stock>Stock</button></div>
+        <div class="mi-cats">
+          ${['All','Food','Drinks','Desserts'].map((c)=>`<button class="${state.menuCat===c?'on':''}" data-mcat="${c}">${c}</button>`).join('')}
+        </div>
+        <div class="mi-search">🔍 <input id="menuQ" placeholder="Search menu items…" value="${esc(state.menuQ)}" /></div>
+        <button type="button" class="st-banner" data-open-stock><b>Stock Management</b><span>Set counts, unlimited, or sold out</span></button>
+        ${list.map((it) => `<div class="mi-row" data-edit-item="${esc(it.id)}">
+          <img src="${itemImg(it)}" alt="" />
+          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)} · ${esc(stockLine(it))}${API.offerCaption && API.offerCaption(it) ? ' · ' + esc(API.offerCaption(it)) : ''}</div></div>
+          <label class="sw" data-stop><input type="checkbox" data-toggle="${esc(it.id)}" data-on="${it.isAvailable?0:1}" ${it.isAvailable?'checked':''} /><i></i></label>
+        </div>`).join('') || '<div class="pad muted">No items match. Tap Add Item.</div>'}
+      </div>
+      <button class="mi-add" type="button" data-add-item>+ Add Item</button>
+      ${nav()}`;
+    }
+    function stockView() {
+      const list = shopItems();
+      return `<div class="scroll st-page">
+        <div class="st-head"><button class="back" type="button" data-close-stock>←</button><h1>Stock Management</h1></div>
+        ${list.map((it) => {
+          const d = (state.stockDraft && state.stockDraft[it.id]) || stockInfo(it);
+          const sold = !d.unlimited && Number(d.stock || 0) <= 0;
+          const lab = d.unlimited ? 'Unlimited' : (sold ? 'Sold out' : 'Stock: ' + (d.stock || 0));
+          return `<div class="st-row">
+            <img src="${itemImg(it)}" alt="" />
+            <div class="grow">
+              <b>${esc(it.name)}</b>
+              <div class="pr" data-st-lab="${esc(it.id)}">${esc(lab)}</div>
+            </div>
+            <div class="st-right">
+              <button type="button" class="st-inf ${d.unlimited ? 'on' : ''}" data-st-unl="${esc(it.id)}" aria-label="Unlimited stock">∞</button>
+              <div class="st-step" data-st-step="${esc(it.id)}">
+                <button type="button" data-st-d="${esc(it.id)}" data-n="-1">−</button>
+                <b data-st-n="${esc(it.id)}">${d.unlimited ? '∞' : (d.stock || 0)}</b>
+                <button type="button" data-st-d="${esc(it.id)}" data-n="1">+</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('') || '<div class="pad muted">Add menu items first, then set stock.</div>'}
+        ${list.length ? `<div class="st-foot"><button class="st-save" type="button" data-save-stock>Update Stock</button></div>` : ''}
+        <p class="err" data-stock-err></p>
+      </div>`;
+    }
+    function itemEditView() {
+      const it = state.itemDraft || {};
+      const img = it.image || '';
+      const title = it.id ? 'Edit Item' : 'Add Menu Item';
+      return `<div class="scroll ie-page">
+        <div class="ie-head"><button class="back" type="button" data-close-item>←</button><h1>${title}</h1></div>
+        <label class="ie-photo" data-pick-photo>${img ? `<img src="${esc(img)}" alt="" />` : '<span>📷<br>Tap to add image</span>'}</label>
+        <input id="itemFile" type="file" accept="image/*" hidden />
+        <div class="ie-form">
+          <div class="ie-picks">${FOOD_IMGS.map((src)=>`<button type="button" class="${img===src?'on':''}" data-set-img="${src}"><img src="${src}" alt="" /></button>`).join('')}</div>
+          <label>Item Name</label>
+          <input id="itemName" placeholder="e.g. Chocolate Cake" value="${esc(it.name || '')}" />
+          <label>Price (Rs.)</label>
+          <input id="itemPrice" inputmode="decimal" placeholder="2500" value="${it.price != null ? esc(it.price) : ''}" />
+          <label>Category</label>
+          <select id="itemCat">
+            ${['Food','Drinks','Desserts','Bakery','Pizza','Fast Food','Beverages','Soup','Ice cream','Coffee','Sandwiches','Breakfast','Grocery'].map((c)=>`<option ${ (it.category||'Food')===c?'selected':'' }>${c}</option>`).join('')}
+          </select>
+          <label>Description</label>
+          <textarea id="itemDesc" placeholder="e.g. Rich chocolate cake with cream">${esc(it.desc || it.description || '')}</textarea>
+          <label>Offer</label>
+          <select id="itemOffer">
+            <option value="" ${!(it.offer && it.offer.type) ? 'selected' : ''}>No offer</option>
+            <option value="bogo" ${it.offer && it.offer.type === 'bogo' ? 'selected' : ''}>Buy 1 get 1 free</option>
+            <option value="pct" ${it.offer && it.offer.type === 'pct' ? 'selected' : ''}>Percent off</option>
+            <option value="get" ${it.offer && it.offer.type === 'get' ? 'selected' : ''}>Buy 1 get selected item</option>
+          </select>
+          <div id="offerPctWrap" class="${it.offer && it.offer.type === 'pct' ? '' : 'hidden'}">
+            <label>% Off</label>
+            <input id="itemOfferPct" inputmode="numeric" placeholder="e.g. 25" value="${it.offer && it.offer.type === 'pct' ? esc(it.offer.pct) : ''}" />
+          </div>
+          <div id="offerGetWrap" class="${it.offer && it.offer.type === 'get' ? '' : 'hidden'}">
+            <label>Free item when they buy this</label>
+            <select id="itemOfferGet">
+              <option value="">Select an item</option>
+              ${shopItems().filter((x) => x && x.id && x.id !== it.id).map((x) => `<option value="${esc(x.id)}" ${it.offer && it.offer.getId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+            </select>
+            ${shopItems().filter((x) => x && x.id && x.id !== it.id).length ? '' : '<p class="muted" style="margin:6px 0 0;font-size:12px">Add another menu item first, then pick it here.</p>'}
+          </div>
+          <label class="ie-unl"><input type="checkbox" id="itemUnl" ${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'checked' : ''} /> Unlimited stock</label>
+          <div id="itemStockWrap" class="${it.stockUnlimited !== false && it.stock == null || it.stockUnlimited === true ? 'hidden' : ''}">
+            <label>Stock quantity</label>
+            <input id="itemStock" inputmode="numeric" placeholder="e.g. 15" value="${it.stockUnlimited === false ? esc(it.stock != null ? it.stock : 0) : ''}" />
+            <p class="muted" style="margin:6px 0 0;font-size:12px">When stock hits 0 this item becomes unavailable automatically.</p>
+          </div>
+          <p class="err" data-item-err></p>
+          <button class="btn full ie-save" type="button" data-save-item>Save Item</button>
+        </div>
+      </div>`;
+    }
+    function orderDetailsView() {
+      const o = API.orders.find((x) => x.id === state.orderId);
+      if (!o) return dashView();
+      const items = (o.items || []).map((i) => i.name + ' x' + i.qty).join(', ') || 'Order';
+      const phone = o.customerPhone || o.phone || '';
+      const st = o.status;
+      const steps = [
+        ['pending', 'Order Placed'],
+        ['preparing', 'Preparing'],
+        ['ready', 'Ready'],
+        ['accepted', 'Rider accepted'],
+        ['picked_up', 'Picked up'],
+        ['delivered', 'Delivered'],
+      ];
+      const norm = st === 'on_the_way' ? 'picked_up' : st;
+      const idx = Math.max(0, steps.findIndex((s) => s[0] === norm));
+      return `<div class="scroll ol-page">
+        <div class="ol-head"><button class="back" type="button" data-close-order>←</button><h1>Order Details</h1></div>
+        <div class="ol-card">
+          <img src="${thumb(o)}" alt="" />
+          <div class="meta">
+            <div class="oid">${esc(oid(o.id))}</div>
+            <h2>${esc(items)}</h2>
+            <div class="rs">${rs(o.totalAmount)}</div>
+          </div>
+        </div>
+        <div class="ol-pay">
+          <b>Payment</b>
+          <div>${esc(o.paymentMethod || 'Cash on delivery')}</div>
+          <small>${cardPaid(o) ? 'Paid by card — do not collect cash.' : 'Collect cash on delivery.'}</small>
+          ${cardPaid(o) ? `<div class="ol-split">Shop wallet +${rs(shopShare(o))} · Rider +${rs(riderShare(o))}</div>` : ''}
+        </div>
+        <div class="ol-steps">
+          ${steps.map((s, i) => {
+            const cls = i < idx ? 'done' : (i === idx ? 'on' : '');
+            const t = i === 0 ? timeOf(o) : '';
+            return `<div class="ol-step ${cls}">
+              <div class="ol-rail"><div class="ol-dot"></div>${i < steps.length-1 ? '<div class="ol-line"></div>' : ''}</div>
+              <div><b>${s[1]}</b>${t ? `<small>${esc(t)}</small>` : ''}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="ol-cust">
+          <img src="/img/avatar-user.jpg" alt="" />
+          <div class="grow"><b>${esc(o.customerName || 'Customer')}</b><div class="sub">${esc(phone || 'WhatsApp customer')}</div></div>
+          ${phone ? `<a class="call" href="tel:${esc(phone)}">Call</a>` : ''}
+        </div>
+        ${o.riderName ? `<div class="ol-cust">
+          <img src="/img/avatar-rider.jpg" alt="" />
+          <div class="grow"><b>${esc(o.riderName)}</b><div class="sub">Delivery partner${o.riderPhone ? ' · ' + esc(o.riderPhone) : ''}${st==='accepted' ? ' · heading to shop' : (st==='picked_up' || st==='on_the_way' ? ' · order picked up' : '')}</div></div>
+          <div class="acts">
+            ${o.riderPhone ? `<a class="call" href="tel:${esc(o.riderPhone)}">Call</a>` : ''}
+            ${(API.canChat && API.canChat(o, 'shop')) ? `<button class="call" type="button" data-chat="${esc(o.id)}">Chat${(API.unreadCount && API.unreadCount(o.id, 'shop')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
+          </div>
+        </div>` : '<div class="pad muted">Waiting for a rider to accept.</div>'}
+        <div class="pad" style="display:flex;gap:8px;flex-wrap:wrap">
+          ${st==='pending' ? `<button class="btn sm green" data-act="preparing" data-id="${esc(o.id)}">Accept</button>
+            <button class="btn sm ghost" data-act="cancelled" data-id="${esc(o.id)}">Reject</button>` : ''}
+          ${st==='preparing' ? `<button class="btn sm green" data-act="ready" data-id="${esc(o.id)}">Food is ready</button>` : ''}
+        </div>
+        <button class="ol-view" type="button" data-track="${esc(o.id)}">View Location</button>
+      </div>`;
+    }
+    function accountView() {
+      const s = myShop();
+      const today = shopOrders().filter((o) => o.status !== 'cancelled');
+      const sales = today.reduce((n, o) => n + (o.totalAmount || 0), 0);
+      const ordersN = today.length;
+      const revenue = sales;
+      const wallet = shopWalletBal();
+      const rating = Number(s.reviews) > 0 ? Number(s.rating || 0) : 0;
+      return `<div class="scroll sp-prof">
+        <div class="sp-prof-hero"><img src="${esc(s.image)}" alt="" /></div>
+        <div class="sp-prof-card">
+          <div class="sp-prof-ico">🏪</div>
+          <h2>${esc(s.name)}</h2>
+          ${API.user && API.user.email ? `<div class="tags">${esc(API.user.email)}</div>` : ''}
+          <div class="tags">${esc(shopTags(s))}</div>
+          <div class="stars">${Number(s.reviews) > 0 ? '★ ' + rating.toFixed(1) + ' <span>(' + Number(s.reviews) + ')</span>' : 'New'}</div>
+          <div class="sp-prof-hours">${s.isOpen ? '● Open' : '● Closed'} ${esc(s.hours)}</div>
+          <div class="sp-prof-actions">
+            <button type="button" class="ed" data-edit-shop>Edit Profile</button>
+            <button type="button" class="vs" data-view-store>View Store</button>
+          </div>
+        </div>
+        <div class="sp-prof-stats">
+          <div class="sp-prof-stat"><b>${ordersN}</b><span>Total Orders</span></div>
+          <div class="sp-prof-stat"><b>${rs(revenue)}</b><span>Total Revenue</span></div>
+          <div class="sp-prof-stat"><b>${rs(wallet)}</b><span>Card wallet</span></div>
+        </div>
+        <button class="sp-prof-out" type="button" data-notes style="margin-top:8px">Notifications${notesUnread() ? ' · ' + notesUnread() : ''}</button>
+        <button class="sp-prof-out" type="button" data-open-wallet style="margin-top:8px">Card wallet · ${rs(wallet)}</button>
+        <div class="sp-prof-about">
+          <h3>About Us</h3>
+          <p>${esc(shopAbout(s))}</p>
+        </div>
+        <button class="sp-prof-out" type="button" id="logout">Log Out</button>
+      </div>${nav()}`;
+    }
+    function walletView() {
+      const list = shopOrders().filter(cardPaid);
+      const bal = shopWalletBal();
+      return `<div class="scroll sp-prof">
+        <div class="sd-head"><button class="sd-bell" type="button" data-close-wallet style="margin-left:0;margin-right:8px">←</button><h1>Card wallet</h1></div>
+        <div class="pad">
+          <div class="sp-wallet-bal"><span>Available from card payments</span><b>${rs(bal)}</b><small>Food total is added here when a customer pays by card. Delivery fee goes to the rider.</small></div>
+          ${list.map((o) => `<div class="sp-tx">
+            <div class="grow"><b>${esc(oid(o.id))}</b><div class="sub">${esc(o.customerName || 'Customer')} · ${esc(o.paymentMethod || 'Card')}</div></div>
+            <div class="amt">+ ${rs(shopShare(o))}</div>
+          </div>`).join('') || '<div class="pad muted">No card payments yet. When a user pays by card, that food total lands here.</div>'}
+        </div>
+      </div>${nav()}`;
+    }
+    function editShopView() {
+      const s = Object.assign({}, myShop(), state.shopDraft || {});
+      return `<div class="scroll sp-edit ie-page">
+        <div class="ie-head"><button class="back" type="button" data-close-shop>←</button><h1>Edit Profile</h1></div>
+        <label class="ie-photo" data-pick-shop-photo>${s.image ? `<img src="${esc(s.image)}" alt="" />` : '<span>📷<br>Tap to add image</span>'}</label>
+        <input id="shopFile" type="file" accept="image/*" hidden />
+        <label>Shop Name</label>
+        <input id="shopNameIn" value="${esc(s.name)}" />
+        <label>Category</label>
+        <input id="shopCatIn" value="${esc(s.category)}" />
+        <label>Business Hours</label>
+        <input id="shopHoursIn" value="${esc(s.hours)}" />
+        <label>About Us</label>
+        <textarea id="shopAboutIn">${esc(shopAbout(s))}</textarea>
+        <p class="err" data-shop-err style="margin:8px 16px"></p>
+        <button class="btn full" type="button" data-save-shop>Save Profile</button>
+      </div>`;
+    }
+    function storeView() {
+      const s = myShop();
+      const items = shopItems();
+      return `<div class="scroll sp-store">
+        <div class="ie-head"><button class="back" type="button" data-close-shop>←</button><h1>View Store</h1></div>
+        <div class="hero"><img src="${esc(s.image)}" alt="" /></div>
+        <div class="pad">
+          <h2>${esc(s.name)}</h2>
+          <p class="muted">${esc(shopTags(s))} · ${Number(s.reviews) > 0 ? '★ ' + Number(s.rating||0).toFixed(1) : 'New'}</p>
+          <p>${esc(shopAbout(s))}</p>
+        </div>
+        ${items.map((it) => `<div class="mi-row">
+          <img src="${itemImg(it)}" alt="" />
+          <div class="grow"><b>${esc(it.name)}</b><div class="pr">${rs(it.price)}</div></div>
+        </div>`).join('') || '<div class="pad muted">No menu items yet.</div>'}
+      </div>`;
+    }
+    function chatBubblesHtml(orderId) {
+      const msgs = (API.chatMessages && API.chatMessages(orderId, 'shop')) || [];
+      return msgs.map((m) => `<div class="bubble ${m.role==='shop'?'me':m.role==='system'?'sys':'them'}">${esc(m.text)}</div>`).join('');
+    }
+    function paintShopChat(root) {
+      const b = (root || document).querySelector('#bubbles');
+      if (!b) return;
+      const html = chatBubblesHtml(state.orderId);
+      const fp = String((((API.chatMessages && API.chatMessages(state.orderId, 'shop')) || []).length)) + ':' + html.length;
+      if (b.getAttribute('data-fp') === fp) return;
+      const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
+      b.innerHTML = html;
+      b.setAttribute('data-fp', fp);
+      if (atBottom) b.scrollTop = b.scrollHeight;
+    }
+    function bindChatKeyboard() {
+      const apply = () => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+        const kb = Math.max(0, (window.innerHeight || document.documentElement.clientHeight) - vv.height - (vv.offsetTop || 0));
+        document.documentElement.style.setProperty('--kb', kb + 'px');
+        const b = document.getElementById('bubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+      };
+      if (!bindChatKeyboard._on) {
+        bindChatKeyboard._on = true;
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', apply);
+          window.visualViewport.addEventListener('scroll', apply);
+        }
+        window.addEventListener('focusin', apply);
+        window.addEventListener('focusout', () => {
+          setTimeout(() => document.documentElement.style.setProperty('--kb', '0px'), 60);
+        });
+      }
+      apply();
+    }
+    function shopChatView(o) {
+      const quick = (API.quickReplies && API.quickReplies('shop', o)) || [];
+      const peer = (API.chatPeerName && API.chatPeerName(o, 'shop')) || (o && o.riderName) || 'Rider';
+      const lane = (API.chatLane && API.chatLane(o)) || 'shop';
+      return `<div class="chat-page" data-chat-root="${esc(o && o.id || '')}" data-lane="${esc(lane)}">
+        <div class="chat-head"><button class="back-fab" data-close-chat type="button">←</button><b>${esc(peer)}</b></div>
+        <div class="bubbles" id="bubbles">${chatBubblesHtml(o && o.id)}</div>
+        <div class="quick-replies">${quick.map((t) => `<button type="button" data-quick="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+        <form class="composer" id="chatForm">
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" autocorrect="on" spellcheck="true" placeholder="Message the rider…" />
+          <button class="btn sm green" type="submit">Send</button>
+        </form>
+      </div>`;
+    }
+    function bindMapChrome() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-zoom]').forEach((b) => b.onclick = () => {
+        if (!state.mapHandle) return;
+        if (b.dataset.zoom === 'in') state.mapHandle.zoomIn();
+        else state.mapHandle.zoomOut();
+      });
+      const loc = root.querySelector('[data-locate]');
+      if (loc) loc.onclick = () => {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (state.mapHandle && o) state.mapHandle.locate(o);
+      };
+    }
+    function render(opts) {
+      const root = document.getElementById('root');
+      const keep = !!(opts && opts.keepScroll);
+      const sc0 = root.querySelector('.scroll');
+      const y = keep && sc0 ? sc0.scrollTop : 0;
+      if (keep && state.screen === 'item' && root.querySelector('[data-save-item]')) return;
+      if (keep && state.screen === 'stock' && root.querySelector('[data-save-stock]')) return;
+      if (keep && state.screen === 'edit-shop' && root.querySelector('[data-save-shop]')) return;
+      if (keep && state.tab === 'analytics' && state.anRange === 'custom' && root.querySelector('#anFrom')) return;
+      try {
+      if (state.auth === 'otp') {
+        if (keep && root.querySelector('[data-otp-root]')) return;
+        bindShopOtp();
+        return;
+      }
+      if (API.user && state.auth === 'register' && API.isShopRegistered && !API.isShopRegistered()) {
+        killRegMap();
+        root.innerHTML = registerView();
+        bindAuth();
+        bindRegMap();
+        return;
+      }
+      if (!API.user) {
+        if (keep && root.querySelector('[data-shop-auth], [data-otp-root]')) return;
+        if (state.auth === 'register') {
+          killRegMap();
+          root.innerHTML = registerView();
+          bindAuth();
+          bindRegMap();
+          return;
+        }
+        killRegMap();
+        root.innerHTML = loginView();
+        bindAuth();
+        return;
+      }
+      killRegMap();
+      if (API.user && API.isShopRegistered && !API.isShopRegistered()) {
+        const linked = !!(API.user.shopId || API.user.shop_id);
+        const realWa = isRealWaPhone(API.user.phone);
+        if (!linked && !realWa) {
+          state.auth = 'register';
+          state.fromReg = true;
+          if (!state.reg.email && API.user.email) state.reg.email = API.user.email;
+          if (!state.reg.ownerName && API.user.name) state.reg.ownerName = API.user.name;
+          killRegMap();
+          root.innerHTML = registerView();
+          bindAuth();
+          bindRegMap();
+          return;
+        }
+      }
+      if (state.screen === 'chat' && state.orderId) {
+        const o = API.orders.find((x) => x.id === state.orderId);
+        if (o && (!API.canChat || API.canChat(o, 'shop'))) {
+          const existing = root.querySelector('[data-chat-root="'+state.orderId+'"]');
+          const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
+          const lane = (API.chatLane && API.chatLane(o)) || 'shop';
+          if (existing && existing.getAttribute('data-lane') === lane && (keep || typing)) {
+            paintShopChat(existing);
+            return;
+          }
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+          if (API.markChatRead) API.markChatRead(state.orderId, 'shop');
+          root.innerHTML = shopChatView(o);
+          bind();
+          bindChatKeyboard();
+          const b = document.getElementById('bubbles');
+          if (b) b.scrollTop = b.scrollHeight;
+          const input = document.querySelector('#chatForm input[name="text"]');
+          if (input) setTimeout(() => input.focus(), 50);
+          return;
+        }
+        state.screen = state.trackId ? '' : 'order';
+      }
+      if (state.trackId) {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (!o || o.status === 'cancelled') { state.trackId = null; }
+        else if (o.status === 'delivered') {
+          state.trackId = null;
+          state.screen = 'order';
+          state.orderId = o.id;
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch (_) {} state.mapHandle = null; }
+        }
+        else {
+          const existing = root.querySelector('[data-track-root="'+state.trackId+'"]');
+          const hasRider = o.riderName ? '1' : '0';
+          if (existing && state.mapHandle && existing.dataset.hasRider === hasRider) {
+            state.mapHandle.update(o);
+            TrackUI.paint(existing, o, 'shop');
+            return;
+          }
+          if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+          root.innerHTML = TrackUI.screen(o, 'shop');
+          bind();
+          bindMapChrome();
+          const el = document.getElementById('map');
+          if (el) state.mapHandle = mountTrackingMap(el, o);
+          return;
+        }
+      }
+      if (state.mapHandle) { try { state.mapHandle.destroy(); } catch(_){} state.mapHandle = null; }
+      if (state.screen === 'order') root.innerHTML = orderDetailsView();
+      else if (state.screen === 'wallet') root.innerHTML = walletView();
+      else if (state.screen === 'item') root.innerHTML = itemEditView();
+      else if (state.screen === 'stock') root.innerHTML = stockView();
+      else if (state.screen === 'notes') root.innerHTML = notesView();
+      else if (state.screen === 'edit-shop') root.innerHTML = editShopView();
+      else if (state.screen === 'store') root.innerHTML = storeView();
+      else if (state.tab === 'analytics') root.innerHTML = analyticsView();
+      else if (state.tab === 'menu') root.innerHTML = menuView();
+      else if (state.tab === 'orders') root.innerHTML = ordersView();
+      else if (state.tab === 'account') root.innerHTML = accountView();
+      else root.innerHTML = dashView();
+      bind();
+      } finally {
+        if (keep) {
+          const sc = root.querySelector('.scroll');
+          if (sc) sc.scrollTop = y;
+        }
+      }
+    }
+    function goShopRegister() {
+      const u = API.user;
+      const gName = (u && u.name) || '';
+      const gEmail = (u && u.email) || '';
+      const gPhoto = (u && (u.photo || u.vehicle)) || '';
+      if (gName && !state.reg.ownerName) state.reg.ownerName = gName;
+      if (gEmail) state.reg.email = gEmail;
+      if (gPhoto) state.reg.photo = gPhoto;
+      let phone = '';
+      if (!gEmail) {
+        phone = (u && u.phone) || (API.verifiedPhone && API.verifiedPhone('shop')) || '';
+        if (API.normalizePhone) phone = API.normalizePhone(phone);
+        if (!isRealWaPhone(phone)) phone = '';
+      }
+      const rec = (phone && API.recallShopProfile) ? API.recallShopProfile(phone) : null;
+      if (rec) {
+        if (!state.reg.shopName) state.reg.shopName = rec.shopName || '';
+        if (!state.reg.ownerName) state.reg.ownerName = rec.ownerName || '';
+        if (!state.reg.address) state.reg.address = rec.address || '';
+        if (state.reg.lat == null && rec.lat != null) state.reg.lat = Number(rec.lat);
+        if (state.reg.lng == null && rec.lng != null) state.reg.lng = Number(rec.lng);
+      }
+      state.reg.phone = phone;
+      const prev = (API._pendingShop) || {};
+      if (API.setPendingShop) {
+        API.setPendingShop(Object.assign({}, prev, {
+          shopName: state.reg.shopName || prev.shopName || '',
+          ownerName: state.reg.ownerName || gName || prev.ownerName || '',
+          email: gEmail || state.reg.email || prev.email || '',
+          photo: gPhoto || state.reg.photo || prev.photo || '',
+        }));
+      }
+      if (API.user && API.parkForRegister) API.parkForRegister('shop');
+      state.auth = 'register';
+      state.fromReg = true;
+      render();
+    }
+    function pendingShopFilled() {
+      let p = API._pendingShop || {};
+      try {
+        if (!p.shopName) {
+          const raw = localStorage.getItem('sd_pending_shop') || sessionStorage.getItem('sd_pending_shop');
+          if (raw) p = Object.assign({}, JSON.parse(raw), p);
+        }
+      } catch (_) {}
+      const phone = p.phone || state.reg.phone || state.loginId;
+      if (!p.shopName && API.recallShopProfile && phone) {
+        const rec = API.recallShopProfile(phone) || {};
+        if (rec.shopName) p = Object.assign({}, rec, p);
+      }
+      return !!(p && (p.shopName || p.ownerName));
+    }
+    async function afterShopOtp(out) {
+      state.wa.open = false;
+      const phone = (out && out.phone) || state.loginId || state.reg.phone;
+      const needShop = API.isShopRegistered && !API.isShopRegistered();
+      if (out && out.needsRegister && !pendingShopFilled()) {
+        state.auth = 'register';
+        state.fromReg = true;
+        if (phone) state.reg.phone = phone;
+        render();
+        return;
+      }
+      if (pendingShopFilled() && needShop) {
+        try {
+          await API.completeShopRegister();
+        } catch (e) {
+          state.auth = 'register';
+          state.fromReg = true;
+          if (phone) state.reg.phone = phone;
+          render();
+          const err = document.querySelector('[data-err]');
+          if (err) err.textContent = (e && e.message) || 'Finish your shop details.';
+          return;
+        }
+      }
+      state.tab = 'dash';
+      state.auth = 'login';
+      state.fromReg = false;
+      render();
+    }
+    function bindShopOtp() {
+      killRegMap();
+      const root = document.getElementById('root');
+      root.innerHTML = otpView();
+      OtpLogin.bind({
+        role: 'shop',
+        onReady: afterShopOtp,
+      });
+      const pi = document.getElementById('phone');
+      if (pi) pi.value = state.loginId;
+      const phoneStep = root.querySelector('[data-step="phone"]');
+      const codeStep = root.querySelector('[data-step="code"]');
+      if (phoneStep) phoneStep.classList.add('hidden');
+      if (codeStep) codeStep.classList.remove('hidden');
+      const sp = root.querySelector('[data-sent-phone]');
+      if (sp) sp.textContent = state.loginId;
+      const back = root.querySelector('[data-back-phone]');
+      if (back) back.onclick = () => { state.auth = state.fromReg ? 'register' : 'login'; render(); };
+    }
+    function bindWaSheet() {
+      const sheet = document.querySelector('[data-wa-sheet]');
+      if (!sheet) return;
+      const close = sheet.querySelector('[data-wa-close]');
+      if (close) close.onclick = () => { state.wa.open = false; render(); };
+      const send = sheet.querySelector('[data-wa-send]');
+      if (send) send.onclick = async () => {
+        const phone = ((document.getElementById('waPhone') || {}).value || state.wa.phone || '').trim();
+        state.wa.phone = phone;
+        send.disabled = true;
+        send.textContent = 'Sending…';
+        try {
+          const out = await API.sendOtp('shop', phone);
+          state.wa.phone = out.phone || phone;
+          state.loginId = state.wa.phone;
+          state.wa.step = 'code';
+          state.wa.err = '';
+          render();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not send WhatsApp code';
+          render();
+        }
+      };
+      const resend = sheet.querySelector('[data-wa-resend]');
+      if (resend) resend.onclick = async () => {
+        try {
+          await API.sendOtp('shop', state.wa.phone);
+          state.wa.err = 'Code sent again.';
+          render();
+        } catch (e) {
+          state.wa.err = e.message || 'Could not resend';
+          render();
+        }
+      };
+      const codeValue = () => [...sheet.querySelectorAll('.otp-boxes input')].map((i) => i.value).join('');
+      async function verifyWa() {
+        const code = codeValue();
+        if (code.length !== 4) { state.wa.err = 'Enter the 4-digit code'; render(); return; }
+        try {
+          const out = await API.verifyOtp('shop', state.wa.phone, code);
+          await afterShopOtp(out);
+        } catch (e) {
+          state.wa.err = e.message || 'Could not verify';
+          render();
+        }
+      }
+      const verifyBtn = sheet.querySelector('[data-wa-verify]');
+      if (verifyBtn) verifyBtn.onclick = verifyWa;
+      sheet.querySelectorAll('.otp-boxes input').forEach((el) => {
+        el.oninput = () => {
+          el.value = el.value.replace(/\D/g, '').slice(0, 1);
+          const i = Number(el.dataset.wad);
+          if (el.value && i < 3) {
+            const next = sheet.querySelector('.otp-boxes input[data-wad="' + (i + 1) + '"]');
+            if (next) next.focus();
+          }
+          if (codeValue().length === 4) verifyWa();
+        };
+      });
+    }
+    function bindAuth() {
+      const root = document.getElementById('root');
+      const err = root.querySelector('[data-err]');
+      const goReg = root.querySelector('[data-go-reg]');
+      if (goReg) goReg.onclick = () => { state.auth = 'register'; render(); };
+      const goLogin = root.querySelector('[data-go-login]');
+      if (goLogin) goLogin.onclick = () => { killRegMap(); state.auth = 'login'; render(); };
+      const addr = document.getElementById('regAddr');
+      if (addr) addr.oninput = () => { state.reg.addrDirty = true; state.reg.address = addr.value; };
+      const rs = document.getElementById('regShop');
+      if (rs) rs.oninput = () => { state.reg.shopName = rs.value; };
+      const ro = document.getElementById('regOwner');
+      if (ro) ro.oninput = () => { state.reg.ownerName = ro.value; };
+      const rp = document.getElementById('regPhone');
+      if (rp) rp.oninput = () => { state.reg.phone = rp.value; };
+      const waOpen = root.querySelector('[data-wa-login]');
+      if (waOpen) waOpen.onclick = () => {
+        state.wa = { open: true, step: 'phone', phone: '', err: '' };
+        render();
+      };
+      bindWaSheet();
+      const googleBtn = root.querySelector('[data-google]');
+      if (googleBtn) googleBtn.onclick = async (e) => {
+        e.preventDefault();
+        if (err) err.textContent = '';
+        const html = googleBtn.innerHTML;
+        googleBtn.disabled = true;
+        googleBtn.textContent = 'Opening Google…';
+        try {
+          const profile = await API.googleSignIn();
+          await API.signInGoogle(profile);
+          state.loginId = '';
+          state.reg.phone = '';
+          if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+          if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
+            goShopRegister();
+            return;
+          }
+          render();
+        } catch (ex) {
+          if (err) err.textContent = ex.message || 'Google sign-in failed';
+          googleBtn.disabled = false;
+          googleBtn.innerHTML = html;
+        }
+      };
+      const forgot = root.querySelector('[data-shop-forgot]');
+      if (forgot) forgot.onclick = () => {
+        if (err) err.textContent = 'Use Continue with WhatsApp or Google to get back in.';
+      };
+      const loginIdEl = document.getElementById('loginId');
+      if (loginIdEl) loginIdEl.oninput = () => { state.loginId = loginIdEl.value; };
+      const loginPwEl = document.getElementById('loginPw');
+      if (loginPwEl) loginPwEl.oninput = () => { state.loginPw = loginPwEl.value; };
+      root.querySelectorAll('[data-shop-login]').forEach((b) => {
+        b.onclick = async () => {
+          const id = ((document.getElementById('loginId') || {}).value || state.loginId || '').trim();
+          const pw = ((document.getElementById('loginPw') || {}).value || state.loginPw || '');
+          state.loginId = id;
+          state.loginPw = pw;
+          if (err) err.textContent = '';
+          if (!id) {
+            if (err) err.textContent = 'Enter email or phone.';
+            return;
+          }
+          b.disabled = true;
+          const label = b.textContent;
+          try {
+            if (id.includes('@') || String(pw).trim()) {
+              if (id.includes('@')) {
+                b.textContent = 'Checking email…';
+                let acc = null;
+                try { acc = await API.findAccount('shop', id); } catch (_) { acc = null; }
+                if (!acc) {
+                  state.reg.email = id;
+                  state.auth = 'register';
+                  state.fromReg = true;
+                  render();
+                  const rerr = document.querySelector('[data-err]');
+                  if (rerr) rerr.textContent = 'This email is not registered. Create a shop account, then sign in with email and password.';
+                  return;
+                }
+              }
+              if (!String(pw).trim()) {
+                if (err) err.textContent = 'This email is registered. Enter your password to sign in.';
+                b.disabled = false;
+                b.textContent = label;
+                return;
+              }
+              b.textContent = 'Signing in…';
+              API.setPendingShop(null);
+              state.fromReg = false;
+              await API.signInPassword(id, pw, 'shop');
+              if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+              if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
+                goShopRegister();
+                return;
+              }
+              render();
+              return;
+            }
+            b.textContent = 'Sending WhatsApp…';
+            const phone = API.normalizePhone ? API.normalizePhone(id) : id;
+            state.loginId = phone;
+            state.reg.phone = phone;
+            API.setPendingShop(null);
+            state.fromReg = false;
+            await API.sendOtp('shop', phone);
+            state.auth = 'otp';
+            render();
+          } catch (e) {
+            const msg = (e && e.message) || 'Could not sign in';
+            if (e && (e.code === 'NO_ACCOUNT' || /not registered/i.test(msg) || /not .* credentials/i.test(msg))) {
+              if (id.includes('@')) state.reg.email = id;
+              state.auth = 'register';
+              state.fromReg = true;
+              render();
+              const rerr = document.querySelector('[data-err]');
+              if (rerr) rerr.textContent = msg;
+              return;
+            }
+            if (err) err.textContent = msg;
+            b.disabled = false;
+            b.textContent = label;
+          }
+        };
+      });
+      const regBtn = root.querySelector('[data-shop-register]');
+      if (regBtn) regBtn.onclick = async () => {
+        const pin = (state.regMap && state.regMap.getCenter) ? state.regMap.getCenter() : null;
+        if (pin) { state.reg.lat = pin.lat; state.reg.lng = pin.lng; }
+        state.reg.shopName = (document.getElementById('regShop') || {}).value || '';
+        state.reg.ownerName = (document.getElementById('regOwner') || {}).value || '';
+        state.reg.phone = (document.getElementById('regPhone') || {}).value || '';
+        state.reg.address = (document.getElementById('regAddr') || {}).value || state.reg.address || '';
+        if (err) err.textContent = '';
+        if (!state.reg.shopName.trim() || !state.reg.ownerName.trim() || !state.reg.phone.trim()) {
+          if (err) err.textContent = 'Enter shop name, owner name, and phone.';
+          return;
+        }
+        if (state.reg.lat == null || state.reg.lng == null) {
+          if (err) err.textContent = 'Pin your shop on the map.';
+          return;
+        }
+        if (!String(state.reg.address || '').trim()) {
+          if (err) err.textContent = 'Enter the shop address.';
+          return;
+        }
+        const phone = API.normalizePhone ? API.normalizePhone(state.reg.phone) : state.reg.phone;
+        if (!isRealWaPhone(phone)) {
+          if (err) err.textContent = 'Enter a valid WhatsApp number (07X XXX XXXX).';
+          return;
+        }
+        if (API.findAccount) {
+          try {
+            const taken = await API.findAccount('shop', phone);
+            if (taken && !(API.isPlaceholderPhone && API.isPlaceholderPhone(taken.phone))) {
+              const te = String(taken.email || '').toLowerCase();
+              const pe = String(state.reg.email || '').toLowerCase();
+              if (!pe || !te || te !== pe) {
+                if (err) err.textContent = 'This number already has a Shop account. Login instead — you cannot create another Shop with the same number.';
+                return;
+              }
+            }
+          } catch (ex) {
+            if (ex && /already has a/i.test(String(ex.message || ''))) {
+              if (err) err.textContent = ex.message;
+              return;
+            }
+          }
+        }
+        if (state.reg.email && API.findAccount) {
+          try {
+            const byEmail = await API.findAccount('shop', state.reg.email);
+            if (byEmail && !(API.isPlaceholderPhone && API.isPlaceholderPhone(byEmail.phone))) {
+              const ep = API.normalizePhone ? API.normalizePhone(byEmail.phone) : byEmail.phone;
+              if (ep && ep !== phone) {
+                if (err) err.textContent = 'This email already has a Shop account. Sign in with that email instead.';
+                return;
+              }
+            }
+          } catch (ex) {
+            if (ex && /already has a/i.test(String(ex.message || ''))) {
+              if (err) err.textContent = ex.message;
+              return;
+            }
+          }
+        }
+        state.loginId = phone;
+        API.setPendingShop({
+          shopName: state.reg.shopName.trim(),
+          ownerName: state.reg.ownerName.trim(),
+          phone,
+          email: state.reg.email || '',
+          photo: state.reg.photo || '',
+          address: String(state.reg.address).trim(),
+          lat: state.reg.lat,
+          lng: state.reg.lng,
+        });
+        if (API.rememberShopProfile) {
+          API.rememberShopProfile(phone, {
+            shopId: API.shopIdFor ? API.shopIdFor(phone) : '',
+            shopName: state.reg.shopName.trim(),
+            ownerName: state.reg.ownerName.trim(),
+            address: String(state.reg.address).trim(),
+            lat: state.reg.lat,
+            lng: state.reg.lng,
+          });
+        }
+        state.fromReg = true;
+        const verified = API.verifiedPhone && API.verifiedPhone('shop') === phone;
+        regBtn.disabled = true;
+        regBtn.textContent = verified ? 'Saving…' : 'Sending WhatsApp…';
+        try {
+          if (verified) {
+            await API.completeShopRegister();
+            state.tab = 'account';
+            render();
+            return;
+          }
+          await API.sendOtp('shop', phone);
+          state.auth = 'otp';
+          render();
+        } catch (e) {
+          if (err) err.textContent = e.message;
+          regBtn.disabled = false;
+          regBtn.textContent = 'Register';
+        }
+      };
+    }
+    function bind() {
+      const root = document.getElementById('root');
+      root.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { state.tab = b.dataset.tab; state.trackId = null; state.screen = ''; render(); });
+      function openStockPage() {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
+        const draft = {};
+        shopItems().forEach((it) => {
+          const st = stockInfo(it);
+          draft[it.id] = { unlimited: st.unlimited, stock: st.unlimited ? 0 : st.stock };
+        });
+        state.stockDraft = draft;
+        state.screen = 'stock';
+        render();
+      }
+      root.querySelectorAll('[data-notes]').forEach((b) => b.onclick = () => { state.screen = 'notes'; render(); });
+      root.querySelectorAll('[data-close-notes]').forEach((b) => b.onclick = () => { state.screen = ''; render(); });
+      root.querySelectorAll('[data-an]').forEach((b) => b.onclick = () => { state.anRange = b.dataset.an; render({ keepScroll: true }); });
+      const anFrom = document.getElementById('anFrom');
+      const anTo = document.getElementById('anTo');
+      if (anFrom) anFrom.onchange = () => { state.anFrom = anFrom.value; render({ keepScroll: true }); };
+      if (anTo) anTo.onchange = () => { state.anTo = anTo.value; render({ keepScroll: true }); };
+      root.querySelectorAll('[data-note]').forEach((b) => b.onclick = () => {
+        if (b.dataset.noteStock === '1') { openStockPage(); return; }
+        if (b.dataset.noteOrder) {
+          state.orderId = b.dataset.noteOrder;
+          state.screen = 'order';
+          render();
+        }
+      });
+      root.querySelectorAll('[data-filter]').forEach((b) => b.onclick = () => { state.filter = b.dataset.filter; render(); });
+      root.querySelectorAll('[data-act]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); API.patch(b.dataset.id, { status: b.dataset.act }); });
+      root.querySelectorAll('[data-toggle]').forEach((el) => el.onchange = (e) => {
+        e.stopPropagation();
+        API.toggleItem(el.dataset.toggle, el.checked);
+      });
+      root.querySelectorAll('[data-stop]').forEach((el) => el.onclick = (e) => e.stopPropagation());
+      root.querySelectorAll('[data-open-order]').forEach((b) => b.onclick = () => {
+        state.orderId = b.dataset.openOrder; state.screen = 'order'; render();
+      });
+      root.querySelectorAll('[data-close-order]').forEach((b) => b.onclick = () => { state.screen = ''; state.orderId = null; render(); });
+      root.querySelectorAll('[data-add-item]').forEach((b) => b.onclick = () => {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
+        state.itemId = null; state.itemDraft = { category: 'Food', isAvailable: true, stockUnlimited: true }; state.screen = 'item'; render();
+      });
+      root.querySelectorAll('[data-open-stock]').forEach((b) => b.onclick = () => openStockPage());
+      root.querySelectorAll('[data-close-stock]').forEach((b) => b.onclick = () => {
+        state.screen = ''; state.stockDraft = null; state.tab = 'menu'; render();
+      });
+      function paintStockRow(id) {
+        const d = (state.stockDraft || {})[id];
+        if (!d) return;
+        const lab = root.querySelector('[data-st-lab="' + id + '"]');
+        const num = root.querySelector('[data-st-n="' + id + '"]');
+        const inf = root.querySelector('[data-st-unl="' + id + '"]');
+        const sold = !d.unlimited && Number(d.stock || 0) <= 0;
+        if (lab) lab.textContent = d.unlimited ? 'Unlimited' : (sold ? 'Sold out' : 'Stock: ' + (d.stock || 0));
+        if (num) num.textContent = d.unlimited ? '∞' : String(d.stock || 0);
+        if (inf) inf.classList.toggle('on', !!d.unlimited);
+      }
+      root.querySelectorAll('[data-st-d]').forEach((b) => b.onclick = (e) => {
+        e.preventDefault();
+        const id = b.dataset.stD;
+        if (!state.stockDraft) state.stockDraft = {};
+        if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
+        const d = state.stockDraft[id];
+        if (d.unlimited) {
+          d.unlimited = false;
+          d.stock = 15;
+          paintStockRow(id);
+          return;
+        }
+        d.stock = Math.max(0, Number(d.stock || 0) + Number(b.dataset.n || 0));
+        paintStockRow(id);
+      });
+      root.querySelectorAll('[data-st-unl]').forEach((el) => el.onclick = (e) => {
+        e.preventDefault();
+        const id = el.dataset.stUnl;
+        if (!state.stockDraft) state.stockDraft = {};
+        if (!state.stockDraft[id]) state.stockDraft[id] = { unlimited: false, stock: 0 };
+        const d = state.stockDraft[id];
+        d.unlimited = !d.unlimited;
+        if (!d.unlimited && !d.stock) d.stock = 15;
+        paintStockRow(id);
+      });
+      const saveStock = root.querySelector('[data-save-stock]');
+      if (saveStock) saveStock.onclick = async () => {
+        saveStock.disabled = true; saveStock.textContent = 'Updating…';
+        const err = root.querySelector('[data-stock-err]');
+        try {
+          const ids = Object.keys(state.stockDraft || {});
+          for (let i = 0; i < ids.length; i++) {
+            const id = ids[i];
+            const it = API.items.find((x) => x.id === id);
+            if (!it) continue;
+            const d = state.stockDraft[id];
+            let available = it.isAvailable !== false;
+            if (!d.unlimited && Number(d.stock || 0) <= 0) available = false;
+            else if (!d.unlimited && Number(d.stock || 0) > 0) available = true;
+            await API.saveItem(Object.assign({}, it, {
+              shopId: shopId(),
+              stockUnlimited: !!d.unlimited,
+              stock: d.unlimited ? null : Math.max(0, Number(d.stock) || 0),
+              isAvailable: available,
+              desc: it.desc || it.description || '',
+            }), { silent: true });
+          }
+          try { await API.refresh(); } catch (_) {}
+          state.screen = ''; state.stockDraft = null; state.tab = 'menu';
+          render();
+        } catch (e) {
+          if (err) err.textContent = e.message || 'Could not update stock.';
+          saveStock.disabled = false; saveStock.textContent = 'Update Stock';
+        }
+      };
+      root.querySelectorAll('[data-edit-item]').forEach((b) => b.onclick = () => {
+        const it = API.items.find((i) => i.id === b.dataset.editItem);
+        state.itemId = it && it.id; state.itemDraft = it ? Object.assign({}, it) : { category: 'Food' }; state.screen = 'item'; render();
+      });
+      root.querySelectorAll('[data-close-item]').forEach((b) => b.onclick = () => { state.screen = ''; state.itemDraft = null; render(); });
+      root.querySelectorAll('[data-mcat]').forEach((b) => b.onclick = () => { state.menuCat = b.dataset.mcat; render({ keepScroll: true }); });
+      const mq = document.getElementById('menuQ');
+      if (mq) mq.oninput = () => { state.menuQ = mq.value; render({ keepScroll: true }); const n=document.getElementById('menuQ'); if(n){ n.focus(); n.selectionStart=n.selectionEnd=n.value.length; } };
+      root.querySelectorAll('[data-set-img]').forEach((b) => b.onclick = () => {
+        state._itemFile = null;
+        state.itemDraft = Object.assign({}, readItemForm(), { image: b.dataset.setImg });
+        render({ keepScroll: true });
+      });
+      const pick = root.querySelector('[data-pick-photo]');
+      const file = document.getElementById('itemFile');
+      if (pick && file) pick.onclick = () => file.click();
+      if (file) file.onchange = () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        pickDraftImage('item', f, '[data-pick-photo]', '[data-item-err]');
+      };
+      const unl = document.getElementById('itemUnl');
+      const wrap = document.getElementById('itemStockWrap');
+      if (unl && wrap) unl.onchange = () => { wrap.classList.toggle('hidden', unl.checked); };
+      const offerKind = document.getElementById('itemOffer');
+      const offerPctWrap = document.getElementById('offerPctWrap');
+      const offerGetWrap = document.getElementById('offerGetWrap');
+      if (offerKind) offerKind.onchange = () => {
+        if (offerPctWrap) offerPctWrap.classList.toggle('hidden', offerKind.value !== 'pct');
+        if (offerGetWrap) offerGetWrap.classList.toggle('hidden', offerKind.value !== 'get');
+      };
+      const save = root.querySelector('[data-save-item]');
+      if (save) save.onclick = async () => {
+        if (API.isShopRegistered && !API.isShopRegistered()) { goShopRegister(); return; }
+        const d = readItemForm();
+        if (!d.name) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Enter an item name.'; return; }
+        if (d.offer && d.offer.type === 'pct' && !(d.offer.pct > 0)) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Enter a percent off (1–90).'; return; }
+        if ((document.getElementById('itemOffer') || {}).value === 'get' && !(d.offer && d.offer.getId)) { const e = root.querySelector('[data-item-err]'); if (e) e.textContent = 'Select the free item for this offer.'; return; }
+        save.disabled = true; save.textContent = 'Saving…';
+        try {
+          if (state._itemFile) {
+            const stored = await storedOrPreview(state._itemFile, 'item', d.image);
+            if (stored) d.image = stored;
+            state._itemFile = null;
+          }
+          if (isTempImg(d.image)) throw new Error('Wait for the photo to finish, then Save.');
+          await API.saveItem(d);
+          state.screen = ''; state.itemDraft = null; state.tab = 'menu';
+          render();
+        } catch (err) {
+          const e = root.querySelector('[data-item-err]');
+          if (e) e.textContent = err.message || 'Could not save item.';
+          save.disabled = false; save.textContent = 'Save Item';
+        }
+      };
+      root.querySelectorAll('[data-track]').forEach((b) => b.onclick = (e) => { e.stopPropagation(); state.screen = ''; state.trackId = b.dataset.track; render(); });
+      root.querySelectorAll('[data-track-back]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
+      root.querySelectorAll('[data-done]').forEach((b) => b.onclick = () => { state.trackId = null; render(); });
+      root.querySelectorAll('[data-chat]').forEach((b) => b.onclick = () => {
+        const o = API.orders.find((x) => x.id === b.dataset.chat);
+        if (API.canChat && !API.canChat(o, 'shop')) return;
+        state.orderId = b.dataset.chat;
+        state.screen = 'chat';
+        if (API.markChatRead) API.markChatRead(state.orderId, 'shop');
+        render();
+      });
+      root.querySelectorAll('[data-close-chat]').forEach((b) => b.onclick = () => {
+        state.screen = state.trackId ? '' : 'order';
+        render();
+      });
+      async function sendShopChat(text) {
+        const body = String(text || '').trim();
+        if (!body || !state.orderId) return;
+        const form = document.getElementById('chatForm');
+        if (form && form.text) form.text.value = '';
+        try {
+          await API.sendMessage(state.orderId, (API.publicShopName && API.publicShopName(myShop())) || (API.user && API.user.shopName) || 'Shop', 'shop', body);
+        } catch (e) { alert(e.message); return; }
+        if (API.markChatRead) API.markChatRead(state.orderId, 'shop');
+        const keepChat = document.querySelector('[data-chat-root]');
+        if (keepChat) paintShopChat(keepChat);
+        const input = document.querySelector('#chatForm input[name="text"]');
+        if (input) input.focus();
+      }
+      const form = document.getElementById('chatForm');
+      if (form) {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          await sendShopChat(form.text && form.text.value);
+        };
+        const input = form.querySelector('input[name="text"]');
+        if (input) {
+          input.setAttribute('inputmode', 'text');
+          input.addEventListener('focus', bindChatKeyboard);
+        }
+      }
+      root.querySelectorAll('[data-quick]').forEach((b) => b.onclick = () => sendShopChat(b.dataset.quick));
+      const logout = document.getElementById('logout');
+      if (logout) logout.onclick = () => { API.logout(); state.tab = 'account'; state.auth = 'login'; render(); };
+      root.querySelectorAll('[data-edit-shop]').forEach((b) => b.onclick = () => {
+        const s = Object.assign({}, myShop());
+        const raw = (API.shops.find((x) => x.id === shopId()) || {}).name;
+        if (raw && String(raw).trim()) s.name = raw;
+        state.shopDraft = s;
+        state.screen = 'edit-shop';
+        render();
+      });
+      root.querySelectorAll('[data-view-store]').forEach((b) => b.onclick = () => { state.screen = 'store'; render(); });
+      root.querySelectorAll('[data-open-wallet]').forEach((b) => b.onclick = () => { state.screen = 'wallet'; render(); });
+      root.querySelectorAll('[data-close-wallet]').forEach((b) => b.onclick = () => { state.screen = ''; state.tab = 'account'; render(); });
+      root.querySelectorAll('[data-close-shop]').forEach((b) => b.onclick = () => { state.screen = ''; state.shopDraft = null; state.tab = 'account'; render(); });
+      const pickShop = root.querySelector('[data-pick-shop-photo]');
+      const shopFile = document.getElementById('shopFile');
+      if (pickShop && shopFile) pickShop.onclick = () => shopFile.click();
+      if (shopFile) shopFile.onchange = () => {
+        const f = shopFile.files && shopFile.files[0];
+        if (!f) return;
+        pickDraftImage('shop', f, '[data-pick-shop-photo]', '[data-shop-err]');
+      };
+      const saveShop = root.querySelector('[data-save-shop]');
+      if (saveShop) saveShop.onclick = async () => {
+        const d = readShopForm();
+        if (!d.name) { const e = root.querySelector('[data-shop-err]'); if (e) e.textContent = 'Enter a shop name.'; return; }
+        saveShop.disabled = true; saveShop.textContent = 'Saving…';
+        try {
+          if (state._shopFile) {
+            const stored = await storedOrPreview(state._shopFile, 'shop', d.image);
+            if (stored) d.image = stored;
+            state._shopFile = null;
+          }
+          if (isTempImg(d.image)) throw new Error('Wait for the photo to finish, then Save.');
+          await API.saveShop(d);
+          state.screen = ''; state.shopDraft = null; state.tab = 'account';
+          render();
+        } catch (err) {
+          const e = root.querySelector('[data-shop-err]');
+          if (e) e.textContent = err.message || 'Could not save profile.';
+          saveShop.disabled = false; saveShop.textContent = 'Save Profile';
+        }
+      };
+    }
+    function readShopForm() {
+      const d = Object.assign({}, myShop(), state.shopDraft || {});
+      const name = document.getElementById('shopNameIn');
+      const cat = document.getElementById('shopCatIn');
+      const hours = document.getElementById('shopHoursIn');
+      const about = document.getElementById('shopAboutIn');
+      if (name) d.name = name.value.trim();
+      if (cat) d.category = cat.value.trim();
+      if (hours) d.hours = hours.value.trim();
+      if (about) d.promo = about.value.trim();
+      d.about = d.promo;
+      return d;
+    }
+    function paintPhotoBox(sel, src) {
+      const box = document.querySelector(sel);
+      if (!box || !src) return;
+      const safe = String(src).replace(/"/g, '&quot;');
+      box.innerHTML = '<img src="' + safe + '" alt="" />';
+    }
+    function isTempImg(src) {
+      return /^blob:/i.test(String(src || ''));
+    }
+    async function storedOrPreview(file, kind, preview) {
+      if (API.storeImage && file) {
+        try { return await API.storeImage(file, kind); } catch (_) {}
+      }
+      return preview || '';
+    }
+    async function pickDraftImage(kind, file, boxSel, errSel) {
+      if (!file) return;
+      const preview = URL.createObjectURL(file);
+      const err = document.querySelector(errSel);
+      if (kind === 'item') {
+        if (state._itemBlob) { try { URL.revokeObjectURL(state._itemBlob); } catch (_) {} }
+        state._itemBlob = preview;
+        state._itemFile = file;
+        state.itemDraft = Object.assign({}, readItemForm(), { image: preview });
+      } else {
+        if (state._shopBlob) { try { URL.revokeObjectURL(state._shopBlob); } catch (_) {} }
+        state._shopBlob = preview;
+        state._shopFile = file;
+        state.shopDraft = Object.assign({}, readShopForm(), { image: preview });
+      }
+      paintPhotoBox(boxSel, preview);
+      if (err) err.textContent = '';
+      try {
+        const src = await storedOrPreview(file, kind, preview);
+        if (!src) throw new Error('Could not save image');
+        if (kind === 'item') {
+          if (state.screen !== 'item') return;
+          state.itemDraft = Object.assign({}, readItemForm(), { image: src });
+          if (!isTempImg(src)) state._itemFile = null;
+        } else {
+          if (state.screen !== 'edit-shop') return;
+          state.shopDraft = Object.assign({}, readShopForm(), { image: src });
+          if (!isTempImg(src)) state._shopFile = null;
+        }
+        paintPhotoBox(boxSel, src);
+        render({ keepScroll: true });
+      } catch (e) {
+        if (err) err.textContent = (e && e.message) || 'Could not store image.';
+      }
+    }
+    function readItemForm() {
+      const d = Object.assign({}, state.itemDraft || {});
+      const name = document.getElementById('itemName');
+      const price = document.getElementById('itemPrice');
+      const cat = document.getElementById('itemCat');
+      const desc = document.getElementById('itemDesc');
+      const unl = document.getElementById('itemUnl');
+      const stock = document.getElementById('itemStock');
+      if (name) d.name = name.value.trim();
+      if (price) d.price = Number(price.value || 0);
+      if (cat) d.category = cat.value;
+      if (desc) d.desc = desc.value.trim();
+      if (unl) d.stockUnlimited = !!unl.checked;
+      if (d.stockUnlimited) d.stock = null;
+      else if (stock) d.stock = Math.max(0, Math.round(Number(stock.value || 0)));
+      const kind = document.getElementById('itemOffer');
+      const pct = document.getElementById('itemOfferPct');
+      const get = document.getElementById('itemOfferGet');
+      const kv = kind ? kind.value : '';
+      if (kv === 'bogo') d.offer = { type: 'bogo' };
+      else if (kv === 'pct') d.offer = { type: 'pct', pct: Math.max(1, Math.min(90, Math.round(Number(pct && pct.value) || 0))) };
+      else if (kv === 'get' && get && get.value) d.offer = { type: 'get', getId: get.value };
+      else d.offer = null;
+      d.shopId = shopId();
+      d.isAvailable = d.isAvailable !== false;
+      if (d.stockUnlimited === false && Number(d.stock || 0) <= 0) d.isAvailable = false;
+      if (state.itemId) d.id = state.itemId;
+      return d;
+    }
+    API.on(() => {
+      if (state.auth === 'otp') return;
+      if (!API.user && document.querySelector('[data-otp-root], [data-shop-auth]')) return;
+      render({ keepScroll: true });
+    });
+    async function consumeGoogleRedirect() {
+      try {
+        if (!API.resumeGoogle) return false;
+        const u = await API.resumeGoogle();
+        if (!u) return false;
+        if (API.refresh) { try { await API.refresh(); } catch (_) {} }
+        if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
+          goShopRegister();
+          return true;
+        }
+        state.tab = 'dash';
+        state.auth = 'login';
+        render();
+        return true;
+      } catch (e) {
+        state.auth = 'login';
+        render();
+        const err = document.querySelector('[data-err]');
+        if (err) err.textContent = e.message || 'Google sign-in failed';
+        return true;
+      }
+    }
+    consumeGoogleRedirect().then((ok) => { if (!ok) render(); });
+  </script>
+</body>
+</html>

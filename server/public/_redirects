@@ -1,0 +1,3 @@
+/webhooks/payments-lk /webhooks/payments-lk.json 200
+/webhooks/payments-lk/ /webhooks/payments-lk.json 200
+/webhook /webhooks/payments-lk.json 200

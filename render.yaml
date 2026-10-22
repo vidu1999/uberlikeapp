@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: quickbite
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: .
+    buildCommand: "node -e \"console.log('quickbite')\""
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
