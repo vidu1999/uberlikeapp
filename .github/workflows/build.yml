@@ -98,13 +98,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG=swiftdrop-1.0.0
+          TAG=swiftdrop-1.1.0
+          NOTES="$(cat <<'EOF'
+QuickBite User, Shop, and Rider APKs (1.1.0)
+
+Same live site as https://quickbite-2ao.pages.dev
+- Grocery shop tiles, + / qty stepper, View basket
+- Item descriptions, Buy again, Recently viewed
+- Google Sign-In in the app (no cancelled message)
+- WhatsApp OTP, live tracking, card + COD
+
+Uninstall the old APKs first, then install these three.
+EOF
+)"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/user.apk dist/shop.apk dist/rider.apk --clobber
+            gh release edit "$TAG" --title "QuickBite 1.1.0 — User, Shop, Rider APKs" --notes "$NOTES"
           else
             gh release create "$TAG" dist/user.apk dist/shop.apk dist/rider.apk \
-              --title "QuickBite — User, Shop, Rider APKs" \
-              --notes "Same apps as the website. WhatsApp OTP, then User / Shop / Rider. https://quickbite-2ao.pages.dev"
+              --title "QuickBite 1.1.0 — User, Shop, Rider APKs" \
+              --notes "$NOTES" --latest
           fi
       - name: Annotate failure
         if: failure()

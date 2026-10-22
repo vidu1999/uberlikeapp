@@ -93,8 +93,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _download(String app) {
     final url = app == 'shop'
-        ? 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk'
-        : 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk';
+        ? 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/shop.apk'
+        : 'https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/rider.apk';
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(

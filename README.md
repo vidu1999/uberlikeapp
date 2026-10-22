@@ -54,11 +54,11 @@ Included: search, shop menus, cart, checkout, kitchen board, menu sold-out toggl
 
 Different package names — install all three on one phone.
 
-- [user.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/user.apk) `com.uberlike.customer`
-- [shop.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/shop.apk) `com.uberlike.shop`
-- [rider.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.0.0/rider.apk) `com.uberlike.rider`
+- [user.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/user.apk) `com.uberlike.customer`
+- [shop.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/shop.apk) `com.uberlike.shop`
+- [rider.apk](https://github.com/vidu1999/uberlikeapp/releases/download/swiftdrop-1.1.0/rider.apk) `com.uberlike.rider`
 
-Release: [swiftdrop-1.0.0](https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.0.0)
+Release: [swiftdrop-1.1.0](https://github.com/vidu1999/uberlikeapp/releases/tag/swiftdrop-1.1.0)
 
 Paste the studio URL into each APK (cloud icon) so they share orders.
 
