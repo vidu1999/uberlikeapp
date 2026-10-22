@@ -1908,6 +1908,117 @@
     return u;
   };
 
+  var RIDER_DOCS_MARK = 'QBDOCS:';
+  function parseSriNic(raw) {
+    const s = String(raw || '').toUpperCase().replace(/[\s-]/g, '');
+    if (/^\d{9}[VX]$/.test(s) || /^\d{12}$/.test(s)) return s;
+    return '';
+  }
+  function parseLkPlate(raw) {
+    const s = String(raw || '').toUpperCase().replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+    if (/^(?:(?:WP|SP|CP|NP|EP|NW|SG|UP|NC)[-\s]+)?(?:[A-Z]{2,3}|[0-9]{2,3})[-\s]?\d{4}$/.test(s)) return s;
+    return '';
+  }
+  function parseLicenseId(raw) {
+    const s = String(raw || '').toUpperCase().replace(/[\s\-/]/g, '');
+    if (s.length >= 5 && s.length <= 20 && /^[A-Z0-9]+$/.test(s)) return s;
+    return '';
+  }
+  function riderDocsFromUser(user) {
+    const u = user || API.user || {};
+    const out = {
+      nic: '', licenseId: '', nicPhoto: '', licensePhoto: '',
+      plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
+    };
+    const addr = String(u.address || '');
+    if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
+      try {
+        const j = JSON.parse(addr.slice(RIDER_DOCS_MARK.length));
+        if (j && typeof j === 'object') {
+          out.nic = String(j.nic || '');
+          out.licenseId = String(j.licenseId || '');
+          out.nicPhoto = String(j.nicPhoto || '');
+          out.licensePhoto = String(j.licensePhoto || '');
+          out.plate = String(j.plate || '');
+          out.vehicleType = String(j.vehicleType || 'Motorcycle') || 'Motorcycle';
+          out.regPhoto = String(j.regPhoto || '');
+          out.registered = j.registered === true || j.registered === '1';
+        }
+      } catch (_) {}
+    }
+    const veh = String(u.vehicle || '').trim();
+    if (veh && !/^https?:/i.test(veh)) {
+      const bits = veh.split(/\s*[·|,]\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
+      if (bits.length >= 2) {
+        out.vehicleType = bits[0] || out.vehicleType;
+        out.plate = bits[1] || out.plate;
+      } else if (parseLkPlate(veh) && !out.plate) out.plate = parseLkPlate(veh);
+    }
+    return out;
+  }
+  API.riderDocs = function (user) { return riderDocsFromUser(user); };
+  API.isRiderVerified = function (user) {
+    const d = riderDocsFromUser(user);
+    if (!parseSriNic(d.nic) || !d.nicPhoto) return false;
+    if (!parseLicenseId(d.licenseId) || !d.licensePhoto) return false;
+    if (!parseLkPlate(d.plate) || !d.registered) return false;
+    return true;
+  };
+  API.saveRiderDocs = async function (fields) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    if (!sameRole(u.role, 'rider')) throw new Error('Open the Rider app.');
+    const cur = riderDocsFromUser(u);
+    const next = Object.assign({}, cur, fields || {});
+    const nicIn = String(next.nic || '').trim();
+    const nic = parseSriNic(nicIn);
+    if (nicIn && !nic) throw new Error('Enter a valid NIC (9 digits + V or X, or 12 digits).');
+    const plateIn = String(next.plate || '').trim();
+    const plate = parseLkPlate(plateIn);
+    if (plateIn && !plate) throw new Error('Enter a valid Sri Lanka vehicle number.');
+    const licIn = String(next.licenseId || '').trim();
+    const licenseId = parseLicenseId(licIn);
+    if (licIn && !licenseId) throw new Error('Enter a valid driving licence number.');
+    const pack = {
+      nic: nic || '',
+      licenseId: licenseId || '',
+      nicPhoto: String(next.nicPhoto || ''),
+      licensePhoto: String(next.licensePhoto || ''),
+      plate: plate || '',
+      vehicleType: String(next.vehicleType || 'Motorcycle').trim() || 'Motorcycle',
+      regPhoto: String(next.regPhoto || ''),
+      registered: next.registered === true,
+    };
+    function docsPatch(body) {
+      const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
+      if (body.plate) patch.vehicle = body.vehicleType + ' · ' + body.plate;
+      return patch;
+    }
+    let patch = docsPatch(pack);
+    if (sbConfigured()) {
+      try {
+        await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
+      } catch (_) {
+        const slim = Object.assign({}, pack);
+        ['nicPhoto', 'licensePhoto', 'regPhoto'].forEach(function (k) {
+          if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
+        });
+        patch = docsPatch(slim);
+        try {
+          await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
+        } catch (e2) {
+          throw new Error('Could not save verification. Try a smaller photo.');
+        }
+      }
+    }
+    Object.assign(u, patch);
+    API.user = u;
+    saveSession();
+    notify(true);
+    return u;
+  };
+
   function nextOrderId() {
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
@@ -3773,6 +3884,11 @@
     body = Object.assign({}, body || {});
     if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId || body.status === 'picked_up')) {
       if (!API.isRiderRegistered()) throw new Error('Register as a rider first, then accept orders.');
+      if (body.status === 'accepted' && !API.isRiderVerified()) {
+        const err = new Error('Add NIC, driving licence, and registered vehicle number in Profile first.');
+        err.code = 'RIDER_DOCS';
+        throw err;
+      }
       if (!API.isWhatsAppVerified()) {
         const err = new Error('Verify WhatsApp before accepting an order.');
         err.code = 'WHATSAPP_REQUIRED';
