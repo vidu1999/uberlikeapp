@@ -136,6 +136,15 @@ class _WebShellState extends State<WebShell> {
     if (controller.platform is! AndroidWebViewController) return;
     final android = controller.platform as AndroidWebViewController;
     try {
+      await controller.setUserAgent(
+        'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+      );
+    } catch (_) {}
+    try {
+      final cookies = WebViewCookieManager();
+      await (cookies.platform as dynamic).setAcceptThirdPartyCookies(android, true);
+    } catch (_) {}
+    try {
       android.setOnPlatformPermissionRequest((request) {
         request.grant();
       });
@@ -248,24 +257,35 @@ class _WebShellState extends State<WebShell> {
     }
 
     try {
-      final google = GoogleSignIn(
-        scopes: const ['email', 'profile'],
-        clientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
-        serverClientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
-      );
-      final acc = await google.signIn();
-      if (acc == null) {
-        await done('Google sign-in cancelled', null);
+      final google = GoogleSignIn(scopes: const ['email', 'profile']);
+      final acc = await google.signInSilently() ?? await google.signIn();
+      if (acc != null) {
+        await done(null, {
+          'email': acc.email,
+          'name': acc.displayName ?? acc.email,
+          'sub': acc.id,
+          'photo': acc.photoUrl ?? '',
+        });
         return;
       }
-      await done(null, {
-        'email': acc.email,
-        'name': acc.displayName ?? acc.email,
-        'sub': acc.id,
-        'photo': acc.photoUrl ?? '',
-      });
-    } catch (e) {
-      await done(e.toString().replaceFirst('Exception: ', ''), null);
+    } catch (_) {}
+    final clientId = AppConfig.googleClientId;
+    if (clientId.isEmpty) {
+      await done('Could not finish Google sign-in. Try again.', null);
+      return;
+    }
+    final auth = Uri.https('accounts.google.com', '/o/oauth2/v2/auth', {
+      'client_id': clientId,
+      'redirect_uri': _startUrl,
+      'response_type': 'token',
+      'scope': 'openid email profile',
+      'prompt': 'select_account',
+      'include_granted_scopes': 'true',
+    });
+    try {
+      await c.loadRequest(auth);
+    } catch (_) {
+      await done('Could not finish Google sign-in. Try again.', null);
     }
   }
 

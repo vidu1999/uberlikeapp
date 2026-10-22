@@ -1,6 +1,6 @@
 /*
   Cache-Control: no-store, no-cache, must-revalidate
-  Permissions-Policy: geolocation=(self)
+  Permissions-Policy: geolocation=(self), identity-credentials-get=*
   Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 /js/*

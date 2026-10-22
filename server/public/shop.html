@@ -17,7 +17,7 @@
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/live.js?v=19zk"></script>
-  <script src="/js/api.js?v=19zy"></script>
+  <script src="/js/api.js?v=19a6"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -1863,21 +1863,10 @@
       render({ keepScroll: true });
     });
     async function consumeGoogleRedirect() {
-      const hash = String(location.hash || '').replace(/^#/, '');
-      const hp = new URLSearchParams(hash);
-      const qp = new URLSearchParams(location.search);
-      const access = hp.get('access_token') || qp.get('access_token');
-      const cred = hp.get('credential') || hp.get('id_token') || qp.get('id_token');
-      if (!access && !cred) return false;
-      try { history.replaceState({}, '', location.pathname); } catch (_) {}
       try {
-        let profile = null;
-        if (cred && API.parseGoogleJwt) profile = API.parseGoogleJwt(cred);
-        if ((!profile || !profile.email) && access) {
-          const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + access } });
-          profile = await r.json();
-        }
-        await API.signInGoogle(profile);
+        if (!API.resumeGoogle) return false;
+        const u = await API.resumeGoogle();
+        if (!u) return false;
         if (API.refresh) { try { await API.refresh(); } catch (_) {} }
         if (API.isShopRegistered && !API.isShopRegistered() && !(API.user && (API.user.shopId || API.user.shop_id || isRealWaPhone(API.user.phone)))) {
           goShopRegister();

@@ -441,17 +441,13 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
     try {
-      final google = GoogleSignIn(
-        scopes: const ['email', 'profile'],
-        clientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
-        serverClientId: AppConfig.googleClientId.isEmpty ? null : AppConfig.googleClientId,
-      );
-      final acc = await google.signIn();
+      final google = GoogleSignIn(scopes: const ['email', 'profile']);
+      final acc = await google.signInSilently() ?? await google.signIn();
       if (!mounted) return;
       if (acc == null) {
         setState(() {
           busy = false;
-          error = 'Google sign-in cancelled';
+          error = 'Google window closed. Tap Continue with Google again.';
         });
         return;
       }
