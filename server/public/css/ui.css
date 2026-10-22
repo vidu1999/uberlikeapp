@@ -1403,6 +1403,42 @@ html[data-role="rider"] .scroll.rd-details {
 .rd-veh img { width: 100%; height: 180px; object-fit: cover; display: block; margin: 8px 0 12px; border-radius: 16px; background: #0e1c18; }
 .rd-veh .kv { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #1F2937; }
 .rd-veh .kv span { color: #9CA3AF; }
+.rd-verify-banner {
+  margin: 0 16px 12px; width: calc(100% - 32px);
+  background: #123D28; border: 1px solid #00C853; color: #fff;
+  border-radius: 14px; padding: 12px 14px; font-weight: 800;
+  cursor: pointer; text-align: left;
+}
+.rd-badge {
+  display: inline-block; margin: 0 auto 10px; border-radius: 999px;
+  padding: 6px 12px; font-size: 12px; font-weight: 800;
+}
+.rd-badge.ok { background: #123D28; color: #00C853; }
+.rd-badge.wait { background: #1F2937; color: #FBBF24; }
+.rd-docs-note {
+  margin: 0 16px 10px; color: #FBBF24; font-size: 13px; font-weight: 700;
+}
+.rd-list-page label.fld {
+  display: block; margin: 12px 0 6px; color: #9CA3AF; font-size: 13px; font-weight: 700; text-align: left;
+}
+.rd-list-page input.fld,
+.rd-list-page select.fld {
+  width: 100%; box-sizing: border-box;
+  border: 1px solid #1F2937; background: #0e1c18; color: #fff;
+  border-radius: 14px; padding: 12px 14px; font-size: 16px;
+}
+.rd-check {
+  display: flex; align-items: center; gap: 10px;
+  margin: 14px 0; font-weight: 700; text-align: left;
+}
+.rd-check input { width: 20px; height: 20px; accent-color: #00C853; flex: none; }
+.rd-up {
+  display: block; margin: 10px 0 12px;
+  border: 1px dashed #374151; border-radius: 16px;
+  min-height: 88px; background: #0e1c18; cursor: pointer; overflow: hidden;
+}
+.rd-up img { width: 100%; height: 160px; object-fit: cover; display: block; margin: 0; border-radius: 16px; }
+.rd-up span { display: block; padding: 32px 12px; color: #9CA3AF; font-weight: 700; text-align: center; }
 
 .rd-map-empty {
   flex: 1; display: flex; flex-direction: column; min-height: 0;
