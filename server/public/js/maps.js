@@ -94,7 +94,7 @@
     return L.divIcon({
       className: 'pin-dest-wrap',
       html:
-        '<div class="pin-lab"><div class="pin-home-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10.5 12 4l8 6.5V20h-6v-6H10v6H4z"/></svg></div><span>Customer</span></div>',
+        '<div class="pin-lab"><div class="pin-home-ico pin-people-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.6"/><path d="M3.2 19c.6-3.2 2.8-4.8 4.8-4.8s4.2 1.6 4.8 4.8"/><circle cx="16.2" cy="8.4" r="2.2"/><path d="M12.6 19c.5-2.4 1.8-3.6 3.6-3.6s3.1 1.2 3.6 3.6"/></svg></div><span>Customer</span></div>',
       iconSize: [90, 58],
       iconAnchor: [45, 58],
     });
@@ -222,7 +222,8 @@
     const ends = routeEnds(order, pos);
     const from = pos.rider || ends.from;
     const km = haversineKm(from, ends.to);
-    const left = Math.max(0.05, km).toFixed(1);
+    const left = km < 0.1 ? Math.max(1, Math.round(km * 1000)) + ' m' : km.toFixed(1) + ' km';
+    const eta = (global.TrackUI && TrackUI.etaRange) ? TrackUI.etaRange(km, order) : '';
     const label =
       order.status === 'delivered'
         ? 'Delivered'
@@ -231,7 +232,7 @@
           : order.status === 'picked_up' || order.status === 'on_the_way'
             ? 'Picked up'
             : 'Heading out';
-    return `<b>${label}</b><br>${left} km left`;
+    return `<b>${label}</b><br>${left} left${eta ? '<br>ETA ' + eta : ''}`;
   }
 
   global.routeCurve = curvePoints;

@@ -151,9 +151,11 @@
   function kmLeft(order) {
     const dest = targetOf(order);
     const from = riderFrom(order);
-    if (!from || !dest) return 2.3;
-    const km = typeof haversineKm === 'function' ? haversineKm(from, dest) : 2.3;
-    return Math.max(0.05, km);
+    if (from && dest && typeof haversineKm === 'function') return haversineKm(from, dest);
+    const shop = shopPosOf(order);
+    const drop = destPosOf(order);
+    if (shop && drop && typeof haversineKm === 'function') return haversineKm(shop, drop);
+    return 0;
   }
 
   function metersLeft(order) {
@@ -168,9 +170,47 @@
     return metersLeft(order) < CLOSE_M;
   }
 
-  function etaRange(km) {
-    const min = Math.max(8, Math.round(km * 4));
-    return min + ' – ' + (min + 3) + ' min';
+  const CRUISE_KMH = 22;
+  const spdBag = {};
+  function noteRiderSpeed(order) {
+    const from = riderFrom(order);
+    if (!order || !order.id || !from) return 0;
+    const now = Date.now();
+    let rec = spdBag[order.id];
+    if (!rec) rec = spdBag[order.id] = { kmh: 0, t: now, lat: from[0], lng: from[1] };
+    const dt = (now - rec.t) / 1000;
+    if (dt < 2) return rec.kmh || 0;
+    if (dt > 120) rec.kmh = 0;
+    if (dt < 90 && typeof haversineKm === 'function') {
+      const dkm = haversineKm([rec.lat, rec.lng], from);
+      if (dkm >= 0.004) {
+        const kmh = (dkm / dt) * 3600;
+        if (kmh >= 2 && kmh <= 70) rec.kmh = rec.kmh ? rec.kmh * 0.62 + kmh * 0.38 : kmh;
+      } else if (dt >= 4 && rec.kmh) {
+        rec.kmh = rec.kmh * 0.82 + 8 * 0.18;
+      }
+    }
+    rec.t = now;
+    rec.lat = from[0];
+    rec.lng = from[1];
+    return rec.kmh || 0;
+  }
+  function fmtKm(km) {
+    km = Number(km) || 0;
+    if (km < 0.1) return Math.max(1, Math.round(km * 1000)) + ' m';
+    return km.toFixed(1) + ' km';
+  }
+  function etaRange(km, order) {
+    km = Number(km);
+    if (!Number.isFinite(km) || km < 0) km = 0;
+    if (km < 0.05) return 'Arriving';
+    const live = noteRiderSpeed(order);
+    const speed = live > 3 ? live : CRUISE_KMH;
+    const mins = (km / Math.max(4, speed)) * 60;
+    const n = Math.max(1, Math.round(mins));
+    if (live > 3) return n + ' min';
+    const hi = Math.max(n + 1, Math.round(mins * 1.15));
+    return n + ' – ' + hi + ' min';
   }
 
   function shopOf(order) {
@@ -310,11 +350,11 @@
         <div class="rd-metrics">
           <div class="rd-metric">
             <div class="mi">${ICO_CLOCK}</div>
-            <div><small>ETA</small><b data-eta>${esc(etaRange(km))}</b></div>
+            <div><small>ETA</small><b data-eta>${esc(etaRange(km, order))}</b></div>
           </div>
           <div class="rd-metric">
             <div class="mi">${ICO_PIN}</div>
-            <div><small>Distance</small><b data-km>${km.toFixed(1)} km</b></div>
+            <div><small>Distance</small><b data-km>${esc(fmtKm(km))}</b></div>
           </div>
         </div>
           <div class="rd-btns">
@@ -352,9 +392,9 @@
       if (p.phone) call.href = telHref(p.phone);
     }
     const eta = root.querySelector('[data-eta]');
-    if (eta) eta.textContent = etaRange(km);
+    if (eta) eta.textContent = etaRange(km, order);
     const kmel = root.querySelector('[data-km]');
-    if (kmel) kmel.textContent = km.toFixed(1) + ' km';
+    if (kmel) kmel.textContent = fmtKm(km);
     const toShop = goingToShop(order);
     const picked = order.status === 'picked_up' || order.status === 'on_the_way';
     const close = isClose(order);
