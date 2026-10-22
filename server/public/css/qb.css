@@ -411,11 +411,22 @@
   color: #6B7280; font-size: 13px; font-weight: 600;
   margin: 10px 2px 2px;
 }
-.ue-near .name-row, .ue-store .name-row { padding: 0 2px; align-items: center; }
+.ue-near .name-row, .ue-store .name-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; width: 100%; padding: 0 2px;
+}
 .ue-near .name, .ue-store .name {
+  flex: 1; min-width: 0;
   font-size: 16px; font-weight: 800; letter-spacing: -0.3px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.ue-near .heart, .ue-store .heart {
+  position: static !important; top: auto; right: auto;
+  margin: 0 0 0 auto; flex: none;
+  width: 28px; height: 28px; border: 0; background: transparent;
+  color: #F9A8A8; cursor: pointer; display: grid; place-items: center;
+}
+.ue-near .heart.on, .ue-store .heart.on { color: #EF4444; }
 .ue-fee {
   color: #6B7280; font-size: 13px; font-weight: 600;
   margin: 2px 2px 0;
