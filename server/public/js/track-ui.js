@@ -360,14 +360,16 @@
       <div class="rd-card">
         ${stepsHtml(order)}
         <div class="rd-who">
-          <a class="rd-who-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}" aria-label="Call">${ICO_PHONE}</a>
           ${p.photo ? `<img data-avatar src="${p.photo}" alt="" />` : `<div class="fallback" data-initials>${esc(p.initials)}</div>`}
           <div class="grow">
             <b data-rider>${esc(p.name)}</b>
             <div class="role" data-sub>${esc(p.role)}</div>
             <div class="rate ${p.rating ? '' : 'hidden'}" data-rate><span class="star">★</span> ${esc(p.rating || '')} <span style="color:#9CA3AF;font-weight:600">${p.reviews ? '(' + esc(p.reviews) + ')' : ''}</span></div>
           </div>
-          <button class="rd-who-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
+          <div class="rd-who-acts">
+            <a class="rd-who-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}" aria-label="Call">${ICO_PHONE}</a>
+            <button class="rd-who-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
+          </div>
         </div>
         <div class="rd-metrics">
           <div class="rd-metric">

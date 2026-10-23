@@ -912,14 +912,15 @@ html[data-role="shop"] .otp-login .btn.ghost { background: #0e1c18; color: #fff;
   background: var(--navy2); border-radius: 24px; padding: 16px; color: #fff;
   box-shadow: 0 16px 40px rgba(0,0,0,.45);
 }
-.rd-who { display: flex; align-items: center; gap: 10px; }
+.rd-who { display: flex; align-items: center; gap: 12px; }
+.rd-who-acts { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 .rd-who-call, .rd-who-chat {
   width: 40px; height: 40px; border-radius: 50%; flex: none;
   display: grid; place-items: center; border: 0; text-decoration: none; cursor: pointer;
 }
-.rd-who-call { background: #00C853; color: #fff; margin-right: 2px; }
+.rd-who-call { background: #00C853; color: #fff; }
 .rd-who-call svg { stroke: #fff; }
-.rd-who-chat { background: #2563EB; color: #fff; margin-left: auto; }
+.rd-who-chat { background: #2563EB; color: #fff; }
 .rd-who-chat svg { stroke: #fff; }
 .rd-who img, .rd-who .fallback {
   width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #333; flex: none;
