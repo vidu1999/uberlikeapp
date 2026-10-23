@@ -58,10 +58,12 @@ function detailText(data) {
 export function diditErrorMessage(httpStatus, data) {
   const raw = detailText(data);
   const d = raw.toLowerCase();
-  if (/credit|balance|billing|not-enough/.test(d)) return 'ID check has no credits. Add Didit credits, then try again.';
+  if (/credit|balance|billing|not-enough|insufficient/.test(d)) {
+    return 'Didit used a paid workflow. Create a Free KYC flow (ID + live face only, no AML) and set DIDIT_WORKFLOW_ID.';
+  }
   if (httpStatus === 429) return 'Too many checks. Wait a minute and try again.';
   if (httpStatus === 401 || httpStatus === 403 || httpStatus === 402) {
-    return 'Didit blocked this check (403). Use a secret API key with ID Verification access, no IP lock, and enough credits.';
+    return 'Didit blocked this check (403). Use a secret API key with no IP lock, and a Free KYC workflow id.';
   }
   if (raw && raw.length < 160 && !/api[- ]?key/i.test(raw)) {
     if (/image|file|front|back|document/i.test(d)) return 'Could not read this card. Use a clearer front and back photo.';

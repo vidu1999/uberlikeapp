@@ -351,45 +351,90 @@ function workflowIdFromEnv(env) {
   return String((env && env.DIDIT_WORKFLOW_ID) || fromProc || '').trim();
 }
 
+function workflowIdOf(w) {
+  return String((w && (w.workflow_id || w.id || w.uuid || w.settings_uuid)) || '').trim();
+}
+
+function workflowIsPaid(w) {
+  if (!w || typeof w !== 'object') return false;
+  if (w.is_aml_enabled === true || w.is_nfc_enabled === true) return true;
+  if (w.is_phone_verification_enabled === true || w.is_email_verification_enabled === true) return true;
+  const feats = String(w.features || '');
+  const blob = feats + ' ' + JSON.stringify(w.workflow_graph || w.nodes || []).slice(0, 2000);
+  return /AML|NFC|PROOF_OF_ADDRESS|PHONE_VERIFICATION|EMAIL_VERIFICATION|DATABASE_VALIDATION|WHITE_LABEL|ACTIVE_3D/.test(blob.toUpperCase());
+}
+
+function workflowIsFreeKyc(w) {
+  if (!w || w.is_archived === true) return false;
+  if (workflowIsPaid(w)) return false;
+  const label = String(w.workflow_label || w.label || w.name || '');
+  if (/free|quickbite|rider/i.test(label)) return true;
+  if (w.is_aml_enabled === false && w.is_liveness_enabled === true) return true;
+  const feats = String(w.features || '').toUpperCase();
+  if (feats && /AML|NFC|PHONE|EMAIL|POA/.test(feats)) return false;
+  if (feats && /OCR|LIVENESS|ID_VERIFICATION/.test(feats)) return true;
+  return false;
+}
+
+function listedWorkflows(data) {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  return data.workflows || data.results || data.items || data.data || [];
+}
+
+async function createFreeWorkflow(env) {
+  const bodies = [
+    {
+      workflow_label: 'QuickBite Free KYC',
+      workflow_type: 'kyc',
+      features: [
+        { feature: 'OCR' },
+        { feature: 'LIVENESS' },
+        { feature: 'FACE_MATCH' },
+        { feature: 'IP_ANALYSIS' },
+      ],
+    },
+    {
+      workflow_label: 'QuickBite Free KYC',
+      workflow_type: 'kyc',
+      features: [
+        { feature: 'OCR' },
+        { feature: 'LIVENESS' },
+        { feature: 'FACE_MATCH' },
+      ],
+    },
+  ];
+  let last = { ok: false, status: 502, data: {} };
+  for (let i = 0; i < bodies.length; i++) {
+    last = await diditCreateWorkflow(env, bodies[i]);
+    const id = workflowIdOf(last.data);
+    if (last.ok && id) return id;
+  }
+  throw new Error(diditErrorMessage(last.status, last.data) || 'Could not create a free Didit workflow.');
+}
+
 async function ensureWorkflowId(env) {
   const fromEnv = workflowIdFromEnv(env);
   if (fromEnv) return fromEnv;
   if (cachedWorkflowId) return cachedWorkflowId;
   const listed = await diditListWorkflows(env);
-  const data = (listed && listed.data) || {};
-  const rows = data.workflows || data.results || data.items || (Array.isArray(data) ? data : []);
+  const rows = listedWorkflows(listed && listed.data);
+  let found = '';
   for (let i = 0; i < rows.length; i++) {
     const w = rows[i] || {};
-    const label = String(w.workflow_label || w.label || w.name || '');
-    const id = String(w.workflow_id || w.id || '');
-    if (id && /quickbite|rider kyc/i.test(label)) {
-      cachedWorkflowId = id;
-      return id;
+    const id = workflowIdOf(w);
+    if (id && workflowIsFreeKyc(w)) {
+      found = id;
+      break;
     }
   }
-  if (rows[0]) {
-    const id = String(rows[0].workflow_id || rows[0].id || '');
-    if (id) {
-      cachedWorkflowId = id;
-      return id;
-    }
+  if (found) {
+    cachedWorkflowId = found;
+    return found;
   }
-  const created = await diditCreateWorkflow(env, {
-    workflow_label: 'QuickBite rider KYC',
-    workflow_type: 'kyc',
-    features: [
-      { feature: 'OCR' },
-      { feature: 'LIVENESS', config: { face_liveness_method: 'PASSIVE' } },
-      { feature: 'FACE_MATCH' },
-      { feature: 'IP_ANALYSIS' },
-    ],
-  });
-  const id = String((created.data && (created.data.workflow_id || created.data.id)) || '');
-  if (!created.ok || !id) {
-    throw new Error(diditErrorMessage(created.status, created.data) || 'Could not start free ID check.');
-  }
-  cachedWorkflowId = id;
-  return id;
+  const created = await createFreeWorkflow(env);
+  cachedWorkflowId = created;
+  return created;
 }
 
 function publicSessionDecision(data) {
@@ -468,26 +513,28 @@ export async function startRiderKycSession(env, body, origin) {
   }
   const base = String(origin || 'https://quickbite-2ao.pages.dev').replace(/\/$/, '');
   const callback = String((body && body.callback) || (base + '/rider.html?didit=done'));
-  const full = {
-    workflow_id: workflowId,
-    vendor_data: riderId,
-    callback: callback,
-    callback_method: 'both',
-    language: 'en',
-    expected_details: {
-      id_country: 'LKA',
-      expected_document_types: ['ID', 'DL'],
-    },
-  };
-  let sent = await diditCreateSession(env, full);
-  if (!sent.ok && sent.status === 400) {
-    sent = await diditCreateSession(env, {
-      workflow_id: workflowId,
-      vendor_data: riderId,
-      callback: callback,
-      callback_method: 'both',
-      language: 'en',
-    });
+  async function openSession(wf) {
+    const attempts = [
+      { workflow_id: wf, vendor_data: riderId, callback: callback },
+      { workflow_id: wf, vendor_data: riderId },
+    ];
+    let last = { ok: false, status: 502, data: {} };
+    for (let i = 0; i < attempts.length; i++) {
+      last = await diditCreateSession(env, attempts[i]);
+      if (last.ok) return last;
+    }
+    return last;
+  }
+  let sent = await openSession(workflowId);
+  const detail = JSON.stringify((sent && sent.data) || {}).toLowerCase();
+  if (!sent.ok && /credit|balance|billing|not-enough|insufficient/.test(detail)) {
+    try {
+      const freeId = await createFreeWorkflow(env);
+      cachedWorkflowId = freeId;
+      sent = await openSession(freeId);
+    } catch (e) {
+      return { status: 403, body: { ok: false, message: (e && e.message) || diditErrorMessage(sent.status, sent.data) } };
+    }
   }
   if (!sent.ok) {
     const code = sent.status === 400 ? 400 : (sent.status === 403 ? 403 : 502);

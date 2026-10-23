@@ -1830,7 +1830,7 @@
           if (!out.url) throw new Error('Could not open the ID check.');
           window.location.href = out.url;
         } catch (e) {
-          if (err) err.textContent = (e && e.message) || 'Could not start free ID check.';
+          if (err) err.textContent = (e && e.message) || 'Could not open Didit.';
           diditBtn.disabled = false;
         }
       };
