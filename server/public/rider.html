@@ -9,14 +9,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zg" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zh" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ab"></script>
+  <script src="/js/api.js?v=19ac"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -50,6 +50,8 @@
       loginId: '', loginPw: '',
       pendingAcceptId: null,
       needDocs: false,
+      needBank: false,
+      wdOpen: false,
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
       deliverPin: { open: false, orderId: '', err: '', sending: false, sent: false },
@@ -601,15 +603,78 @@
       </div>${nav()}`;
     }
 
+    function grossEarn() {
+      return done().reduce((n, o) => n + earnOf(o), 0);
+    }
+    function availEarn() {
+      return API.walletAvailable ? API.walletAvailable(grossEarn()) : grossEarn();
+    }
+    function bankOf() {
+      return (API.wallet && API.wallet.bank) || { bankName: '', accountName: '', accountNo: '', branch: '' };
+    }
+    function maskAcct(n) {
+      const s = String(n || '').replace(/\D/g, '');
+      if (s.length < 4) return s || '—';
+      return '••••' + s.slice(-4);
+    }
+    function whenOf(ts) {
+      const d = new Date(Number(ts) || Date.now());
+      return d.toLocaleString('en-LK', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+    function wdRequests() {
+      return ((API.wallet && API.wallet.requests) || []).slice();
+    }
     function walletView() {
       const list = done();
-      const pay = list.reduce((n, o) => n + earnOf(o), 0);
-      return `<div class="scroll rd-earn rd-wallet">
+      const avail = availEarn();
+      const bank = bankOf();
+      const ready = !!(API.bankReady && API.bankReady());
+      const reqs = wdRequests();
+      return `<div class="scroll rd-earn rd-wallet" data-wallet-root>
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Wallet</h1></div>
-        <div class="bal"><div><span>Available Balance</span><b>${rs(pay)}</b></div><button class="wd" data-withdraw type="button">Withdraw</button></div>
+        <div class="bal"><div><span>Available Balance</span><b>${rs(avail)}</b></div>${ready
+          ? '<button class="wd" data-withdraw type="button">Withdraw</button>'
+          : '<button class="wd" data-go="bank" type="button">Add bank</button>'}</div>
+        ${ready ? `<div class="rd-bank-line">Payout to ${esc(bank.bankName)} · ${esc(maskAcct(bank.accountNo))} <button type="button" data-go="bank">Edit</button></div>` : '<p class="rd-docs-note">Add bank details to apply for a withdraw.</p>'}
+        ${state.wdOpen && ready ? `<div class="rd-block rd-wd-form">
+          <label class="fld" for="wdAmt">Amount</label>
+          <input class="fld" id="wdAmt" inputmode="numeric" value="${esc(String(avail))}" />
+          <p class="err" data-wd-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-apply-wd style="position:static;width:100%;margin:8px 0 0">Apply withdraw</button>
+        </div>` : ''}
+        ${reqs.length ? `<div class="rd-sec"><h2>Withdraw requests</h2></div>` : ''}
+        ${reqs.map((r) => {
+          const pending = r.status !== 'transferred';
+          return `<div class="rd-tx rd-wd-row">
+            <div class="grow"><b>Withdraw ${rs(r.amount)}</b>
+              <div class="sub">Requested ${esc(whenOf(r.ts))}${r.bankName ? ' · ' + esc(r.bankName) : ''}</div>
+            </div>
+            <div class="${pending ? 'rd-wd-pending' : 'amt'}">${pending ? 'Pending' : 'Transferred'}</div>
+          </div><p class="rd-wd-hint">${pending ? 'Pending until the system transfers to your bank.' : 'Transferred ' + esc(whenOf(r.transferredAt || r.ts))}</p>`;
+        }).join('')}
         <div class="rd-sec"><h2>Transaction</h2></div>
         ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>Order ${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">No payouts yet.</div>'}
       </div>${nav()}`;
+    }
+    function bankView() {
+      const b = bankOf();
+      return `<div class="scroll rd-list-page" data-bank-root>
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Bank account</h1></div>
+        <div class="rd-block" style="text-align:left">
+          <h3>Bank details</h3>
+          <p class="rd-docs-note" style="margin:0 0 10px">${state.needBank ? 'Add your bank to apply for a withdraw.' : 'Payouts go to this account after you apply.'}</p>
+          <label class="fld" for="bankName">Bank name</label>
+          <input class="fld" id="bankName" autocomplete="off" placeholder="Commercial Bank / BOC / HNB" value="${esc(b.bankName)}" />
+          <label class="fld" for="accName">Account holder name</label>
+          <input class="fld" id="accName" autocomplete="name" placeholder="Name on the account" value="${esc(b.accountName)}" />
+          <label class="fld" for="accNo">Account number</label>
+          <input class="fld" id="accNo" inputmode="numeric" autocomplete="off" placeholder="Account number" value="${esc(b.accountNo)}" />
+          <label class="fld" for="accBranch">Branch</label>
+          <input class="fld" id="accBranch" autocomplete="off" placeholder="Branch" value="${esc(b.branch)}" />
+          <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-save-bank style="position:static;width:100%;margin:12px 0 0">Save bank details</button>
+        </div>
+      </div>`;
     }
 
     function docStatus(photo, num, ready) {
@@ -676,7 +741,8 @@
         <div class="rd-menu-list">
           <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> Driver verification <span>›</span></button>
           <button type="button" data-go="vehicle"><span class="mi">${ICO.car}</span> Vehicle Information <span>›</span></button>
-          <button type="button" data-go="wallet"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
+          <button type="button" data-go="bank"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
+          <button type="button" data-go="wallet"><span class="mi">${SVG.wallet}</span> Wallet <span>›</span></button>
           <button type="button"><span class="mi">${ICO.gear}</span> Settings <span>›</span></button>
           <button type="button" data-go="help"><span class="mi">${ICO.faq}</span> Help & Support <span>›</span></button>
         </div>
@@ -1525,7 +1591,57 @@
         render(true);
       };
       const wd = root.querySelector('[data-withdraw]');
-      if (wd) wd.onclick = () => { wd.textContent = 'Requested'; };
+      if (wd) wd.onclick = () => {
+        if (API.bankReady && !API.bankReady()) {
+          state.needBank = true;
+          state.screen = 'bank';
+          render(true);
+          return;
+        }
+        if (availEarn() < 1) {
+          const err = root.querySelector('[data-wd-err]');
+          if (err) err.textContent = 'No available balance.';
+          return;
+        }
+        state.wdOpen = true;
+        render(true);
+      };
+      const saveBank = root.querySelector('[data-save-bank]');
+      if (saveBank) saveBank.onclick = async () => {
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = '';
+        saveBank.disabled = true;
+        try {
+          await API.saveBankDetails({
+            bankName: ((document.getElementById('bankName') || {}).value || ''),
+            accountName: ((document.getElementById('accName') || {}).value || ''),
+            accountNo: ((document.getElementById('accNo') || {}).value || ''),
+            branch: ((document.getElementById('accBranch') || {}).value || ''),
+          });
+          state.needBank = false;
+          state.screen = 'wallet';
+          state.wdOpen = true;
+          render(true);
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not save';
+          saveBank.disabled = false;
+        }
+      };
+      const applyWd = root.querySelector('[data-apply-wd]');
+      if (applyWd) applyWd.onclick = async () => {
+        const err = root.querySelector('[data-wd-err]');
+        if (err) err.textContent = '';
+        applyWd.disabled = true;
+        try {
+          const amt = ((document.getElementById('wdAmt') || {}).value || '').replace(/[^\d]/g, '');
+          await API.applyWithdraw(amt, grossEarn());
+          state.wdOpen = false;
+          render(true);
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not apply';
+          applyWd.disabled = false;
+        }
+      };
       function collectDocs() {
         const nicEl = document.getElementById('docNic');
         const licEl = document.getElementById('docLic');
@@ -1657,6 +1773,10 @@
           return;
         }
         startRiderGps();
+        if (keep && (state.screen === 'wallet' || state.screen === 'bank')) {
+          const ae = document.activeElement;
+          if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
+        }
         if (state.screen === 'chat' && state.orderId) {
           const oChat = (API.orders || []).find((x) => x.id === state.orderId);
           if (!oChat || oChat.status === 'cancelled' || (API.canChat && !API.canChat(oChat, 'rider'))) {
@@ -1732,6 +1852,7 @@
         if (state.screen === 'details') root.innerHTML = detailsView();
         else if (state.screen === 'delivered') root.innerHTML = deliveredView();
         else if (state.screen === 'wallet') root.innerHTML = walletView();
+        else if (state.screen === 'bank') root.innerHTML = bankView();
         else if (state.screen === 'docs') root.innerHTML = docsView();
         else if (state.screen === 'vehicle') root.innerHTML = vehicleView();
         else if (state.screen === 'help') root.innerHTML = helpView();

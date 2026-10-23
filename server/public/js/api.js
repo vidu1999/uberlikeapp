@@ -2019,6 +2019,135 @@
     return u;
   };
 
+  function emptyWallet() {
+    return {
+      bank: { bankName: '', accountName: '', accountNo: '', branch: '' },
+      requests: [],
+    };
+  }
+  function walletKey(user) {
+    const u = user || API.user;
+    if (!u || !u.id) return '';
+    const role = roleTag(u.role || 'rider');
+    const id = String(u.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return 'qb_wallet_' + role + '_' + id;
+  }
+  function normalizeWallet(raw) {
+    const w = emptyWallet();
+    let p = raw;
+    if (typeof p === 'string') {
+      try { p = JSON.parse(p); } catch (_) { p = null; }
+    }
+    if (!p || typeof p !== 'object') return w;
+    const b = p.bank || {};
+    w.bank.bankName = String(b.bankName || b.name || '').trim();
+    w.bank.accountName = String(b.accountName || b.holder || '').trim();
+    w.bank.accountNo = String(b.accountNo || b.number || '').replace(/\s+/g, '');
+    w.bank.branch = String(b.branch || '').trim();
+    w.requests = (Array.isArray(p.requests) ? p.requests : []).map(function (r) {
+      if (!r) return null;
+      const amount = Math.max(0, Math.round(Number(r.amount) || 0));
+      if (!amount) return null;
+      const status = String(r.status || 'pending') === 'transferred' ? 'transferred' : 'pending';
+      return {
+        id: String(r.id || ('WD-' + Date.now().toString(36))),
+        amount: amount,
+        ts: Number(r.ts) || Date.now(),
+        status: status,
+        transferredAt: Number(r.transferredAt) || 0,
+        bankName: String(r.bankName || '').trim(),
+        accountNo: String(r.accountNo || '').trim(),
+      };
+    }).filter(Boolean);
+    return w;
+  }
+  API.wallet = emptyWallet();
+  API.bankReady = function () {
+    const b = (API.wallet && API.wallet.bank) || {};
+    return !!(b.bankName && b.accountName && b.accountNo && b.branch);
+  };
+  API.walletHeld = function () {
+    return (API.wallet && API.wallet.requests || []).reduce(function (n, r) {
+      if (!r || r.status === 'cancelled') return n;
+      return n + Math.max(0, Number(r.amount) || 0);
+    }, 0);
+  };
+  API.walletAvailable = function (gross) {
+    return Math.max(0, Math.round(Number(gross) || 0) - API.walletHeld());
+  };
+  async function persistWallet() {
+    const key = walletKey();
+    if (!key) throw new Error('Sign in first');
+    const payload = API.wallet || emptyWallet();
+    if (sbConfigured()) {
+      await sbPutRow('app_state', { id: key, payload: payload });
+      return;
+    }
+    try { storeSet(key, JSON.stringify(payload)); } catch (_) {}
+  }
+  API.loadWallet = async function () {
+    const key = walletKey();
+    if (!key) {
+      API.wallet = emptyWallet();
+      return API.wallet;
+    }
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        API.wallet = normalizeWallet(rows[0] && rows[0].payload);
+        return API.wallet;
+      } catch (_) {}
+    }
+    try {
+      const raw = storeGet(key);
+      if (raw) API.wallet = normalizeWallet(JSON.parse(raw));
+      else API.wallet = emptyWallet();
+    } catch (_) {
+      API.wallet = emptyWallet();
+    }
+    return API.wallet;
+  };
+  API.saveBankDetails = async function (fields) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    const bankName = String(fields && fields.bankName || '').trim();
+    const accountName = String(fields && fields.accountName || '').trim();
+    const accountNo = String(fields && fields.accountNo || '').replace(/\s+/g, '');
+    const branch = String(fields && fields.branch || '').trim();
+    if (bankName.length < 2) throw new Error('Enter your bank name.');
+    if (accountName.length < 2) throw new Error('Enter the account holder name.');
+    if (!/^\d{6,20}$/.test(accountNo)) throw new Error('Enter a valid account number.');
+    if (branch.length < 2) throw new Error('Enter the branch.');
+    if (!API.wallet) API.wallet = emptyWallet();
+    API.wallet.bank = { bankName: bankName, accountName: accountName, accountNo: accountNo, branch: branch };
+    await persistWallet();
+    notify(true);
+    return API.wallet.bank;
+  };
+  API.applyWithdraw = async function (amount, gross) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    if (!API.bankReady()) throw new Error('Add bank details first.');
+    const n = Math.round(Number(amount) || 0);
+    if (n < 1) throw new Error('Enter an amount to withdraw.');
+    const avail = API.walletAvailable(gross);
+    if (n > avail) throw new Error('Not enough available balance.');
+    const b = API.wallet.bank;
+    const req = {
+      id: 'WD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      amount: n,
+      ts: Date.now(),
+      status: 'pending',
+      transferredAt: 0,
+      bankName: b.bankName,
+      accountNo: b.accountNo,
+    };
+    API.wallet.requests = [req].concat(API.wallet.requests || []);
+    await persistWallet();
+    notify(true);
+    return req;
+  };
+
   function nextOrderId() {
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
@@ -2111,6 +2240,9 @@
     await wipeTestNumber();
     await wipeDemo();
     await hydrateUser();
+    if (API.user && (sameRole(API.user.role, 'rider') || sameRole(API.user.role, 'shop'))) {
+      try { await API.loadWallet(); } catch (_) {}
+    }
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await ensureShopRow(API.user); } catch (_) {}
     }
@@ -3372,6 +3504,7 @@
     API.token = null;
     API.orders = [];
     API.messages = {};
+    API.wallet = emptyWallet();
     resetKept();
     clearVerified(role);
     try {
