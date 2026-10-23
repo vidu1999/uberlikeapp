@@ -219,6 +219,15 @@
     return typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
   }
 
+  function shopPhoneOf(order) {
+    const shop = shopOf(order) || {};
+    const direct = String(shop.phone || (order && order.shopPhone) || '').trim();
+    if (direct) return direct;
+    const id = String((order && order.shopId) || shop.id || '');
+    const m = id.match(/SHOP_(\d{9})$/i);
+    return m ? ('0' + m[1]) : '';
+  }
+
   function realRate(rating, reviews) {
     const r = Number(rating);
     const n = Number(String(reviews == null ? '' : reviews).replace(/[^\d]/g, ''));
@@ -244,7 +253,7 @@
         return {
           name,
           role: bits.length ? bits.join(' · ') : 'Pickup',
-          phone: shop.phone || '',
+          phone: shopPhoneOf(order),
           photo: shop.image || '/img/shop-bakery.jpg',
           rating: rate.rating,
           reviews: rate.reviews,
@@ -367,7 +376,7 @@
             <div class="rate ${p.rating ? '' : 'hidden'}" data-rate><span class="star">★</span> ${esc(p.rating || '')} <span style="color:#9CA3AF;font-weight:600">${p.reviews ? '(' + esc(p.reviews) + ')' : ''}</span></div>
           </div>
           <div class="rd-who-acts">
-            <a class="rd-who-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}" aria-label="Call">${ICO_PHONE}</a>
+            <a class="rd-who-call" data-call href="${href || '#'}" aria-label="Call">${ICO_PHONE}</a>
             <button class="rd-who-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
           </div>
         </div>
@@ -415,7 +424,7 @@
     if (side) side.innerHTML = sideHtml(p);
     const call = root.querySelector('[data-call]');
     if (call) {
-      call.classList.toggle('hidden', !p.phone);
+      call.classList.remove('hidden');
       if (p.phone) call.href = telHref(p.phone);
     }
     const eta = root.querySelector('[data-eta]');

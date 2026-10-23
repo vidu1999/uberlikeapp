@@ -18,7 +18,7 @@
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19ao"></script>
   <script src="/js/maps.js?v=19zx"></script>
-  <script src="/js/track-ui.js?v=19aab"></script>
+  <script src="/js/track-ui.js?v=19aac"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -1593,8 +1593,19 @@
         render(true);
       });
       root.querySelectorAll('[data-close]').forEach((b) => b.onclick = () => {
-        if (state.screen === 'chat' || state.screen === 'live') { state.screen = 'details'; }
-        else { state.screen = ''; }
+        if (state.screen === 'chat') {
+          const oChat = (API.orders || []).find((x) => x.id === state.orderId);
+          if (oChat && liveJob(oChat)) {
+            state.screen = 'live';
+            startLiveGps(oChat.id);
+          } else {
+            state.screen = 'details';
+          }
+        } else if (state.screen === 'live') {
+          state.screen = 'details';
+        } else {
+          state.screen = '';
+        }
         killMap();
         render(true);
       });
@@ -1904,7 +1915,7 @@
         if (state.screen === 'chat' && state.orderId) {
           const oChat = (API.orders || []).find((x) => x.id === state.orderId);
           if (!oChat || oChat.status === 'cancelled' || (API.canChat && !API.canChat(oChat, 'rider'))) {
-            state.screen = 'details';
+            state.screen = (oChat && liveJob(oChat)) ? 'live' : 'details';
           } else {
           const keep = root.querySelector('[data-chat-root="' + state.orderId + '"]');
           const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
