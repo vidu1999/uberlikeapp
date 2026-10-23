@@ -494,7 +494,7 @@ async function handleApi(req, res, url) {
     return;
   }
 
-  if (pathname === '/webhooks/didit' || pathname === '/webhooks/didit/') {
+  if (pathname === '/webhooks/didit' || pathname === '/webhooks/didit/' || pathname === '/api/webhooks/didit' || pathname === '/api/webhooks/didit/') {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, cors(res));
       res.end();
@@ -505,8 +505,8 @@ async function handleApi(req, res, url) {
       return;
     }
     const raw = await readRaw(req);
-    const out = idVerify.handleWebhook(raw, req.headers);
-    json(res, 200, (out && out.body) || { received: true, provider: 'didit' });
+    const out = await idVerify.handleWebhook(raw, req.headers);
+    json(res, (out && out.status) || 200, (out && out.body) || { received: true, provider: 'didit' });
     return;
   }
 

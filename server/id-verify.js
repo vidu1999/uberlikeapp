@@ -213,36 +213,27 @@ function configured() {
   return !!apiKey();
 }
 
-function webhookSecret() {
-  return String(process.env.DIDIT_WEBHOOK_SECRET || process.env.DIDIT_WHSEC || '').trim();
+function nodeHeaders(h) {
+  const out = {};
+  Object.keys(h || {}).forEach((k) => {
+    const v = h[k];
+    if (v == null) return;
+    out[k] = Array.isArray(v) ? v.join(',') : String(v);
+  });
+  return out;
 }
 
-function handleWebhook(raw, headers) {
-  const h = headers || {};
-  let event = {};
-  try { event = raw ? JSON.parse(raw) : {}; } catch (_) { event = {}; }
-  const type = String(event.webhook_type || event.type || 'status.updated');
-  const status = String(event.status || '');
-  const sec = webhookSecret();
-  if (sec) {
-    const ts = Number(h['x-timestamp'] || h['X-Timestamp'] || 0);
-    if (Number.isFinite(ts) && ts > 0) {
-      const now = Math.floor(Date.now() / 1000);
-      if (Math.abs(now - ts) > 300) {
-        return { status: 200, body: { received: true, provider: 'didit', warning: 'timestamp' } };
-      }
-    }
-  }
-  return {
-    status: 200,
-    body: {
-      received: true,
-      provider: 'didit',
-      webhook_type: type,
-      status: status || null,
-      session_id: event.session_id || null,
-    },
-  };
+async function handleWebhook(raw, headers) {
+  const mod = await import('../functions/_lib/didit-webhook.js');
+  const req = new Request('https://quickbite-2ao.pages.dev/webhooks/didit', {
+    method: 'POST',
+    headers: nodeHeaders(headers),
+    body: raw == null ? '' : String(raw),
+  });
+  const res = await mod.handleDiditWebhook(process.env, req);
+  let body = {};
+  try { body = await res.json(); } catch (_) { body = { received: true, provider: 'didit' }; }
+  return { status: res.status, body };
 }
 
 module.exports = { verifyIdDocument, configured, handleWebhook };

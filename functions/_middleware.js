@@ -17,7 +17,7 @@ function json(status, body) {
 
 function isDiditPath(path) {
   const p = String(path || '').replace(/\/$/, '') || '/';
-  return p === '/webhooks/didit';
+  return p === '/webhooks/didit' || p === '/api/webhooks/didit';
 }
 
 function isWebhookPath(path) {
