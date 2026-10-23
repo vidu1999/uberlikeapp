@@ -127,6 +127,11 @@
     }
     function rs(n) { return 'Rs. ' + Math.round(Number(n)||0).toLocaleString('en-LK'); }
     function oid(id) { return '#' + String(id||'').replace('_','-'); }
+    function riderFaceOf(o) {
+      const p = String((o && (o.riderPhoto || o.riderImage)) || '');
+      if (/^https?:\/\//i.test(p) || p.indexOf('data:image/') === 0 || p.indexOf('/img/') === 0) return p;
+      return '/img/avatar-rider.jpg';
+    }
     function myShop() {
       const sid = shopId();
       const s = API.shops.find((x) => x.id === sid) || {};
@@ -863,7 +868,7 @@
           ${phone ? `<a class="call" href="tel:${esc(phone)}">Call</a>` : ''}
         </div>
         ${o.riderName ? `<div class="ol-cust">
-          <img src="${esc((o.riderPhoto && /^https?:\\/\\//i.test(String(o.riderPhoto))) ? o.riderPhoto : '/img/avatar-rider.jpg')}" alt="" />
+          <img src="${esc(riderFaceOf(o))}" alt="" />
           <div class="grow"><b>${esc(o.riderName)}</b><div class="sub">Delivery partner${o.riderPhone ? ' · ' + esc(o.riderPhone) : ''}${st==='accepted' ? ' · heading to shop' : (st==='picked_up' || st==='on_the_way' ? ' · order picked up' : '')}</div></div>
           <div class="acts">
             ${o.riderPhone ? `<a class="call" href="tel:${esc(o.riderPhone)}">Call</a>` : ''}
