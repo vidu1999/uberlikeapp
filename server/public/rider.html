@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zr" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zs" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
@@ -185,6 +185,14 @@
       if (d.startsWith('+')) return 'tel:' + d;
       if (d.startsWith('0')) return 'tel:+94' + d.slice(1);
       return 'tel:' + d;
+    }
+    function shopPhoneOf(o) {
+      const shop = API.shopOf ? API.shopOf(o && o.shopId) : {};
+      const direct = String((shop && shop.phone) || (o && o.shopPhone) || '').trim();
+      if (direct) return direct;
+      const id = String((o && o.shopId) || (shop && shop.id) || '');
+      const m = id.match(/SHOP_(\d{9})$/i);
+      return m ? ('0' + m[1]) : '';
     }
     function riderPhoto() {
       const u = me();
@@ -467,7 +475,7 @@
       const lane = API.chatLane && API.chatLane(o);
       const peerShop = lane === 'shop';
       const peerName = peerShop ? ((API.shopTitle && API.shopTitle(shop)) || shop.name || o.shopName || 'Shop') : (o.customerName || 'Customer');
-      const peerPhone = peerShop ? (shop.phone || '') : phone;
+      const peerPhone = peerShop ? shopPhoneOf(o) : phone;
       const peerPhoto = peerShop ? (shop.image || '/img/shop-bakery.jpg') : '/img/avatar-user.jpg';
       const peerSub = peerShop ? 'Shop · chat until pickup' : (phone || 'WhatsApp customer');
       const showChat = API.canChat && API.canChat(o, 'rider');
@@ -486,8 +494,8 @@
           <img src="${esc(peerPhoto)}" alt="" />
           <div class="grow"><b>${esc(peerName)}</b><div class="sub">${esc(peerSub)}</div></div>
           <div class="acts">
-            ${peerPhone ? `<a class="ico" href="${telHref(peerPhone)}">${SVG.phone}</a>` : ''}
-            ${showChat ? `<button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
+            <a class="ico ico-call" href="${telHref(peerPhone) || '#'}" aria-label="Call">${SVG.phone}</a>
+            ${showChat ? `<button class="ico ico-chat" type="button" data-chat="${esc(o.id)}" aria-label="Chat">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
           </div>
         </div>
         <div class="rd-block">

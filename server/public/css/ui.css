@@ -1297,11 +1297,15 @@ html[data-role="rider"] .field input {
   display: flex; gap: 12px; align-items: center;
 }
 .rd-cust img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
-.rd-cust .acts { display: flex; gap: 8px; margin-left: auto; }
+.rd-cust .acts { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
 .rd-cust a, .rd-cust button.ico {
   width: 40px; height: 40px; border-radius: 50%; background: #123D28; color: #00C853;
   display: grid; place-items: center; border: 0; text-decoration: none; cursor: pointer;
 }
+.rd-cust .ico-call { background: #00C853; color: #fff; }
+.rd-cust .ico-call svg { stroke: #fff; }
+.rd-cust .ico-chat { background: #2563EB; color: #fff; }
+.rd-cust .ico-chat svg { stroke: #fff; }
 .rd-block { margin: 8px 16px; background: var(--navy2); border-radius: 18px; padding: 14px; }
 .rd-block h3 { margin: 0 0 8px; font-size: 13px; color: #9CA3AF; font-weight: 700; }
 .rd-item { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
