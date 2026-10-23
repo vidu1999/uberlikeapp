@@ -213,4 +213,36 @@ function configured() {
   return !!apiKey();
 }
 
-module.exports = { verifyIdDocument, configured };
+function webhookSecret() {
+  return String(process.env.DIDIT_WEBHOOK_SECRET || process.env.DIDIT_WHSEC || '').trim();
+}
+
+function handleWebhook(raw, headers) {
+  const h = headers || {};
+  let event = {};
+  try { event = raw ? JSON.parse(raw) : {}; } catch (_) { event = {}; }
+  const type = String(event.webhook_type || event.type || 'status.updated');
+  const status = String(event.status || '');
+  const sec = webhookSecret();
+  if (sec) {
+    const ts = Number(h['x-timestamp'] || h['X-Timestamp'] || 0);
+    if (Number.isFinite(ts) && ts > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      if (Math.abs(now - ts) > 300) {
+        return { status: 200, body: { received: true, provider: 'didit', warning: 'timestamp' } };
+      }
+    }
+  }
+  return {
+    status: 200,
+    body: {
+      received: true,
+      provider: 'didit',
+      webhook_type: type,
+      status: status || null,
+      session_id: event.session_id || null,
+    },
+  };
+}
+
+module.exports = { verifyIdDocument, configured, handleWebhook };
