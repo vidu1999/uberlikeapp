@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zk" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zl" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
@@ -639,10 +639,21 @@
           : '<button class="wd" data-go="bank" type="button">Add bank</button>'}</div>
         ${ready ? `<div class="rd-bank-line">Payout to ${esc(bank.bankName)} · ${esc(maskAcct(bank.accountNo))} <button type="button" data-go="bank">Edit</button></div>` : '<p class="rd-docs-note">Add bank details to apply for a withdraw.</p>'}
         ${state.wdOpen && ready ? `<div class="rd-block rd-wd-form">
-          <label class="fld" for="wdAmt">Amount</label>
-          <input class="fld" id="wdAmt" inputmode="numeric" value="${esc(String(avail))}" />
+          <p class="rd-wd-kicker">Withdraw amount</p>
+          <label class="rd-wd-amt" for="wdAmt">
+            <span class="rd-wd-cur">Rs.</span>
+            <input id="wdAmt" inputmode="numeric" autocomplete="off" enterkeyhint="done" value="${esc(String(Math.round(avail)))}" />
+          </label>
+          <div class="rd-wd-meta">
+            <span>Available <b>${rs(avail)}</b></span>
+            <span class="rd-wd-to">${esc(bank.bankName || 'Your bank')} · ${esc(maskAcct(bank.accountNo))}</span>
+          </div>
+          <div class="rd-wd-chips">
+            <button type="button" data-wd-chip="${esc(String(Math.floor(avail / 2)))}">Half</button>
+            <button type="button" data-wd-chip="${esc(String(Math.round(avail)))}">All</button>
+          </div>
           <p class="err" data-wd-err style="color:#FCA5A5;min-height:18px"></p>
-          <button class="rd-navbtn" type="button" data-apply-wd style="position:static;width:100%;margin:8px 0 0">Apply withdraw</button>
+          <button class="rd-navbtn" type="button" data-apply-wd style="position:static;width:100%;margin:4px 0 0">Apply withdraw</button>
         </div>` : ''}
         ${reqs.length ? `<div class="rd-sec"><h2>Withdraw requests</h2></div>` : ''}
         ${reqs.map((r) => {
@@ -1655,6 +1666,19 @@
           saveBank.disabled = false;
         }
       };
+      const wdAmt = document.getElementById('wdAmt');
+      if (wdAmt) {
+        wdAmt.oninput = () => {
+          const n = String(wdAmt.value || '').replace(/[^\d]/g, '');
+          if (wdAmt.value !== n) wdAmt.value = n;
+        };
+      }
+      root.querySelectorAll('[data-wd-chip]').forEach((b) => {
+        b.onclick = () => {
+          if (wdAmt) wdAmt.value = String(b.getAttribute('data-wd-chip') || '').replace(/[^\d]/g, '');
+          wdAmt && wdAmt.focus();
+        };
+      });
       const applyWd = root.querySelector('[data-apply-wd]');
       if (applyWd) applyWd.onclick = async () => {
         const err = root.querySelector('[data-wd-err]');

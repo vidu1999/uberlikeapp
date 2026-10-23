@@ -1360,7 +1360,40 @@ html[data-role="rider"] .scroll.rd-details {
 .rd-bank-line button {
   border: 0; background: 0; color: #00C853; font-weight: 800; cursor: pointer;
 }
-.rd-wd-form { margin-top: 0; }
+.rd-wd-form { margin-top: 0; padding: 16px 16px 18px; }
+.rd-wd-kicker {
+  margin: 0 0 10px; color: #9FE7B8; font-size: 12px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.rd-wd-amt {
+  display: flex; align-items: baseline; gap: 8px;
+  background: linear-gradient(180deg, #10261c 0%, #0b1a14 100%);
+  border: 1.5px solid #1a5c36; border-radius: 18px;
+  padding: 14px 16px 12px; box-shadow: inset 0 1px 0 rgba(0,200,83,.18);
+}
+.rd-wd-amt:focus-within {
+  border-color: #00C853; box-shadow: 0 0 0 4px rgba(0,200,83,.18);
+}
+.rd-wd-cur {
+  color: #00C853; font-size: 22px; font-weight: 800; line-height: 1;
+}
+.rd-wd-amt input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: #fff;
+  font-size: 36px; font-weight: 800; letter-spacing: -.03em; padding: 0;
+  outline: none; font-variant-numeric: tabular-nums;
+}
+.rd-wd-meta {
+  display: flex; flex-direction: column; gap: 4px;
+  margin: 10px 2px 12px; color: #9CA3AF; font-size: 13px; font-weight: 600;
+}
+.rd-wd-meta b { color: #fff; font-weight: 800; }
+.rd-wd-to { color: #9FE7B8; font-size: 12px; }
+.rd-wd-chips { display: flex; gap: 8px; margin: 0 0 10px; }
+.rd-wd-chips button {
+  flex: 1; border: 1px solid #1F2937; background: #0e1c18; color: #fff;
+  border-radius: 999px; padding: 10px 12px; font-weight: 800; cursor: pointer;
+}
+.rd-wd-chips button:active { background: #123D28; border-color: #00C853; color: #00C853; }
 .rd-wd-pending { margin-left: auto; font-weight: 800; font-size: 12px; color: #FBBF24; }
 .rd-wd-hint {
   margin: -4px 16px 12px; color: #9CA3AF; font-size: 12px; font-weight: 600;
