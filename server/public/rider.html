@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ah"></script>
+  <script src="/js/api.js?v=19ai"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -1730,6 +1730,9 @@
           if (out.name) fields[nameKey] = out.name;
           if (kind === 'nic' && out.nic) fields.nic = out.nic;
           if (kind === 'license' && out.licenseId) fields.licenseId = out.licenseId;
+          if (out.amlStatus) fields.amlKyc = out.amlStatus;
+          if (out.amlHits != null) fields.amlHits = out.amlHits;
+          if (out.amlRequestId) fields.amlRequestId = out.amlRequestId;
           if (!out.approved) throw new Error(out.message || (kind === 'nic' ? 'NIC was not accepted.' : 'Driving licence was not accepted.'));
           if (err) err.textContent = out.message || '';
         }

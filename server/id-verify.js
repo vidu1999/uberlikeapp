@@ -185,54 +185,8 @@ function diditErrorMessage(httpStatus, data) {
 }
 
 async function verifyIdDocument(body) {
-  const key = apiKey();
-  if (!key) {
-    return { status: 503, body: { ok: false, configured: false, message: 'ID verification is not set up yet.' } };
-  }
-  const kind = String((body && body.kind) || '').toLowerCase();
-  if (kind !== 'nic' && kind !== 'license') {
-    return { status: 400, body: { ok: false, message: 'Choose NIC or driving licence.' } };
-  }
-  let front;
-  let back;
-  try {
-    front = await imagePart(body.front);
-    back = await imagePart(body.back);
-  } catch (e) {
-    return { status: 400, body: { ok: false, message: (e && e.message) || 'Upload front and back photos.' } };
-  }
-  async function postDidit(liveness) {
-    const fd = new FormData();
-    fd.append('front_image', new Blob([front.bytes], { type: front.type }), 'front.jpg');
-    fd.append('back_image', new Blob([back.bytes], { type: back.type }), 'back.jpg');
-    fd.append('perform_document_liveness', liveness ? 'true' : 'false');
-    fd.append('save_api_request', 'true');
-    fd.append('vendor_data', String((body && body.riderId) || 'rider').slice(0, 64));
-    return fetch(DIDIT_URL, {
-      method: 'POST',
-      headers: { 'x-api-key': key, Accept: 'application/json' },
-      body: fd,
-    });
-  }
-  let res;
-  try {
-    res = await postDidit(true);
-    if (res.status === 403) {
-      const retry = await postDidit(false);
-      if (retry && retry.status !== 403) res = retry;
-    }
-  } catch (_) {
-    return { status: 502, body: { ok: false, message: 'ID check is unavailable. Try again.' } };
-  }
-  let data = {};
-  try { data = await res.json(); } catch (_) { data = {}; }
-  if (!res.ok) {
-    const code = res.status === 400 ? 400 : (res.status === 403 ? 403 : 502);
-    return { status: code, body: { ok: false, message: diditErrorMessage(res.status, data) } };
-  }
-  const iv = data.id_verification || data.idVerification || data;
-  const out = publicResult(kind, iv, data.request_id || data.requestId || (iv && iv.request_id));
-  return { status: 200, body: out };
+  const mod = await import('../functions/_lib/id-verify.js');
+  return mod.verifyIdDocument(process.env, body);
 }
 
 function configured() {

@@ -2200,6 +2200,7 @@
       licensePhoto: '', licensePhotoBack: '',
       plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
       nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
+      amlKyc: '', amlHits: 0, amlRequestId: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -2222,6 +2223,9 @@
           out.licenseKycId = String(j.licenseKycId || '');
           out.nicName = String(j.nicName || '');
           out.licenseName = String(j.licenseName || '');
+          out.amlKyc = String(j.amlKyc || '').toLowerCase();
+          out.amlHits = Math.max(0, Math.round(Number(j.amlHits) || 0));
+          out.amlRequestId = String(j.amlRequestId || '');
         }
       } catch (_) {}
     }
@@ -2281,6 +2285,9 @@
       licenseKycId: String(next.licenseKycId || '').slice(0, 80),
       nicName: String(next.nicName || '').slice(0, 80),
       licenseName: String(next.licenseName || '').slice(0, 80),
+      amlKyc: String(next.amlKyc || '').slice(0, 24),
+      amlHits: Math.max(0, Math.round(Number(next.amlHits) || 0)),
+      amlRequestId: String(next.amlRequestId || '').slice(0, 80),
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
