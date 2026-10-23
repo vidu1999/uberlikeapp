@@ -2062,6 +2062,38 @@
     return w;
   }
   API.wallet = emptyWallet();
+  API.sriLankaBanks = [
+    'Amana Bank PLC',
+    'Bank of Ceylon',
+    'Bank of China Ltd.',
+    'Cargills Bank PLC',
+    'Citibank N.A.',
+    'Commercial Bank of Ceylon PLC',
+    'Deutsche Bank AG',
+    'DFCC Bank PLC',
+    'Habib Bank Ltd.',
+    'Hatton National Bank PLC',
+    'HDFC Bank of Sri Lanka',
+    'HSBC',
+    'Indian Bank',
+    'Indian Overseas Bank',
+    'MCB Bank Ltd.',
+    'National Development Bank PLC',
+    'National Savings Bank',
+    'Nations Trust Bank PLC',
+    'Pan Asia Banking Corporation PLC',
+    "People's Bank",
+    'Pradeshiya Sanwardhana Bank',
+    'Public Bank Berhad',
+    'Sampath Bank PLC',
+    'SANASA Development Bank PLC',
+    'Seylan Bank PLC',
+    'Sri Lanka Savings Bank Ltd.',
+    'Standard Chartered Bank',
+    'State Bank of India',
+    'State Mortgage and Investment Bank',
+    'Union Bank of Colombo PLC',
+  ];
   API.bankReady = function () {
     const b = (API.wallet && API.wallet.bank) || {};
     return !!(b.bankName && b.accountName && b.accountNo && b.branch);
@@ -2114,7 +2146,8 @@
     const accountName = String(fields && fields.accountName || '').trim();
     const accountNo = String(fields && fields.accountNo || '').replace(/\s+/g, '');
     const branch = String(fields && fields.branch || '').trim();
-    if (bankName.length < 2) throw new Error('Enter your bank name.');
+    const allowed = API.sriLankaBanks || [];
+    if (!bankName || allowed.indexOf(bankName) < 0) throw new Error('Choose your bank from the list.');
     if (accountName.length < 2) throw new Error('Enter the account holder name.');
     if (!/^\d{6,20}$/.test(accountNo)) throw new Error('Enter a valid account number.');
     if (branch.length < 2) throw new Error('Enter the branch.');

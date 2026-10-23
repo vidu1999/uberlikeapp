@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ac"></script>
+  <script src="/js/api.js?v=19ad"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -656,6 +656,14 @@
         ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>Order ${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">No payouts yet.</div>'}
       </div>${nav()}`;
     }
+    function bankOptions(current) {
+      const list = (API.sriLankaBanks || []).slice();
+      const cur = String(current || '').trim();
+      if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+      return `<option value="">Select bank</option>` + list.map((n) =>
+        `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`
+      ).join('');
+    }
     function bankView() {
       const b = bankOf();
       return `<div class="scroll rd-list-page" data-bank-root>
@@ -664,7 +672,7 @@
           <h3>Bank details</h3>
           <p class="rd-docs-note" style="margin:0 0 10px">${state.needBank ? 'Add your bank to apply for a withdraw.' : 'Payouts go to this account after you apply.'}</p>
           <label class="fld" for="bankName">Bank name</label>
-          <input class="fld" id="bankName" autocomplete="off" placeholder="Commercial Bank / BOC / HNB" value="${esc(b.bankName)}" />
+          <select class="fld" id="bankName">${bankOptions(b.bankName)}</select>
           <label class="fld" for="accName">Account holder name</label>
           <input class="fld" id="accName" autocomplete="name" placeholder="Name on the account" value="${esc(b.accountName)}" />
           <label class="fld" for="accNo">Account number</label>
