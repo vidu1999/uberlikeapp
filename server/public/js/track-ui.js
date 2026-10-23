@@ -61,6 +61,8 @@
 
   const ICO_SHOP_SIDE =
     '<div class="rd-shop-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div>';
+  const ICO_CUST_SIDE =
+    '<div class="rd-cust-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg></div>';
 
   const CLOSE_M = 25;
 
@@ -234,16 +236,32 @@
 
   function person(order, viewer) {
     if (viewer === 'rider') {
-      const name = order.riderName || (typeof API !== 'undefined' && API.user && API.user.name) || 'Rider';
+      if (goingToShop(order)) {
+        const shop = shopOf(order) || {};
+        const name = (typeof API !== 'undefined' && API.shopTitle && API.shopTitle(shop)) || shop.name || order.shopName || 'Shop';
+        const bits = [shop.category, shop.address].filter(Boolean);
+        const rate = realRate(shop.rating, shop.reviews);
+        return {
+          name,
+          role: bits.length ? bits.join(' · ') : 'Pickup',
+          phone: shop.phone || '',
+          photo: shop.image || '/img/shop-bakery.jpg',
+          rating: rate.rating,
+          reviews: rate.reviews,
+          initials: initials(name),
+          side: 'shop',
+        };
+      }
+      const name = order.customerName || 'Customer';
       return {
         name,
-        role: 'Delivery Partner',
-        phone: order.customerPhone,
-        photo: riderPhoto(),
+        role: order.address || 'Delivery',
+        phone: order.customerPhone || '',
+        photo: '/img/avatar-user.jpg',
         rating: '',
         reviews: '',
         initials: initials(name),
-        side: 'bike',
+        side: 'cust',
       };
     }
     if (viewer !== 'rider' && !riderOnJob(order)) {
@@ -288,7 +306,9 @@
   }
 
   function sideHtml(p) {
-    return p && p.side === 'shop' ? ICO_SHOP_SIDE : '🛵';
+    if (p && p.side === 'shop') return ICO_SHOP_SIDE;
+    if (p && p.side === 'cust') return ICO_CUST_SIDE;
+    return '🛵';
   }
 
   function trackTitle(order, viewer) {
