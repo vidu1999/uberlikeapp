@@ -767,7 +767,6 @@
           <div><b>${ongoing().length}</b><span>On Going</span></div>
           <div><b>0</b><span>Cancelled</span></div>
         </div>
-        ${verifyFormHtml()}
         <div class="rd-menu-list">
           <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> Driver verification <span>›</span></button>
           <button type="button" data-go="vehicle"><span class="mi">${ICO.car}</span> Vehicle Information <span>›</span></button>
@@ -2037,7 +2036,7 @@
       if (!API.user) return false;
       state.auth = 'home';
       state.tab = 'profile';
-      state.screen = '';
+      state.screen = 'docs';
       try {
         if (API.riderKycDecision && sid) {
           let out = null;
