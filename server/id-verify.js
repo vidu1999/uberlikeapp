@@ -189,6 +189,11 @@ async function verifyIdDocument(body) {
   return mod.verifyIdDocument(process.env, body);
 }
 
+async function verifyLiveness(body) {
+  const mod = await import('../functions/_lib/id-verify.js');
+  return mod.verifyLiveness(process.env, body);
+}
+
 function configured() {
   return !!apiKey();
 }
@@ -216,4 +221,4 @@ async function handleWebhook(raw, headers) {
   return { status: res.status, body };
 }
 
-module.exports = { verifyIdDocument, configured, handleWebhook };
+module.exports = { verifyIdDocument, verifyLiveness, configured, handleWebhook };

@@ -2159,7 +2159,7 @@
     const k = riderDocCacheKey(user);
     if (!k || !fields) return;
     const cur = readCachedDocPhotos(user);
-    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (key) {
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (key) {
       const v = String(fields[key] || '');
       if (looksLikePhoto(v)) cur[key] = v;
     });
@@ -2193,14 +2193,40 @@
     if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not verify this document.');
     return j;
   };
+  API.verifyLiveness = async function (faceSrc) {
+    async function pack(src) {
+      if (!src) throw new Error('Take a selfie of your face.');
+      if (typeof src !== 'string' && (src instanceof Blob || src.size)) {
+        const c = await compressIdImage(src);
+        return typeof c === 'string' ? c : await blobToDataUrl(c);
+      }
+      const s = String(src);
+      if (!looksLikePhoto(s)) throw new Error('Take a selfie of your face.');
+      return s;
+    }
+    const face = await pack(faceSrc);
+    const res = await fetch((API.base || '') + '/api/verify-liveness', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        face: face,
+        riderId: (API.user && API.user.id) || '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not check this selfie.');
+    return j;
+  };
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {
       nic: '', licenseId: '', nicPhoto: '', nicPhotoBack: '',
-      licensePhoto: '', licensePhotoBack: '',
+      licensePhoto: '', licensePhotoBack: '', facePhoto: '',
       plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
       nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
       amlKyc: '', amlHits: 0, amlRequestId: '',
+      livenessKyc: '', livenessScore: null, livenessRequestId: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -2226,11 +2252,15 @@
           out.amlKyc = String(j.amlKyc || '').toLowerCase();
           out.amlHits = Math.max(0, Math.round(Number(j.amlHits) || 0));
           out.amlRequestId = String(j.amlRequestId || '');
+          out.facePhoto = String(j.facePhoto || '');
+          out.livenessKyc = String(j.livenessKyc || '').toLowerCase();
+          out.livenessScore = j.livenessScore == null || j.livenessScore === '' ? null : Number(j.livenessScore);
+          out.livenessRequestId = String(j.livenessRequestId || '');
         }
       } catch (_) {}
     }
     const cached = readCachedDocPhotos(u);
-    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (k) {
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (k) {
       const cur = String(out[k] || '');
       if ((!cur || cur === 'uploaded') && looksLikePhoto(cached[k])) out[k] = cached[k];
     });
@@ -2250,6 +2280,7 @@
     if (!parseSriNic(d.nic) || !d.nicPhoto || !d.nicPhotoBack) return false;
     if (!parseLicenseId(d.licenseId) || !d.licensePhoto || !d.licensePhotoBack) return false;
     if (d.nicKyc !== 'approved' || d.licenseKyc !== 'approved') return false;
+    if (d.livenessKyc !== 'approved' || !d.facePhoto) return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };
@@ -2288,6 +2319,10 @@
       amlKyc: String(next.amlKyc || '').slice(0, 24),
       amlHits: Math.max(0, Math.round(Number(next.amlHits) || 0)),
       amlRequestId: String(next.amlRequestId || '').slice(0, 80),
+      facePhoto: String(next.facePhoto || ''),
+      livenessKyc: String(next.livenessKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.livenessKyc || ''),
+      livenessScore: next.livenessScore == null || next.livenessScore === '' ? null : Number(next.livenessScore),
+      livenessRequestId: String(next.livenessRequestId || '').slice(0, 80),
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
@@ -2301,7 +2336,7 @@
         await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
       } catch (_) {
         const slim = Object.assign({}, pack);
-        ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (k) {
+        ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (k) {
           if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
         });
         patch = docsPatch(slim);

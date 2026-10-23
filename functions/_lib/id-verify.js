@@ -1,4 +1,4 @@
-import { diditAmlForId, diditErrorMessage, diditIdVerification, diditKey } from './didit.js';
+import { diditAmlForId, diditErrorMessage, diditIdVerification, diditKey, diditPassiveLiveness } from './didit.js';
 
 const MAX_DATA_CHARS = 1800000;
 
@@ -237,4 +237,74 @@ export async function verifyIdDocument(env, body) {
     } catch (_) {}
   }
   return { status: 200, body: out };
+}
+
+function warningCodes(list) {
+  return (Array.isArray(list) ? list : []).map(function (w) {
+    if (!w) return '';
+    if (typeof w === 'string') return w.toUpperCase();
+    return String(w.risk || w.code || w.log_type || w.message || '').toUpperCase();
+  }).join(' ');
+}
+
+function livenessMessage(status, warnings) {
+  const codes = warningCodes(warnings);
+  if (/NO_FACE_DETECTED/.test(codes)) return 'No face found. Take a selfie with your face in the centre.';
+  if (/MULTIPLE_FACES/.test(codes)) return 'More than one face. Take a selfie of only you.';
+  if (/LIVENESS_FACE_ATTACK|LOW_LIVENESS_SCORE/.test(codes)) return 'This does not look like a live selfie. Hold the phone in front of your face and try again.';
+  if (/FACE_IN_BLOCKLIST|DUPLICATED_FACE/.test(codes)) return 'This face cannot be used. Contact support.';
+  if (status === 'Approved') return 'Face check passed  ✓';
+  if (status === 'Declined') return 'Face check was not accepted. Take a clearer selfie.';
+  if (status === 'In Review') return 'Face check is reviewing. Try Save again in a minute.';
+  return 'Take a clear selfie of your face.';
+}
+
+export async function verifyLiveness(env, body) {
+  const key = apiKeyFromEnv(env);
+  if (!key) {
+    return { status: 503, body: { ok: false, configured: false, message: 'ID verification is not set up yet.' } };
+  }
+  let face;
+  try {
+    face = await imagePart(body && (body.face || body.user_image || body.image));
+  } catch (e) {
+    return { status: 400, body: { ok: false, message: (e && e.message) || 'Take a selfie of your face.' } };
+  }
+  if (face.bytes && face.bytes.length > 5 * 1024 * 1024) {
+    return { status: 400, body: { ok: false, message: 'Selfie is too large. Try a smaller photo.' } };
+  }
+  const vendorData = String((body && body.riderId) || 'rider').slice(0, 64);
+  let sent;
+  try {
+    sent = await diditPassiveLiveness(env, {
+      userImage: partBlob(face),
+      vendorData: vendorData,
+      save: true,
+    });
+  } catch (_) {
+    return { status: 502, body: { ok: false, message: 'Face check is unavailable. Try again.' } };
+  }
+  if (!sent.ok) {
+    const code = sent.status === 400 ? 400 : (sent.status === 403 ? 403 : 502);
+    return { status: code, body: { ok: false, message: diditErrorMessage(sent.status, sent.data) } };
+  }
+  const data = sent.data || {};
+  const live = data.liveness || data.passive_liveness || data;
+  const status = String((live && live.status) || '');
+  const warnings = (live && live.warnings) || [];
+  const codes = warningCodes(warnings);
+  let approved = status === 'Approved';
+  if (/LIVENESS_FACE_ATTACK|LOW_LIVENESS_SCORE|FACE_IN_BLOCKLIST|DUPLICATED_FACE/.test(codes)) approved = false;
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      approved: approved,
+      status: status,
+      method: String((live && live.method) || 'PASSIVE'),
+      score: live && live.score != null ? Number(live.score) : null,
+      requestId: String(data.request_id || live.request_id || ''),
+      message: livenessMessage(approved ? 'Approved' : status, warnings),
+    },
+  };
 }
