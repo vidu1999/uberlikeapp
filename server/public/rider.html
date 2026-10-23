@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19an"></script>
+  <script src="/js/api.js?v=19ao"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -710,13 +710,10 @@
     function kycStatus(kind, d) {
       const kyc = kind === 'nic' ? d.nicKyc : d.licenseKyc;
       const num = kind === 'nic' ? d.nic : d.licenseId;
-      const sides = kind === 'nic' ? !!(d.nicPhoto && d.nicPhotoBack) : !!(d.licensePhoto && d.licensePhotoBack);
       const label = kind === 'nic' ? 'NIC' : 'Licence';
       if (kyc === 'approved') return { cls: 'ok', text: label + (num ? ' ' + num : '') + ' · Verified  ✓' };
       if (kyc === 'declined') return { cls: 'wait', text: label + ' not accepted · tap Verify live with Didit and try again' };
-      if (sides && num) return { cls: 'wait', text: label + ' ' + num + ' · checking ID service' };
-      if (sides) return { cls: 'wait', text: sideStatus(kind === 'nic' ? d.nicPhoto : d.licensePhoto, kind === 'nic' ? d.nicPhotoBack : d.licensePhotoBack) };
-      return { cls: 'wait', text: sideStatus(kind === 'nic' ? d.nicPhoto : d.licensePhoto, kind === 'nic' ? d.nicPhotoBack : d.licensePhotoBack) };
+      return { cls: 'wait', text: label + ' · verify on Didit (not saved here)' };
     }
     function docStatus(photo, num, ready) {
       if (ready) return 'Read from photo  ✓';
@@ -739,37 +736,11 @@
       const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Verify live with Didit. You go to Didit, scan NIC, licence, and your face. When Didit says Approved, we mark all three verified here.'}</p>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Verify live with Didit. NIC, licence, and selfie stay on Didit — we only keep Verified marks here.'}</p>
           <button class="rd-navbtn" type="button" data-didit-kyc style="position:static;width:100%;margin:0 0 14px">${esc((nicOk && licOk && liveOk) ? 'Verified live  ✓ · run again' : 'Verify live with Didit')}</button>
-          <label class="fld">NIC — front and back</label>
-          <input class="fld" id="docNic" type="hidden" value="${esc(d.nic)}" />
-          <div class="rd-up-row">
-            <div>
-              <span class="rd-up-cap">Front</span>
-              ${docBox('nic', d.nicPhoto, 'Tap NIC front')}
-            </div>
-            <div>
-              <span class="rd-up-cap">Back</span>
-              ${docBox('nicBack', d.nicPhotoBack, 'Tap NIC back')}
-            </div>
-          </div>
           <div class="${nicLine.cls}" style="margin-bottom:10px">${esc(nicLine.text)}</div>
-          <label class="fld">Driving licence — front and back</label>
-          <input class="fld" id="docLic" type="hidden" value="${esc(d.licenseId)}" />
-          <div class="rd-up-row">
-            <div>
-              <span class="rd-up-cap">Front</span>
-              ${docBox('license', d.licensePhoto, 'Tap licence front')}
-            </div>
-            <div>
-              <span class="rd-up-cap">Back</span>
-              ${docBox('licenseBack', d.licensePhotoBack, 'Tap licence back')}
-            </div>
-          </div>
           <div class="${licLine.cls}" style="margin-bottom:10px">${esc(licLine.text)}</div>
-          <label class="fld">Your face — live selfie</label>
-          ${docBox('face', d.facePhoto, 'Tap to take a selfie', 'user')}
-          <div class="${liveOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(liveOk ? 'Selfie verified  ✓' : (d.livenessKyc === 'declined' ? 'Face not accepted · tap Verify live with Didit' : 'Live selfie on Didit'))}</div>
+          <div class="${liveOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(liveOk ? 'Selfie verified  ✓' : (d.livenessKyc === 'declined' ? 'Face not accepted · tap Verify live with Didit' : 'Selfie · verify on Didit (not saved here)'))}</div>
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
@@ -1736,8 +1707,10 @@
           const kind = inp.getAttribute('data-doc-file');
           const err = root.querySelector('[data-err]');
           const box = inp.closest('.rd-up');
-          const idKind = kind === 'nic' || kind === 'nicBack' || kind === 'license' || kind === 'licenseBack';
-          const readKind = kind === 'nicBack' ? 'nic' : kind === 'licenseBack' ? 'license' : kind;
+          if (kind === 'nic' || kind === 'nicBack' || kind === 'license' || kind === 'licenseBack' || kind === 'face') {
+            if (err) err.textContent = 'NIC, licence, and selfie stay on Didit. Tap Verify live with Didit.';
+            return;
+          }
           if (docFiles[kind] !== undefined) docFiles[kind] = file;
           if (box) box.classList.add('busy', 'has');
           try {
@@ -1760,25 +1733,13 @@
               }
             }
           } catch (_) {}
-          if (err) err.textContent = idKind ? 'Saving this photo…' : 'Saving this photo…';
+          if (err) err.textContent = 'Saving this photo…';
           try {
             const url = await API.storeImage(file, 'rider' + kind);
             const fields = collectDocs();
-            if (kind === 'nic') { fields.nicPhoto = url; fields.nicKyc = ''; }
-            if (kind === 'nicBack') { fields.nicPhotoBack = url; fields.nicKyc = ''; }
-            if (kind === 'license') { fields.licensePhoto = url; fields.licenseKyc = ''; }
-            if (kind === 'licenseBack') { fields.licensePhotoBack = url; fields.licenseKyc = ''; }
             if (kind === 'reg') fields.regPhoto = url;
-            if (kind === 'face') {
-              fields.facePhoto = url;
-              fields.livenessKyc = '';
-              fields.livenessScore = null;
-              fields.livenessRequestId = '';
-            }
             await API.saveRiderDocs(fields);
-            if (err) err.textContent = (idKind || kind === 'face')
-              ? 'Photo saved. Tap Start free ID & face check to verify.'
-              : '';
+            if (err) err.textContent = '';
             if (box) box.classList.remove('busy');
             render(true);
           } catch (e) {
@@ -2059,7 +2020,6 @@
         if (out.licenseKyc) fields.licenseKyc = out.licenseKyc;
         if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
       }
-      if (out.facePhoto) fields.facePhoto = out.facePhoto;
       if (out.sessionId) fields.kycSession = out.sessionId;
       if (Object.keys(fields).length) await API.saveRiderDocs(fields);
       return out;

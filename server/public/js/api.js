@@ -2019,7 +2019,10 @@
     const k = riderDocCacheKey(user);
     if (!k || !fields) return;
     const cur = readCachedDocPhotos(user);
-    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (key) {
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'facePhoto'].forEach(function (key) {
+      delete cur[key];
+    });
+    ['regPhoto'].forEach(function (key) {
       const v = String(fields[key] || '');
       if (looksLikePhoto(v)) cur[key] = v;
     });
@@ -2120,10 +2123,10 @@
         if (j && typeof j === 'object') {
           out.nic = String(j.nic || '');
           out.licenseId = String(j.licenseId || '');
-          out.nicPhoto = String(j.nicPhoto || j.nicPhotoFront || '');
-          out.nicPhotoBack = String(j.nicPhotoBack || '');
-          out.licensePhoto = String(j.licensePhoto || j.licensePhotoFront || '');
-          out.licensePhotoBack = String(j.licensePhotoBack || '');
+          out.nicPhoto = '';
+          out.nicPhotoBack = '';
+          out.licensePhoto = '';
+          out.licensePhotoBack = '';
           out.plate = String(j.plate || '');
           out.vehicleType = String(j.vehicleType || 'Motorcycle') || 'Motorcycle';
           out.regPhoto = String(j.regPhoto || '');
@@ -2137,7 +2140,7 @@
           out.amlKyc = String(j.amlKyc || '').toLowerCase();
           out.amlHits = Math.max(0, Math.round(Number(j.amlHits) || 0));
           out.amlRequestId = String(j.amlRequestId || '');
-          out.facePhoto = String(j.facePhoto || '');
+          out.facePhoto = '';
           out.livenessKyc = String(j.livenessKyc || '').toLowerCase();
           out.livenessScore = j.livenessScore == null || j.livenessScore === '' ? null : Number(j.livenessScore);
           out.livenessRequestId = String(j.livenessRequestId || '');
@@ -2147,7 +2150,7 @@
       } catch (_) {}
     }
     const cached = readCachedDocPhotos(u);
-    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (k) {
+    ['regPhoto'].forEach(function (k) {
       const cur = String(out[k] || '');
       if ((!cur || cur === 'uploaded') && looksLikePhoto(cached[k])) out[k] = cached[k];
     });
@@ -2186,10 +2189,10 @@
     const pack = {
       nic: nic || '',
       licenseId: licenseId || '',
-      nicPhoto: String(next.nicPhoto || ''),
-      nicPhotoBack: String(next.nicPhotoBack || ''),
-      licensePhoto: String(next.licensePhoto || ''),
-      licensePhotoBack: String(next.licensePhotoBack || ''),
+      nicPhoto: '',
+      nicPhotoBack: '',
+      licensePhoto: '',
+      licensePhotoBack: '',
       plate: plate || '',
       vehicleType: String(next.vehicleType || 'Motorcycle').trim() || 'Motorcycle',
       regPhoto: String(next.regPhoto || ''),
@@ -2203,7 +2206,7 @@
       amlKyc: String(next.amlKyc || '').slice(0, 24),
       amlHits: Math.max(0, Math.round(Number(next.amlHits) || 0)),
       amlRequestId: String(next.amlRequestId || '').slice(0, 80),
-      facePhoto: String(next.facePhoto || ''),
+      facePhoto: '',
       livenessKyc: String(next.livenessKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.livenessKyc || ''),
       livenessScore: next.livenessScore == null || next.livenessScore === '' ? null : Number(next.livenessScore),
       livenessRequestId: String(next.livenessRequestId || '').slice(0, 80),
@@ -2222,7 +2225,7 @@
         await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
       } catch (_) {
         const slim = Object.assign({}, pack);
-        ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto', 'facePhoto'].forEach(function (k) {
+        ['regPhoto'].forEach(function (k) {
           if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
         });
         patch = docsPatch(slim);

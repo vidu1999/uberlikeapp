@@ -266,9 +266,11 @@ function applyEventToDocs(docs, event) {
     docs.nicKyc = 'approved';
     docs.licenseKyc = 'approved';
     docs.livenessKyc = 'approved';
-    const face = lives[0] || {};
-    const facePhoto = String(face.reference_image || face.referenceImage || face.face_image || '');
-    if (facePhoto) docs.facePhoto = facePhoto;
+    docs.nicPhoto = '';
+    docs.nicPhotoBack = '';
+    docs.licensePhoto = '';
+    docs.licensePhotoBack = '';
+    docs.facePhoto = '';
   }
 
   if (!ivs.length) {
