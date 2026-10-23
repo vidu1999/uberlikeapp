@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zj" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zk" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
@@ -52,6 +52,7 @@
       needDocs: false,
       needBank: false,
       wdOpen: false,
+      vehDraft: { type: '', plate: null, registered: null },
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
       deliverPin: { open: false, orderId: '', err: '', sending: false, sent: false },
@@ -730,8 +731,10 @@
       const vehOk = !!(d.plate && d.registered);
       const nicLine = kycStatus('nic', d);
       const licLine = kycStatus('license', d);
-      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
-      const type = d.vehicleType || 'Motorcycle';
+      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Van', 'Lorry', 'Bicycle'];
+      const type = state.vehDraft.type || d.vehicleType || 'Motorcycle';
+      const plate = state.vehDraft.plate != null ? state.vehDraft.plate : (d.plate || '');
+      const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
           <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload front and back of your NIC and driving licence. We check both cards with an ID verification service.'}</p>
@@ -764,8 +767,8 @@
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
-          <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
-          <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
+          <input class="fld" id="vehPlate" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="CAA-1234 or WP CAA-1234" value="${esc(plate)}" />
+          <label class="rd-check"><input type="checkbox" id="vehReg" ${registered ? 'checked' : ''} /> This vehicle is registered</label>
           ${docBox('reg', d.regPhoto, 'Tap to upload registration book (optional)')}
           <div class="${vehOk ? 'ok' : 'wait'}">${vehOk ? 'Vehicle registered  ✓' : (d.plate ? 'Number saved · tick registered' : 'Enter vehicle number')}</div>
           <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
@@ -826,8 +829,10 @@
     }
     function vehicleView() {
       const d = riderDocs();
-      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
-      const type = d.vehicleType || 'Motorcycle';
+      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Van', 'Lorry', 'Bicycle'];
+      const type = state.vehDraft.type || d.vehicleType || 'Motorcycle';
+      const plate = state.vehDraft.plate != null ? state.vehDraft.plate : (d.plate || '');
+      const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="scroll rd-list-page rd-veh">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Vehicle Information</h1></div>
         <div class="rd-block">
@@ -835,8 +840,8 @@
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
-          <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
-          <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
+          <input class="fld" id="vehPlate" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="CAA-1234 or WP CAA-1234" value="${esc(plate)}" />
+          <label class="rd-check"><input type="checkbox" id="vehReg" ${registered ? 'checked' : ''} /> This vehicle is registered</label>
           <label class="fld">Vehicle registration photo</label>
           ${docBox('reg', d.regPhoto, 'Tap to upload registration book')}
           <div class="kv"><span>License plate</span><b>${esc(d.plate || '—')}</b></div>
@@ -1703,6 +1708,15 @@
         if (regEl) out.registered = !!regEl.checked;
         return out;
       }
+      const plateLive = document.getElementById('vehPlate');
+      const typeLive = document.getElementById('vehType');
+      const regLive = document.getElementById('vehReg');
+      if (plateLive) {
+        plateLive.oninput = () => { state.vehDraft.plate = plateLive.value; };
+        plateLive.onfocus = () => { state.vehDraft.plate = plateLive.value; };
+      }
+      if (typeLive) typeLive.onchange = () => { state.vehDraft.type = typeLive.value; };
+      if (regLive) regLive.onchange = () => { state.vehDraft.registered = !!regLive.checked; };
       async function runKyc(fields, which, err) {
         const d = Object.assign({}, riderDocs(), fields);
         async function one(kind, front, back, kycKey, idKey, nameKey, numKey) {
@@ -1819,6 +1833,7 @@
           if (after.licenseKyc !== 'approved') throw new Error('Driving licence must pass ID verification.');
           if (!after.nic) throw new Error('Upload a clear NIC photo so we can read the number.');
           if (!after.licenseId) throw new Error('Upload a clear driving licence photo so we can read the number.');
+          state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = '';
           state.tab = 'profile';
@@ -1842,6 +1857,7 @@
           if (!fields.plate) throw new Error('Enter your vehicle number.');
           if (!fields.registered) throw new Error('Confirm this vehicle is registered.');
           await API.saveRiderDocs(fields);
+          state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = riderVerified() ? '' : 'docs';
           state.tab = 'profile';
@@ -1902,9 +1918,9 @@
           return;
         }
         startRiderGps();
-        if (keep && (state.screen === 'wallet' || state.screen === 'bank')) {
+        if (keep) {
           const ae = document.activeElement;
-          if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA')) return;
+          if (ae && root.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
         }
         if (state.screen === 'chat' && state.orderId) {
           const oChat = (API.orders || []).find((x) => x.id === state.orderId);

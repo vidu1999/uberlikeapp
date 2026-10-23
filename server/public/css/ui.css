@@ -1430,11 +1430,17 @@ html[data-role="rider"] .scroll.rd-details {
 .rd-docs-note {
   margin: 0 16px 10px; color: #FBBF24; font-size: 13px; font-weight: 700;
 }
-.rd-list-page label.fld {
+.rd-list-page label.fld,
+.rd-verify-card label.fld,
+.rd-prof label.fld {
   display: block; margin: 12px 0 6px; color: #9CA3AF; font-size: 13px; font-weight: 700; text-align: left;
 }
 .rd-list-page input.fld,
-.rd-list-page select.fld {
+.rd-list-page select.fld,
+.rd-verify-card input.fld,
+.rd-verify-card select.fld,
+.rd-prof input.fld,
+.rd-prof select.fld {
   width: 100%; box-sizing: border-box;
   border: 1px solid #1F2937; background: #0e1c18; color: #fff;
   border-radius: 14px; padding: 12px 14px; font-size: 16px;
