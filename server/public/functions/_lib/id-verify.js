@@ -27,7 +27,10 @@ export function optionsResponse() {
 }
 
 export function apiKeyFromEnv(env) {
-  return String((env && (env.DIDIT_API_KEY || env.ID_VERIFY_API_KEY)) || '').trim();
+  return String((env && (env.DIDIT_API_KEY || env.ID_VERIFY_API_KEY)) || '')
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/\s+/g, '');
 }
 
 function parseSriNic(raw) {
@@ -184,13 +187,28 @@ function publicResult(kind, iv, requestId) {
   };
 }
 
+function detailText(data) {
+  if (!data) return '';
+  if (typeof data.detail === 'string') return data.detail;
+  if (data.detail && typeof data.detail === 'object') {
+    return String(data.detail.message || data.detail.error || data.detail.code || '');
+  }
+  if (typeof data.error === 'string') return data.error;
+  if (data.error && data.error.message) return String(data.error.message);
+  if (typeof data.message === 'string') return data.message;
+  return '';
+}
+
 function diditErrorMessage(httpStatus, data) {
-  if (httpStatus === 401 || httpStatus === 403) return 'ID verification is not set up yet.';
-  if (httpStatus === 402) return 'ID verification is not set up yet.';
+  const raw = detailText(data);
+  const d = raw.toLowerCase();
+  if (/credit|balance|billing|not-enough/.test(d)) return 'ID check has no credits. Add Didit credits, then try again.';
   if (httpStatus === 429) return 'Too many checks. Wait a minute and try again.';
-  const msg = data && (data.detail || data.message || data.error);
-  if (typeof msg === 'string' && msg && msg.length < 160 && !/api[- ]?key/i.test(msg)) {
-    if (/image|file|front|back|document/i.test(msg)) return 'Could not read this card. Use a clearer front and back photo.';
+  if (httpStatus === 401 || httpStatus === 403 || httpStatus === 402) {
+    return 'Didit blocked this check (403). Use a secret API key with ID Verification access, no IP lock, and enough credits.';
+  }
+  if (raw && raw.length < 160 && !/api[- ]?key/i.test(raw)) {
+    if (/image|file|front|back|document/i.test(d)) return 'Could not read this card. Use a clearer front and back photo.';
   }
   return 'Could not verify this document. Try again.';
 }
@@ -215,27 +233,34 @@ export async function verifyIdDocument(env, body) {
   } catch (e) {
     return { status: 400, body: { ok: false, message: (e && e.message) || 'Upload front and back photos.' } };
   }
-  const fd = new FormData();
-  fd.append('front_image', partBlob(front), 'front.jpg');
-  fd.append('back_image', partBlob(back), 'back.jpg');
-  fd.append('perform_document_liveness', 'true');
-  fd.append('save_api_request', 'false');
-  fd.append('vendor_data', String((body && body.riderId) || 'rider').slice(0, 64));
-  fd.append('metadata', JSON.stringify({ kind: kind, country: 'LKA' }));
-  let res;
-  try {
-    res = await fetch(DIDIT_URL, {
+  async function postDidit(liveness) {
+    const fd = new FormData();
+    fd.append('front_image', partBlob(front), 'front.jpg');
+    fd.append('back_image', partBlob(back), 'back.jpg');
+    fd.append('perform_document_liveness', liveness ? 'true' : 'false');
+    fd.append('save_api_request', 'true');
+    fd.append('vendor_data', String((body && body.riderId) || 'rider').slice(0, 64));
+    return fetch(DIDIT_URL, {
       method: 'POST',
-      headers: { 'x-api-key': key },
+      headers: { 'x-api-key': key, Accept: 'application/json' },
       body: fd,
     });
+  }
+  let res;
+  try {
+    res = await postDidit(true);
+    if (res.status === 403) {
+      const retry = await postDidit(false);
+      if (retry && retry.status !== 403) res = retry;
+    }
   } catch (_) {
     return { status: 502, body: { ok: false, message: 'ID check is unavailable. Try again.' } };
   }
   let data = {};
   try { data = await res.json(); } catch (_) { data = {}; }
   if (!res.ok) {
-    return { status: res.status === 400 ? 400 : 502, body: { ok: false, message: diditErrorMessage(res.status, data) } };
+    const code = res.status === 400 ? 400 : (res.status === 403 ? 403 : 502);
+    return { status: code, body: { ok: false, message: diditErrorMessage(res.status, data) } };
   }
   const iv = data.id_verification || data.idVerification || data;
   const out = publicResult(kind, iv, data.request_id || data.requestId || (iv && iv.request_id));
