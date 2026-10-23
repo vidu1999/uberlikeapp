@@ -108,18 +108,7 @@ export async function diditIdVerification(env, opts) {
   fd.append('perform_document_liveness', o.liveness === false ? 'false' : 'true');
   fd.append('save_api_request', o.save === false ? 'false' : 'true');
   if (o.vendorData) fd.append('vendor_data', String(o.vendorData).slice(0, 64));
-  let out = await diditRequest(env, '/id-verification/', { body: fd });
-  if (out.status === 403 && o.liveness !== false) {
-    const fd2 = new FormData();
-    fd2.append('front_image', filePart(o.front), o.frontName || 'front.jpg');
-    if (o.back) fd2.append('back_image', filePart(o.back), o.backName || 'back.jpg');
-    fd2.append('perform_document_liveness', 'false');
-    fd2.append('save_api_request', 'true');
-    if (o.vendorData) fd2.append('vendor_data', String(o.vendorData).slice(0, 64));
-    const retry = await diditRequest(env, '/id-verification/', { body: fd2 });
-    if (retry.status !== 403) out = retry;
-  }
-  return out;
+  return diditRequest(env, '/id-verification/', { body: fd });
 }
 
 export async function diditPoa(env, opts) {

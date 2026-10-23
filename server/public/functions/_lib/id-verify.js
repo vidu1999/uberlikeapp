@@ -196,6 +196,17 @@ function publicResult(kind, iv, requestId) {
 }
 
 export async function verifyIdDocument(env, body) {
+  return {
+    status: 400,
+    body: {
+      ok: false,
+      useSession: true,
+      message: 'Use Start free ID & face check. Photo ID API is paid and has no free credits.',
+    },
+  };
+}
+
+async function verifyIdDocumentPaid(env, body) {
   const key = apiKeyFromEnv(env);
   if (!key) {
     return {
@@ -270,6 +281,17 @@ function livenessMessage(status, warnings) {
 }
 
 export async function verifyLiveness(env, body) {
+  return {
+    status: 400,
+    body: {
+      ok: false,
+      useSession: true,
+      message: 'Use Start free ID & face check. Selfie API is paid and has no free credits.',
+    },
+  };
+}
+
+async function verifyLivenessPaid(env, body) {
   const key = apiKeyFromEnv(env);
   if (!key) {
     return { status: 503, body: { ok: false, configured: false, message: 'ID verification is not set up yet.' } };
