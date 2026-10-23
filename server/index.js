@@ -447,6 +447,42 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (pathname === '/api/verify-session') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const sid = url.searchParams.get('id') || url.searchParams.get('session_id') || '';
+      if (!sid) {
+        json(res, 200, { ok: true, provider: 'didit', feature: 'session', free: true, configured: idVerify.configured() });
+        return;
+      }
+      try {
+        const out = await idVerify.riderKycDecision(sid);
+        json(res, out.status, out.body);
+      } catch (e) {
+        json(res, 502, { ok: false, message: (e && e.message) || 'Could not read this ID check.' });
+      }
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, message: 'Use POST.' });
+      return;
+    }
+    try {
+      const raw = await readRaw(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const origin = (req.headers.origin && String(req.headers.origin)) || 'https://quickbite-2ao.pages.dev';
+      const out = await idVerify.startRiderKycSession(body, origin);
+      json(res, out.status, out.body);
+    } catch (e) {
+      json(res, 502, { ok: false, message: (e && e.message) || 'Could not start free ID check.' });
+    }
+    return;
+  }
+
   if (pathname === '/api/verify-liveness') {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, cors(res));

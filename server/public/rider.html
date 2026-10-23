@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ak"></script>
+  <script src="/js/api.js?v=19al"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -739,7 +739,8 @@
       const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC and licence (front and back), then a live selfie. We check the cards and that it is a real face.'}</p>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Start free ID & face check. Scan NIC, then driving licence, then your face. Didit gives 500 free checks a month.'}</p>
+          <button class="rd-navbtn" type="button" data-didit-kyc style="position:static;width:100%;margin:0 0 14px">${esc((nicOk && licOk && liveOk) ? 'ID check passed  ✓ · run again' : 'Start free ID & face check')}</button>
           <label class="fld">NIC — front and back</label>
           <input class="fld" id="docNic" type="hidden" value="${esc(d.nic)}" />
           <div class="rd-up-row">
@@ -828,7 +829,7 @@
     function docsView() {
       return `<div class="scroll rd-list-page rd-docs">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Driver verification</h1></div>
-        ${state.needDocs ? '<p class="rd-docs-note">Add NIC, driving licence, a live selfie, and a registered vehicle before you can Accept orders.</p>' : ''}
+        ${state.needDocs ? '<p class="rd-docs-note">Complete the free ID check and add a registered vehicle before you can Accept orders.</p>' : ''}
         ${verifyFormHtml()}
       </div>`;
     }
@@ -1850,29 +1851,10 @@
           if (!fields.plate) throw new Error('Enter your vehicle number.');
           if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
-          const d = riderDocs();
-          if (!d.nicPhoto || !d.nicPhotoBack) throw new Error('Upload NIC front and back.');
-          if (!d.licensePhoto || !d.licensePhotoBack) throw new Error('Upload driving licence front and back.');
-          if (!d.facePhoto) throw new Error('Take a selfie of your face.');
-          if (API.verifyIdDocument) {
-            await runKyc(fields, '', err);
-            await API.saveRiderDocs(fields);
-          }
-          if (API.verifyLiveness && String(riderDocs().livenessKyc || '') !== 'approved') {
-            if (err) err.textContent = 'Checking this is a live face…';
-            const live = await API.verifyLiveness(docFiles.face || riderDocs().facePhoto);
-            fields.livenessKyc = live.approved ? 'approved' : 'declined';
-            fields.livenessScore = live.score;
-            fields.livenessRequestId = live.requestId || '';
-            await API.saveRiderDocs(fields);
-            if (!live.approved) throw new Error(live.message || 'Take a live selfie so we can check it is you.');
-          }
           const after = riderDocs();
-          if (after.nicKyc !== 'approved') throw new Error('NIC must pass ID verification.');
-          if (after.licenseKyc !== 'approved') throw new Error('Driving licence must pass ID verification.');
-          if (after.livenessKyc !== 'approved') throw new Error('Take a live selfie so we can check it is you.');
-          if (!after.nic) throw new Error('Upload a clear NIC photo so we can read the number.');
-          if (!after.licenseId) throw new Error('Upload a clear driving licence photo so we can read the number.');
+          if (after.nicKyc !== 'approved' || !after.nic) throw new Error('Tap Start free ID & face check and scan your NIC.');
+          if (after.licenseKyc !== 'approved' || !after.licenseId) throw new Error('Tap Start free ID & face check and scan your driving licence.');
+          if (after.livenessKyc !== 'approved') throw new Error('Tap Start free ID & face check and finish the live face step.');
           state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = '';
@@ -1887,6 +1869,26 @@
       if (saveDocs) saveDocs.onclick = () => saveVerify(saveDocs);
       const saveVerifyBtn = root.querySelector('[data-save-verify]');
       if (saveVerifyBtn) saveVerifyBtn.onclick = () => saveVerify(saveVerifyBtn);
+      const diditBtn = root.querySelector('[data-didit-kyc]');
+      if (diditBtn) diditBtn.onclick = async () => {
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = '';
+        diditBtn.disabled = true;
+        try {
+          if (!API.user || !API.user.id) throw new Error('Sign in first.');
+          if (err) err.textContent = 'Opening free ID check…';
+          const out = await API.startRiderKyc();
+          if (out.sessionId) {
+            try { sessionStorage.setItem('qb_didit_session', out.sessionId); } catch (_) {}
+            try { localStorage.setItem('qb_didit_session', out.sessionId); } catch (_) {}
+          }
+          if (!out.url) throw new Error('Could not open the ID check.');
+          window.location.href = out.url;
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not start free ID check.';
+          diditBtn.disabled = false;
+        }
+      };
       const saveVeh = root.querySelector('[data-save-vehicle]');
       if (saveVeh) saveVeh.onclick = async () => {
         const err = root.querySelector('[data-err]');
@@ -2094,7 +2096,49 @@
         return true;
       }
     }
-    consumeGoogleRedirect().then((ok) => { if (!ok) render(); });
+    async function applyDiditDecision(out) {
+      if (!out || !API.saveRiderDocs) return;
+      const fields = {};
+      if (out.nic) fields.nic = out.nic;
+      if (out.licenseId) fields.licenseId = out.licenseId;
+      if (out.name) {
+        if (out.nicKyc) fields.nicName = out.name;
+        if (out.licenseKyc) fields.licenseName = out.name;
+      }
+      if (out.nicKyc) fields.nicKyc = out.nicKyc;
+      if (out.licenseKyc) fields.licenseKyc = out.licenseKyc;
+      if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
+      if (out.sessionId) fields.kycSession = out.sessionId;
+      if (Object.keys(fields).length) await API.saveRiderDocs(fields);
+    }
+    async function consumeDiditReturn() {
+      let sid = '';
+      try {
+        const q = new URLSearchParams(location.search || '');
+        sid = q.get('session_id') || q.get('id') || '';
+        if (!sid) sid = sessionStorage.getItem('qb_didit_session') || localStorage.getItem('qb_didit_session') || '';
+        if (q.get('didit') !== 'done' && !sid) return false;
+      } catch (_) { return false; }
+      if (!API.user) return false;
+      try {
+        if (API.riderKycDecision && sid) {
+          const out = await API.riderKycDecision(sid);
+          await applyDiditDecision(out);
+        }
+      } catch (_) {}
+      try {
+        if (location.search && /didit=|session_id=/.test(location.search)) {
+          history.replaceState({}, '', location.pathname);
+        }
+      } catch (_) {}
+      state.needDocs = !riderVerified();
+      if (state.needDocs) state.screen = 'docs';
+      return false;
+    }
+    consumeGoogleRedirect().then(async (ok) => {
+      if (!ok) await consumeDiditReturn();
+      if (!ok) render();
+    });
   </script>
 </body>
 </html>

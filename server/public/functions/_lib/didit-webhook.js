@@ -197,9 +197,12 @@ function parseDocs(address) {
   const addr = String(address || '');
   const out = {
     nic: '', licenseId: '', nicPhoto: '', nicPhotoBack: '',
-    licensePhoto: '', licensePhotoBack: '',
+    licensePhoto: '', licensePhotoBack: '', facePhoto: '',
     plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
     nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
+    amlKyc: '', amlHits: 0, amlRequestId: '',
+    livenessKyc: '', livenessScore: null, livenessRequestId: '',
+    kycSession: '', kycEvent: '',
   };
   if (addr.indexOf(RIDER_DOCS_MARK) !== 0) return out;
   try {
@@ -251,6 +254,15 @@ function applyEventToDocs(docs, event) {
       if (n.licenseId) setLic(iv, st);
     }
   }
+
+  const lives = Array.isArray(decision.liveness_checks) ? decision.liveness_checks
+    : (decision.liveness ? [decision.liveness] : []);
+  for (let i = 0; i < lives.length; i++) {
+    const st = String((lives[i] && lives[i].status) || status);
+    if (st === 'Approved') docs.livenessKyc = 'approved';
+    else if (st === 'Declined' && docs.livenessKyc !== 'approved') docs.livenessKyc = 'declined';
+  }
+  if (status === 'Approved' && !docs.livenessKyc) docs.livenessKyc = 'approved';
 
   if (!ivs.length) {
     if (status === 'Approved') {

@@ -1,5 +1,11 @@
 const DIDIT_BASE = 'https://verification.didit.me/v3';
 
+export const DIDIT_FREE = {
+  sessions: 'POST /v3/session/',
+  quota: '500 KYC sessions / month',
+  bundle: 'ID + Passive Liveness + Face Match + IP',
+};
+
 export const DIDIT_STANDALONE = {
   idVerification: 'POST /v3/id-verification/',
   poa: 'POST /v3/poa/',
@@ -74,9 +80,12 @@ export async function diditRequest(env, path, opts) {
     body = JSON.stringify(options.json);
   }
   const url = path.indexOf('http') === 0 ? path : DIDIT_BASE + path;
+  const method = String(options.method || (options.json || options.body ? 'POST' : 'GET')).toUpperCase();
+  const init = { method: method, headers: headers };
+  if (body != null && method !== 'GET' && method !== 'HEAD') init.body = body;
   let res;
   try {
-    res = await fetch(url, { method: options.method || 'POST', headers: headers, body: body });
+    res = await fetch(url, init);
   } catch (_) {
     return { ok: false, status: 502, data: { detail: 'ID check is unavailable. Try again.' } };
   }
@@ -212,6 +221,24 @@ export async function diditPhoneSend(env, payload) {
 
 export async function diditPhoneCheck(env, payload) {
   return diditRequest(env, '/phone/check/', { json: payload || {} });
+}
+
+export async function diditCreateWorkflow(env, payload) {
+  return diditRequest(env, '/workflows/', { json: payload || {} });
+}
+
+export async function diditListWorkflows(env) {
+  return diditRequest(env, '/workflows/', { method: 'GET' });
+}
+
+export async function diditCreateSession(env, payload) {
+  return diditRequest(env, '/session/', { json: payload || {} });
+}
+
+export async function diditSessionDecision(env, sessionId) {
+  const id = String(sessionId || '').trim();
+  if (!id) return { ok: false, status: 400, data: { detail: 'Missing session.' } };
+  return diditRequest(env, '/session/' + encodeURIComponent(id) + '/decision/', { method: 'GET' });
 }
 
 export async function diditAmlForId(env, iv, vendorData) {

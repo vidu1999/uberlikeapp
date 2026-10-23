@@ -2078,6 +2078,30 @@
     if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not check this selfie.');
     return j;
   };
+  API.startRiderKyc = async function () {
+    const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
+    const res = await fetch((API.base || '') + '/api/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        riderId: (API.user && API.user.id) || '',
+        callback: origin ? origin + '/rider.html?didit=done' : '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not start free ID check.');
+    return j;
+  };
+  API.riderKycDecision = async function (sessionId) {
+    const id = String(sessionId || '').trim();
+    if (!id) throw new Error('Missing session.');
+    const res = await fetch((API.base || '') + '/api/verify-session?id=' + encodeURIComponent(id));
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not read this ID check.');
+    return j;
+  };
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {
@@ -2087,6 +2111,7 @@
       nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
       amlKyc: '', amlHits: 0, amlRequestId: '',
       livenessKyc: '', livenessScore: null, livenessRequestId: '',
+      kycSession: '', kycEvent: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -2116,6 +2141,8 @@
           out.livenessKyc = String(j.livenessKyc || '').toLowerCase();
           out.livenessScore = j.livenessScore == null || j.livenessScore === '' ? null : Number(j.livenessScore);
           out.livenessRequestId = String(j.livenessRequestId || '');
+          out.kycSession = String(j.kycSession || '');
+          out.kycEvent = String(j.kycEvent || '');
         }
       } catch (_) {}
     }
@@ -2137,10 +2164,9 @@
   API.riderDocs = function (user) { return riderDocsFromUser(user); };
   API.isRiderVerified = function (user) {
     const d = riderDocsFromUser(user);
-    if (!parseSriNic(d.nic) || !d.nicPhoto || !d.nicPhotoBack) return false;
-    if (!parseLicenseId(d.licenseId) || !d.licensePhoto || !d.licensePhotoBack) return false;
-    if (d.nicKyc !== 'approved' || d.licenseKyc !== 'approved') return false;
-    if (d.livenessKyc !== 'approved' || !d.facePhoto) return false;
+    if (!parseSriNic(d.nic) || d.nicKyc !== 'approved') return false;
+    if (!parseLicenseId(d.licenseId) || d.licenseKyc !== 'approved') return false;
+    if (d.livenessKyc !== 'approved') return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };
@@ -2183,6 +2209,8 @@
       livenessKyc: String(next.livenessKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.livenessKyc || ''),
       livenessScore: next.livenessScore == null || next.livenessScore === '' ? null : Number(next.livenessScore),
       livenessRequestId: String(next.livenessRequestId || '').slice(0, 80),
+      kycSession: String(next.kycSession || '').slice(0, 80),
+      kycEvent: String(next.kycEvent || '').slice(0, 80),
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };

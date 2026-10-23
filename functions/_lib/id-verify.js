@@ -1,4 +1,14 @@
-import { diditAmlForId, diditErrorMessage, diditIdVerification, diditKey, diditPassiveLiveness } from './didit.js';
+import {
+  diditAmlForId,
+  diditCreateSession,
+  diditCreateWorkflow,
+  diditErrorMessage,
+  diditIdVerification,
+  diditKey,
+  diditListWorkflows,
+  diditPassiveLiveness,
+  diditSessionDecision,
+} from './didit.js';
 
 const MAX_DATA_CHARS = 1800000;
 
@@ -307,4 +317,182 @@ export async function verifyLiveness(env, body) {
       message: livenessMessage(approved ? 'Approved' : status, warnings),
     },
   };
+}
+
+let cachedWorkflowId = '';
+
+function workflowIdFromEnv(env) {
+  let fromProc = '';
+  try {
+    if (typeof process !== 'undefined' && process.env) fromProc = process.env.DIDIT_WORKFLOW_ID || '';
+  } catch (_) {}
+  return String((env && env.DIDIT_WORKFLOW_ID) || fromProc || '').trim();
+}
+
+async function ensureWorkflowId(env) {
+  const fromEnv = workflowIdFromEnv(env);
+  if (fromEnv) return fromEnv;
+  if (cachedWorkflowId) return cachedWorkflowId;
+  const listed = await diditListWorkflows(env);
+  const data = (listed && listed.data) || {};
+  const rows = data.workflows || data.results || data.items || (Array.isArray(data) ? data : []);
+  for (let i = 0; i < rows.length; i++) {
+    const w = rows[i] || {};
+    const label = String(w.workflow_label || w.label || w.name || '');
+    const id = String(w.workflow_id || w.id || '');
+    if (id && /quickbite|rider kyc/i.test(label)) {
+      cachedWorkflowId = id;
+      return id;
+    }
+  }
+  if (rows[0]) {
+    const id = String(rows[0].workflow_id || rows[0].id || '');
+    if (id) {
+      cachedWorkflowId = id;
+      return id;
+    }
+  }
+  const created = await diditCreateWorkflow(env, {
+    workflow_label: 'QuickBite rider KYC',
+    workflow_type: 'kyc',
+    features: [
+      { feature: 'OCR' },
+      { feature: 'LIVENESS', config: { face_liveness_method: 'PASSIVE' } },
+      { feature: 'FACE_MATCH' },
+      { feature: 'IP_ANALYSIS' },
+    ],
+  });
+  const id = String((created.data && (created.data.workflow_id || created.data.id)) || '');
+  if (!created.ok || !id) {
+    throw new Error(diditErrorMessage(created.status, created.data) || 'Could not start free ID check.');
+  }
+  cachedWorkflowId = id;
+  return id;
+}
+
+function publicSessionDecision(data) {
+  const row = data || {};
+  const decision = row.decision && typeof row.decision === 'object' ? row.decision : row;
+  const status = String(row.status || decision.status || '');
+  const ivs = Array.isArray(decision.id_verifications) ? decision.id_verifications : [];
+  const lives = Array.isArray(decision.liveness_checks) ? decision.liveness_checks
+    : (decision.liveness ? [decision.liveness] : []);
+  let nic = '';
+  let licenseId = '';
+  let name = '';
+  let nicKyc = '';
+  let licenseKyc = '';
+  for (let i = 0; i < ivs.length; i++) {
+    const iv = ivs[i] || {};
+    const nums = pickNumbers(iv);
+    const t = docTypeOf(iv);
+    const st = String(iv.status || status);
+    const kyc = st === 'Approved' ? 'approved' : (st === 'Declined' ? 'declined' : String(st || '').toLowerCase());
+    if (isIdCard(t) || nums.nic) {
+      nic = nums.nic || nic;
+      nicKyc = kyc || nicKyc;
+      if (iv.full_name) name = String(iv.full_name);
+    }
+    if (isDriverLicense(t) || nums.licenseId) {
+      licenseId = nums.licenseId || licenseId;
+      licenseKyc = kyc || licenseKyc;
+      if (iv.full_name) name = name || String(iv.full_name);
+    }
+  }
+  let livenessKyc = '';
+  for (let i = 0; i < lives.length; i++) {
+    const st = String((lives[i] && lives[i].status) || status);
+    if (st === 'Approved') livenessKyc = 'approved';
+    else if (st === 'Declined' && livenessKyc !== 'approved') livenessKyc = 'declined';
+  }
+  if (status === 'Approved') {
+    if (nic) nicKyc = nicKyc || 'approved';
+    if (licenseId) licenseKyc = licenseKyc || 'approved';
+    livenessKyc = livenessKyc || 'approved';
+  }
+  let message = 'Finish the ID check in the window that opened.';
+  if (status === 'Approved') message = 'ID check passed  ✓';
+  else if (status === 'Declined') message = 'ID check was not accepted. Try again with the real card.';
+  else if (status === 'In Review') message = 'ID check is reviewing. Try Save again in a minute.';
+  return {
+    ok: true,
+    approved: status === 'Approved',
+    status: status,
+    nic: nic,
+    licenseId: licenseId,
+    name: name,
+    nicKyc: nicKyc,
+    licenseKyc: licenseKyc,
+    livenessKyc: livenessKyc,
+    sessionId: String(row.session_id || decision.session_id || ''),
+    message: message,
+  };
+}
+
+export async function startRiderKycSession(env, body, origin) {
+  if (!apiKeyFromEnv(env)) {
+    return { status: 503, body: { ok: false, configured: false, message: 'ID verification is not set up yet.' } };
+  }
+  const riderId = String((body && body.riderId) || '').slice(0, 64);
+  if (!riderId) return { status: 400, body: { ok: false, message: 'Sign in first.' } };
+  let workflowId;
+  try {
+    workflowId = await ensureWorkflowId(env);
+  } catch (e) {
+    return { status: 502, body: { ok: false, message: (e && e.message) || 'Could not start free ID check.' } };
+  }
+  const base = String(origin || 'https://quickbite-2ao.pages.dev').replace(/\/$/, '');
+  const callback = String((body && body.callback) || (base + '/rider.html?didit=done'));
+  const full = {
+    workflow_id: workflowId,
+    vendor_data: riderId,
+    callback: callback,
+    callback_method: 'both',
+    language: 'en',
+    expected_details: {
+      id_country: 'LKA',
+      expected_document_types: ['ID', 'DL'],
+    },
+  };
+  let sent = await diditCreateSession(env, full);
+  if (!sent.ok && sent.status === 400) {
+    sent = await diditCreateSession(env, {
+      workflow_id: workflowId,
+      vendor_data: riderId,
+      callback: callback,
+      callback_method: 'both',
+      language: 'en',
+    });
+  }
+  if (!sent.ok) {
+    const code = sent.status === 400 ? 400 : (sent.status === 403 ? 403 : 502);
+    return { status: code, body: { ok: false, message: diditErrorMessage(sent.status, sent.data) } };
+  }
+  const data = sent.data || {};
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      free: true,
+      sessionId: String(data.session_id || data.sessionId || ''),
+      url: String(data.url || data.verification_url || ''),
+      status: String(data.status || 'Not Started'),
+    },
+  };
+}
+
+export async function riderKycDecision(env, sessionId) {
+  if (!apiKeyFromEnv(env)) {
+    return { status: 503, body: { ok: false, message: 'ID verification is not set up yet.' } };
+  }
+  const id = String(sessionId || '').trim();
+  if (!id) return { status: 400, body: { ok: false, message: 'Missing session.' } };
+  const sent = await diditSessionDecision(env, id);
+  if (!sent.ok) {
+    const code = sent.status === 403 ? 403 : 502;
+    return { status: code, body: { ok: false, message: diditErrorMessage(sent.status, sent.data) } };
+  }
+  const out = publicSessionDecision(sent.data || {});
+  out.sessionId = out.sessionId || id;
+  return { status: 200, body: out };
 }

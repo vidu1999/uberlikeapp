@@ -194,6 +194,16 @@ async function verifyLiveness(body) {
   return mod.verifyLiveness(process.env, body);
 }
 
+async function startRiderKycSession(body, origin) {
+  const mod = await import('../functions/_lib/id-verify.js');
+  return mod.startRiderKycSession(process.env, body, origin);
+}
+
+async function riderKycDecision(sessionId) {
+  const mod = await import('../functions/_lib/id-verify.js');
+  return mod.riderKycDecision(process.env, sessionId);
+}
+
 function configured() {
   return !!apiKey();
 }
@@ -221,4 +231,4 @@ async function handleWebhook(raw, headers) {
   return { status: res.status, body };
 }
 
-module.exports = { verifyIdDocument, verifyLiveness, configured, handleWebhook };
+module.exports = { verifyIdDocument, verifyLiveness, startRiderKycSession, riderKycDecision, configured, handleWebhook };
