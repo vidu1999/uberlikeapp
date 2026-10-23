@@ -16,9 +16,9 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ao"></script>
+  <script src="/js/api.js?v=19ap"></script>
   <script src="/js/maps.js?v=19zx"></script>
-  <script src="/js/track-ui.js?v=19aac"></script>
+  <script src="/js/track-ui.js?v=19aad"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -2072,6 +2072,14 @@
         if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
       }
       if (out.sessionId) fields.kycSession = out.sessionId;
+      if ((out.approved || String(out.status || '') === 'Approved') && out.facePhoto && API.storeRiderAvatar) {
+        try {
+          const av = await API.storeRiderAvatar(out.facePhoto);
+          if (av) fields.avatar = av;
+        } catch (_) {
+          if (/^https?:\/\//i.test(String(out.facePhoto || ''))) fields.avatar = out.facePhoto;
+        }
+      }
       if (Object.keys(fields).length) await API.saveRiderDocs(fields);
       return out;
     }

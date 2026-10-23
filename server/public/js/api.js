@@ -604,6 +604,26 @@
     if (!res.ok) throw new Error('upload ' + res.status);
     return base + '/storage/v1/object/public/qb-images/' + path;
   }
+  API.storeRiderAvatar = async function (src) {
+    const s = String(src || '').trim();
+    if (!s) return '';
+    if (/\/storage\/v1\/object\/public\/qb-images\//.test(s) && /^https?:\/\//i.test(s)) return s;
+    let file = s;
+    if (/^https?:\/\//i.test(s)) {
+      try {
+        const r = await fetch(s);
+        if (!r.ok) return s;
+        file = await r.blob();
+      } catch (_) {
+        return s;
+      }
+    }
+    try {
+      return await API.storeImage(file, 'riderface');
+    } catch (_) {
+      return /^https?:\/\//i.test(s) ? s : '';
+    }
+  };
   API.storeImage = async function (file, kind) {
     if (!file) throw new Error('Choose an image');
     const t = String(file.type || '').toLowerCase();
@@ -849,6 +869,7 @@
     o.riderId = d.riderId || o.riderId || null;
     o.riderName = d.riderName || o.riderName || null;
     o.riderPhone = d.riderPhone || o.riderPhone || null;
+    o.riderPhoto = d.riderPhoto || o.riderPhoto || '';
     o.riderLat = d.riderLat != null ? d.riderLat : o.riderLat;
     o.riderLng = d.riderLng != null ? d.riderLng : o.riderLng;
     o.shopLat = finiteNum(d.shopLat != null ? d.shopLat : o.shopLat);
@@ -2022,7 +2043,7 @@
     ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'facePhoto'].forEach(function (key) {
       delete cur[key];
     });
-    ['regPhoto'].forEach(function (key) {
+    ['regPhoto', 'avatar'].forEach(function (key) {
       const v = String(fields[key] || '');
       if (looksLikePhoto(v)) cur[key] = v;
     });
@@ -2114,7 +2135,7 @@
       nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
       amlKyc: '', amlHits: 0, amlRequestId: '',
       livenessKyc: '', livenessScore: null, livenessRequestId: '',
-      kycSession: '', kycEvent: '',
+      kycSession: '', kycEvent: '', avatar: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -2146,11 +2167,12 @@
           out.livenessRequestId = String(j.livenessRequestId || '');
           out.kycSession = String(j.kycSession || '');
           out.kycEvent = String(j.kycEvent || '');
+          out.avatar = /^https?:\/\//i.test(String(j.avatar || '')) ? String(j.avatar) : '';
         }
       } catch (_) {}
     }
     const cached = readCachedDocPhotos(u);
-    ['regPhoto'].forEach(function (k) {
+    ['regPhoto', 'avatar'].forEach(function (k) {
       const cur = String(out[k] || '');
       if ((!cur || cur === 'uploaded') && looksLikePhoto(cached[k])) out[k] = cached[k];
     });
@@ -2212,6 +2234,7 @@
       livenessRequestId: String(next.livenessRequestId || '').slice(0, 80),
       kycSession: String(next.kycSession || '').slice(0, 80),
       kycEvent: String(next.kycEvent || '').slice(0, 80),
+      avatar: /^https?:\/\//i.test(String(next.avatar || '')) ? String(next.avatar) : '',
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
@@ -4284,6 +4307,10 @@
         err.code = 'WHATSAPP_REQUIRED';
         throw err;
       }
+    }
+    if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId)) {
+      const d = riderDocsFromUser(API.user);
+      if (!body.riderPhoto && /^https?:\/\//i.test(String(d.avatar || ''))) body.riderPhoto = d.avatar;
     }
     if (API.user && sameRole(API.user.role, 'rider') && body.status === 'accepted') {
       const open = (API.orders || []).find(function (o) {

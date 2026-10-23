@@ -491,7 +491,10 @@ function publicSessionDecision(data) {
     livenessKyc = 'approved';
   }
   const face = lives[0] || {};
-  const facePhoto = String(face.reference_image || face.referenceImage || face.face_image || '');
+  const facePhoto = String(
+    face.reference_image || face.referenceImage || face.face_image || face.faceImage
+    || face.selfie || face.portrait || face.image_url || face.imageUrl || face.photo || face.image || ''
+  );
   let message = 'Finish the ID check on Didit, then you come back here.';
   if (status === 'Approved') message = 'NIC, licence, and selfie verified  ✓';
   else if (status === 'Declined') message = 'ID check was not accepted. Try again with the real card.';

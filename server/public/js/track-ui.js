@@ -243,6 +243,12 @@
     return '/img/avatar-rider.jpg';
   }
 
+  function riderFaceOf(order) {
+    const p = String((order && (order.riderPhoto || order.riderImage)) || '');
+    if (/^https?:\/\//i.test(p) || p.indexOf('data:image/') === 0 || p.indexOf('/img/') === 0) return p;
+    return '/img/avatar-rider.jpg';
+  }
+
   function person(order, viewer) {
     if (viewer === 'rider') {
       if (goingToShop(order)) {
@@ -295,7 +301,7 @@
         name,
         role: goingToShop(order) ? 'Heading to the shop' : (order.status === 'picked_up' || order.status === 'on_the_way' ? 'On the way to you' : 'Delivery Partner'),
         phone: order.riderPhone,
-        photo: '/img/avatar-rider.jpg',
+        photo: riderFaceOf(order),
         rating: '',
         reviews: '',
         initials: initials(name),

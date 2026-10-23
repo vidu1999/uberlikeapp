@@ -202,7 +202,7 @@ function parseDocs(address) {
     nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
     amlKyc: '', amlHits: 0, amlRequestId: '',
     livenessKyc: '', livenessScore: null, livenessRequestId: '',
-    kycSession: '', kycEvent: '',
+    kycSession: '', kycEvent: '', avatar: '',
   };
   if (addr.indexOf(RIDER_DOCS_MARK) !== 0) return out;
   try {
@@ -294,6 +294,78 @@ function applyEventToDocs(docs, event) {
   return docs;
 }
 
+function firstHttpUrl(obj, keys) {
+  if (!obj || typeof obj !== 'object') return '';
+  for (let i = 0; i < keys.length; i++) {
+    const v = String(obj[keys[i]] || '').trim();
+    if (/^https?:\/\//i.test(v)) return v;
+  }
+  return '';
+}
+
+const FACE_KEYS = [
+  'reference_image', 'referenceImage', 'face_image', 'faceImage',
+  'selfie', 'image_url', 'imageUrl', 'portrait', 'photo', 'image',
+];
+
+function faceUrlFromDecision(decision) {
+  if (!decision || typeof decision !== 'object') return '';
+  const lives = Array.isArray(decision.liveness_checks) ? decision.liveness_checks
+    : (decision.liveness ? [decision.liveness] : []);
+  for (let i = 0; i < lives.length; i++) {
+    const u = firstHttpUrl(lives[i], FACE_KEYS);
+    if (u) return u;
+  }
+  const faces = Array.isArray(decision.face_matches) ? decision.face_matches : [];
+  for (let i = 0; i < faces.length; i++) {
+    const u = firstHttpUrl(faces[i], FACE_KEYS);
+    if (u) return u;
+  }
+  const ivs = Array.isArray(decision.id_verifications) ? decision.id_verifications : [];
+  for (let i = 0; i < ivs.length; i++) {
+    const u = firstHttpUrl(ivs[i], FACE_KEYS);
+    if (u) return u;
+  }
+  return firstHttpUrl(decision, FACE_KEYS);
+}
+
+async function persistRiderAvatar(env, riderId, url) {
+  const src = String(url || '').trim();
+  if (!/^https?:\/\//i.test(src)) return '';
+  const base = String((env && env.SUPABASE_URL) || '').replace(/\/$/, '');
+  const key = String((env && (env.SUPABASE_KEY || env.SUPABASE_SERVICE_ROLE || env.SUPABASE_ANON_KEY)) || '').trim();
+  if (!base || !key) return src;
+  try {
+    const img = await fetch(src);
+    if (!img.ok) return src;
+    const buf = await img.arrayBuffer();
+    if (!buf || buf.byteLength < 80 || buf.byteLength > 6 * 1024 * 1024) return src;
+    const id = String(riderId || 'rider').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 72) || 'rider';
+    const path = 'rider/' + id + '-face.jpg';
+    const headers = {
+      apikey: key,
+      Authorization: 'Bearer ' + key,
+      'Content-Type': 'image/jpeg',
+      'x-upsert': 'true',
+    };
+    try {
+      await fetch(base + '/storage/v1/bucket', {
+        method: 'POST',
+        headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ id: 'qb-images', name: 'qb-images', public: true, fileSizeLimit: 2097152 }),
+      });
+    } catch (_) {}
+    let res = await fetch(base + '/storage/v1/object/qb-images/' + path, { method: 'POST', headers: headers, body: buf });
+    if (!res.ok) {
+      res = await fetch(base + '/storage/v1/object/qb-images/' + path, { method: 'PUT', headers: headers, body: buf });
+    }
+    if (!res.ok) return src;
+    return base + '/storage/v1/object/public/qb-images/' + path;
+  } catch (_) {
+    return src;
+  }
+}
+
 async function sb(env, path, method, body) {
   const base = String((env && env.SUPABASE_URL) || '').replace(/\/$/, '');
   const key = String((env && (env.SUPABASE_KEY || env.SUPABASE_SERVICE_ROLE || env.SUPABASE_ANON_KEY)) || '').trim();
@@ -327,6 +399,11 @@ export async function applyDiditEvent(env, event) {
   const role = String(row.role || '').toLowerCase();
   if (role && role !== 'rider' && role !== 'driver') return { applied: false };
   const docs = applyEventToDocs(parseDocs(row.address), event);
+  const faceSrc = faceUrlFromDecision((event && event.decision) || event);
+  if (faceSrc && String(event.status || '') === 'Approved') {
+    const stored = await persistRiderAvatar(env, row.id, faceSrc);
+    if (stored) docs.avatar = stored;
+  }
   const patch = { address: RIDER_DOCS_MARK + JSON.stringify(docs) };
   if (docs.plate) patch.vehicle = (docs.vehicleType || 'Motorcycle') + ' · ' + docs.plate;
   const ok = await sb(env, 'accounts?id=eq.' + encodeURIComponent(row.id), 'PATCH', patch);
