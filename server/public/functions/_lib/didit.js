@@ -43,32 +43,57 @@ export function diditConfigured(env) {
   return !!diditKey(env);
 }
 
+function flattenErr(v) {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map(flattenErr).filter(Boolean).join(' ');
+  if (typeof v === 'object') {
+    return String(v.message || v.error || v.detail || v.code || flattenErr(Object.keys(v).map(function (k) { return v[k]; })));
+  }
+  return String(v);
+}
+
 function detailText(data) {
   if (!data) return '';
-  if (typeof data.detail === 'string') return data.detail;
-  if (data.detail && typeof data.detail === 'object') {
-    return String(data.detail.message || data.detail.error || data.detail.code || '');
-  }
+  if (typeof data === 'string') return data;
+  const fromDetail = flattenErr(data.detail);
+  if (fromDetail) return fromDetail;
   if (typeof data.error === 'string') return data.error;
   if (data.error && data.error.message) return String(data.error.message);
   if (typeof data.message === 'string') return data.message;
-  return '';
+  const keys = ['workflow_id', 'callback', 'vendor_data', 'features', 'non_field_errors'];
+  for (let i = 0; i < keys.length; i++) {
+    const t = flattenErr(data[keys[i]]);
+    if (t) return t;
+  }
+  const bits = [];
+  Object.keys(data).forEach(function (k) {
+    const t = flattenErr(data[k]);
+    if (t && t.length < 180) bits.push(t);
+  });
+  return bits.join(' ');
 }
 
 export function diditErrorMessage(httpStatus, data) {
-  const raw = detailText(data);
+  const raw = String(detailText(data) || '').trim();
   const d = raw.toLowerCase();
   if (/credit|balance|billing|not-enough|insufficient/.test(d)) {
-    return 'Didit used a paid workflow. Create a Free KYC flow (ID + live face only, no AML) and set DIDIT_WORKFLOW_ID.';
+    return 'Didit used a paid workflow. Create a Free KYC flow (ID + live face only, no AML), Publish it, and set DIDIT_WORKFLOW_ID.';
+  }
+  if (/invalid workflow|unpublished|publish the/.test(d) || (httpStatus === 400 && /workflow/.test(d))) {
+    return 'Didit needs a published Free KYC workflow. In Didit → Workflows, create ID + live face (no AML), click Publish, paste the id as DIDIT_WORKFLOW_ID.';
   }
   if (httpStatus === 429) return 'Too many checks. Wait a minute and try again.';
   if (httpStatus === 401 || httpStatus === 403 || httpStatus === 402) {
-    return 'Didit blocked this check (403). Use a secret API key with no IP lock, and a Free KYC workflow id.';
+    return 'Didit blocked this check (403). Use a secret API key with no IP lock, and a published Free KYC workflow id.';
   }
-  if (raw && raw.length < 160 && !/api[- ]?key/i.test(raw)) {
-    if (/image|file|front|back|document/i.test(d)) return 'Could not read this card. Use a clearer front and back photo.';
-  }
-  return 'Could not verify this document. Try again.';
+  if (raw && raw.length < 180 && !/api[- ]?key/i.test(raw)) return raw;
+  return 'Could not start the Didit live check. Try again.';
+}
+
+export function diditLooksRetryableWorkflow(data) {
+  const t = JSON.stringify(data || {}).toLowerCase();
+  return /invalid workflow|unpublished|workflow_id/.test(t);
 }
 
 export async function diditRequest(env, path, opts) {
@@ -216,6 +241,18 @@ export async function diditPhoneCheck(env, payload) {
 
 export async function diditCreateWorkflow(env, payload) {
   return diditRequest(env, '/workflows/', { json: payload || {} });
+}
+
+export async function diditPublishWorkflow(env, workflowId) {
+  const id = String(workflowId || '').trim();
+  if (!id) return { ok: false, status: 400, data: { detail: 'Missing workflow.' } };
+  let out = await diditRequest(env, '/workflows/' + encodeURIComponent(id) + '/publish/', { json: {} });
+  if (out.ok) return out;
+  out = await diditRequest(env, '/workflows/' + encodeURIComponent(id) + '/', {
+    method: 'PATCH',
+    json: { status: 'published' },
+  });
+  return out;
 }
 
 export async function diditListWorkflows(env) {

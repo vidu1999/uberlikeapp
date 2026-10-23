@@ -6,7 +6,9 @@ import {
   diditIdVerification,
   diditKey,
   diditListWorkflows,
+  diditLooksRetryableWorkflow,
   diditPassiveLiveness,
+  diditPublishWorkflow,
   diditSessionDecision,
 } from './didit.js';
 
@@ -391,7 +393,6 @@ async function createFreeWorkflow(env) {
         { feature: 'OCR' },
         { feature: 'LIVENESS' },
         { feature: 'FACE_MATCH' },
-        { feature: 'IP_ANALYSIS' },
       ],
     },
     {
@@ -401,6 +402,15 @@ async function createFreeWorkflow(env) {
         { feature: 'OCR' },
         { feature: 'LIVENESS' },
         { feature: 'FACE_MATCH' },
+        { feature: 'IP' },
+      ],
+    },
+    {
+      workflow_label: 'QuickBite Free KYC',
+      workflow_type: 'kyc',
+      features: [
+        { feature: 'OCR' },
+        { feature: 'LIVENESS' },
       ],
     },
   ];
@@ -408,7 +418,10 @@ async function createFreeWorkflow(env) {
   for (let i = 0; i < bodies.length; i++) {
     last = await diditCreateWorkflow(env, bodies[i]);
     const id = workflowIdOf(last.data);
-    if (last.ok && id) return id;
+    if (last.ok && id) {
+      try { await diditPublishWorkflow(env, id); } catch (_) {}
+      return id;
+    }
   }
   throw new Error(diditErrorMessage(last.status, last.data) || 'Could not create a free Didit workflow.');
 }
@@ -511,8 +524,7 @@ export async function startRiderKycSession(env, body, origin) {
   } catch (e) {
     return { status: 502, body: { ok: false, message: (e && e.message) || 'Could not start free ID check.' } };
   }
-  const base = String(origin || 'https://quickbite-2ao.pages.dev').replace(/\/$/, '');
-  const callback = String((body && body.callback) || (base + '/rider.html?didit=done'));
+  const callback = 'https://quickbite-2ao.pages.dev/rider.html?didit=done';
   async function openSession(wf) {
     const attempts = [
       { workflow_id: wf, vendor_data: riderId, callback: callback },
@@ -526,14 +538,18 @@ export async function startRiderKycSession(env, body, origin) {
     return last;
   }
   let sent = await openSession(workflowId);
-  const detail = JSON.stringify((sent && sent.data) || {}).toLowerCase();
-  if (!sent.ok && /credit|balance|billing|not-enough|insufficient/.test(detail)) {
+  const blob = JSON.stringify((sent && sent.data) || {}).toLowerCase();
+  const needFree = !sent.ok && (
+    /credit|balance|billing|not-enough|insufficient/.test(blob) ||
+    diditLooksRetryableWorkflow(sent.data)
+  );
+  if (needFree) {
     try {
       const freeId = await createFreeWorkflow(env);
       cachedWorkflowId = freeId;
       sent = await openSession(freeId);
     } catch (e) {
-      return { status: 403, body: { ok: false, message: (e && e.message) || diditErrorMessage(sent.status, sent.data) } };
+      return { status: sent.status || 400, body: { ok: false, message: (e && e.message) || diditErrorMessage(sent.status, sent.data) } };
     }
   }
   if (!sent.ok) {
