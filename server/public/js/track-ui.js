@@ -310,19 +310,23 @@
     const toShop = goingToShop(order);
     const picked = order.status === 'picked_up' || order.status === 'on_the_way';
     const close = isClose(order);
-    const showPickup = viewer === 'rider' && toShop;
-    const showComplete = viewer === 'rider' && picked;
+    const started = viewer !== 'rider' || !!(opts && opts.started);
+    const showStart = viewer === 'rider' && !started && order.status !== 'delivered' && order.status !== 'cancelled' && (toShop || picked);
+    const showPickup = viewer === 'rider' && started && toShop;
+    const showComplete = viewer === 'rider' && started && picked;
     const showDone = order.status === 'delivered' && viewer !== 'rider';
     const chatOn = typeof API !== 'undefined' && API.canChat ? API.canChat(order, viewerRole(viewer)) : false;
     const title = trackTitle(order, viewer);
     const nearM = metersLeft(order);
     const nearAway = Number.isFinite(nearM) ? Math.max(1, Math.round(nearM)) + ' m' : '—';
-    const nearTxt = showPickup
-      ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
-      : showComplete
-        ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
-        : '';
-    return `<div class="rd-screen" data-track-root="${esc(order.id)}" data-viewer="${esc(viewer)}" data-has-rider="${order.riderName ? '1' : '0'}">
+    const nearTxt = showStart
+      ? (toShop ? 'Start to go to the shop' : 'Start to go to the customer')
+      : showPickup
+        ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
+        : showComplete
+          ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
+          : '';
+    return `<div class="rd-screen" data-track-root="${esc(order.id)}" data-viewer="${esc(viewer)}" data-started="${started ? '1' : '0'}" data-has-rider="${order.riderName ? '1' : '0'}">
       <div id="map" class="map"></div>
       <div class="rd-top">
         <button class="rd-menu" type="button" ${back} aria-label="Back">${ICO_MENU}</button>
@@ -363,6 +367,7 @@
           <button class="btn-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat${unreadDot(order.id, viewer)}</button>
         </div>
         <p class="rd-near ${close ? 'ok' : ''} ${nearTxt ? '' : 'hidden'}" data-near>${esc(nearTxt)}</p>
+        <button class="btn-start ${showStart ? '' : 'hidden'}" data-start-trip="${esc(order.id)}" type="button">Start</button>
         <button class="btn-drop ${showPickup ? '' : 'hidden'}" data-pickup="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Confirm pickup</button>
         <button class="btn-drop ${showComplete ? '' : 'hidden'}" data-drop="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Mark delivered</button>
         <button class="btn-drop ${showDone ? '' : 'hidden'}" data-done type="button">Done</button>
@@ -406,30 +411,36 @@
     const toShop = goingToShop(order);
     const picked = order.status === 'picked_up' || order.status === 'on_the_way';
     const close = isClose(order);
+    const started = viewer !== 'rider' || root.dataset.started === '1';
+    const showStart = viewer === 'rider' && !started && order.status !== 'delivered' && order.status !== 'cancelled' && (toShop || picked);
+    const showPickup = viewer === 'rider' && started && toShop;
+    const showComplete = viewer === 'rider' && started && picked;
+    const startBtn = root.querySelector('[data-start-trip]');
+    if (startBtn) startBtn.classList.toggle('hidden', !showStart);
     const pickup = root.querySelector('[data-pickup]');
     if (pickup) {
-      pickup.classList.toggle('hidden', !(viewer === 'rider' && toShop));
+      pickup.classList.toggle('hidden', !showPickup);
       pickup.disabled = !close;
     }
     const complete = root.querySelector('[data-drop]');
     if (complete) {
-      complete.classList.toggle('hidden', !(viewer === 'rider' && picked));
+      complete.classList.toggle('hidden', !showComplete);
       complete.disabled = !close;
     }
     const near = root.querySelector('[data-near]');
     if (near) {
-      const showPickup = viewer === 'rider' && toShop;
-      const showComplete = viewer === 'rider' && picked;
       const nearM = metersLeft(order);
       const nearAway = Number.isFinite(nearM) ? Math.max(1, Math.round(nearM)) + ' m' : '—';
-      const txt = showPickup
-        ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
-        : showComplete
-          ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
-          : '';
+      const txt = showStart
+        ? (toShop ? 'Start to go to the shop' : 'Start to go to the customer')
+        : showPickup
+          ? (close ? 'You are at the shop — confirm pickup' : nearAway + ' to shop · get within 25 m to confirm')
+          : showComplete
+            ? (close ? 'You are at the customer — confirm delivered' : nearAway + ' to customer · get within 25 m to confirm')
+            : '';
       near.textContent = txt;
       near.classList.toggle('hidden', !txt);
-      near.classList.toggle('ok', close && !!txt);
+      near.classList.toggle('ok', close && !!txt && !showStart);
     }
     const h1 = root.querySelector('.rd-top h1');
     if (h1) h1.textContent = trackTitle(order, viewer);

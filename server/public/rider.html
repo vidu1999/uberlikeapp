@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zl" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zm" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
@@ -17,8 +17,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19ao"></script>
-  <script src="/js/maps.js?v=19zu"></script>
-  <script src="/js/track-ui.js?v=19zv"></script>
+  <script src="/js/maps.js?v=19zv"></script>
+  <script src="/js/track-ui.js?v=19zw"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -52,6 +52,7 @@
       needDocs: false,
       needBank: false,
       wdOpen: false,
+      tripStarted: false,
       vehDraft: { type: '', plate: null, registered: null },
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
@@ -462,8 +463,6 @@
       const items = o.items || [];
       const claimed = isMine(o) || !!o.riderId;
       const shop = API.shopOf ? API.shopOf(o.shopId) : {};
-      const canNav = isMine(o) && o.status !== 'delivered';
-      const navLabel = headingToCustomer(o) ? 'Navigate to customer' : 'Navigate to shop';
       const lane = API.chatLane && API.chatLane(o);
       const peerShop = lane === 'shop';
       const peerName = peerShop ? ((API.shopTitle && API.shopTitle(shop)) || shop.name || o.shopName || 'Shop') : (o.customerName || 'Customer');
@@ -512,8 +511,7 @@
         </div>
         ${!claimed && o.status === 'ready' && !riderBusy() ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">${riderVerified() ? 'Accept' : 'Verify to accept'}</button>` : ''}
         ${!claimed && o.status === 'ready' && riderBusy() ? '<p class="pad muted">Finish your current order before accepting another.</p>' : ''}
-        ${canNav && liveJob(o) ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
-        ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
+        ${isMine(o) && o.status !== 'delivered' && o.status !== 'cancelled' ? `<button class="rd-navbtn" type="button" data-start-trip="${esc(o.id)}">Start</button>` : ''}
       </div>`;
     }
 
@@ -521,7 +519,7 @@
       const o = (API.orders || []).find((x) => x.id === state.orderId);
       if (!o) return homeView();
       if (o.status === 'delivered') return deliveredView();
-      return TrackUI.screen(o, 'rider', { back: 'data-close' }) + deliverPinSheet();
+      return TrackUI.screen(o, 'rider', { back: 'data-close', started: !!state.tripStarted }) + deliverPinSheet();
     }
     function deliverPinSheet() {
       const p = state.deliverPin || {};
@@ -975,12 +973,7 @@
       const job = activeJob();
       if (job && job.shopId === shopId) {
         state.orderId = job.id;
-        if (liveJob(job)) {
-          state.screen = 'live';
-          startLiveGps(job.id);
-        } else {
-          state.screen = 'details';
-        }
+        state.screen = 'details';
         render(true);
         return;
       }
@@ -992,11 +985,13 @@
       render(true);
     }
     function mapIdleView() {
-      return `<div class="rd-map-empty" data-rider-map style="position:relative;height:100%">
+      const job = activeJob();
+      return `<div class="rd-map-empty${job ? ' has-start' : ''}" data-rider-map style="position:relative;height:100%">
         <div id="map" class="map" style="position:absolute;inset:0"></div>
         <div class="rd-map-note">
           ${mapNoteHtml()}
         </div>
+        ${job && job.status !== 'delivered' && job.status !== 'cancelled' ? `<button class="rd-map-start" type="button" data-start-trip="${esc(job.id)}">Start</button>` : ''}
       </div>${nav()}`;
     }
 
@@ -1132,6 +1127,7 @@
       state.deliverPin = { open: false, orderId: '', err: '', sending: false, sent: false };
       state.orderId = id;
       state.screen = 'delivered';
+      state.tripStarted = false;
       state.filter = 'done';
       startRiderGps();
       render(true);
@@ -1231,6 +1227,15 @@
       state.tab = 'home';
       state.screen = '';
     }
+    function startTrip(id) {
+      const o = (API.orders || []).find((x) => x.id === id) || activeJob();
+      if (!o || o.status === 'delivered' || o.status === 'cancelled') return;
+      state.orderId = o.id;
+      state.screen = 'live';
+      state.tripStarted = true;
+      startLiveGps(o.id);
+      render(true);
+    }
     function goRiderDocs() {
       state.needDocs = true;
       state.tab = 'profile';
@@ -1259,6 +1264,7 @@
       try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
       state.orderId = id;
       state.screen = 'live';
+      state.tripStarted = false;
       startLiveGps(id);
       render(true);
     }
@@ -1512,10 +1518,11 @@
         render(true);
       });
       root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = () => {
-        state.orderId = b.dataset.openLive;
-        state.screen = 'live';
-        startLiveGps(state.orderId);
-        render(true);
+        startTrip(b.dataset.openLive);
+      });
+      root.querySelectorAll('[data-start-trip]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        startTrip(b.dataset.startTrip);
       });
       const online = root.querySelector('[data-online]');
       if (online) online.onclick = () => { state.online = !state.online; render(true); };
@@ -1925,10 +1932,12 @@
           const o = (API.orders || []).find((x) => x.id === state.orderId);
           if (o && o.status === 'delivered') {
             killMap();
+            state.tripStarted = false;
             state.screen = 'delivered';
           } else if (o) {
             const existing = root.querySelector('[data-track-root="'+state.orderId+'"]');
             if (!force && existing && state.mapHandle) {
+              existing.dataset.started = state.tripStarted ? '1' : '0';
               state.mapHandle.update(o);
               TrackUI.paint(existing, o, 'rider');
               ensureDeliverSheet();
@@ -1941,6 +1950,7 @@
             bindMapChrome(o);
             const el = document.getElementById('map');
             if (el) state.mapHandle = mountTrackingMap(el, o);
+            if (state.tripStarted && state.mapHandle && state.mapHandle.followTo) state.mapHandle.followTo(o);
             return;
           }
         }

@@ -954,6 +954,20 @@ html[data-role="shop"] .otp-login .btn.ghost { background: #0e1c18; color: #fff;
   width: 100%; margin-top: 8px; border: 0; background: transparent; color: #9CA3AF;
   font-weight: 700; font-size: 13px; cursor: pointer; padding: 8px;
 }
+.btn-start {
+  width: 100%; margin-top: 10px; border: 0; background: #00C853; color: #fff;
+  font-weight: 800; font-size: 17px; cursor: pointer; padding: 16px; border-radius: 16px;
+}
+.rd-map-start {
+  position: absolute; left: 16px; right: 16px;
+  bottom: calc(var(--bnav) + 16px);
+  z-index: 6;
+  background: #00C853; color: #fff; border: 0; border-radius: 28px;
+  padding: 16px; font-weight: 800; font-size: 16px; cursor: pointer;
+}
+.rd-map-empty.has-start .rd-map-note {
+  bottom: calc(var(--bnav) + 84px);
+}
 
 .rd-jobs { padding: 12px 16px; }
 .rd-job {
