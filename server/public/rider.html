@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zm" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zn" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
@@ -17,8 +17,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19ao"></script>
-  <script src="/js/maps.js?v=19zv"></script>
-  <script src="/js/track-ui.js?v=19zw"></script>
+  <script src="/js/maps.js?v=19zw"></script>
+  <script src="/js/track-ui.js?v=19zx"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -52,7 +52,6 @@
       needDocs: false,
       needBank: false,
       wdOpen: false,
-      tripStarted: false,
       vehDraft: { type: '', plate: null, registered: null },
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
@@ -511,7 +510,7 @@
         </div>
         ${!claimed && o.status === 'ready' && !riderBusy() ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">${riderVerified() ? 'Accept' : 'Verify to accept'}</button>` : ''}
         ${!claimed && o.status === 'ready' && riderBusy() ? '<p class="pad muted">Finish your current order before accepting another.</p>' : ''}
-        ${isMine(o) && o.status !== 'delivered' && o.status !== 'cancelled' ? `<button class="rd-navbtn" type="button" data-start-trip="${esc(o.id)}">Start</button>` : ''}
+        ${isMine(o) && o.status !== 'delivered' && o.status !== 'cancelled' ? `<button class="rd-navbtn" type="button" data-go-maps="${esc(o.id)}">${headingToCustomer(o) ? 'Go to customer' : 'Go to shop'}</button>` : ''}
       </div>`;
     }
 
@@ -519,7 +518,7 @@
       const o = (API.orders || []).find((x) => x.id === state.orderId);
       if (!o) return homeView();
       if (o.status === 'delivered') return deliveredView();
-      return TrackUI.screen(o, 'rider', { back: 'data-close', started: !!state.tripStarted }) + deliverPinSheet();
+      return TrackUI.screen(o, 'rider', { back: 'data-close' }) + deliverPinSheet();
     }
     function deliverPinSheet() {
       const p = state.deliverPin || {};
@@ -985,13 +984,11 @@
       render(true);
     }
     function mapIdleView() {
-      const job = activeJob();
-      return `<div class="rd-map-empty${job ? ' has-start' : ''}" data-rider-map style="position:relative;height:100%">
+      return `<div class="rd-map-empty" data-rider-map style="position:relative;height:100%">
         <div id="map" class="map" style="position:absolute;inset:0"></div>
         <div class="rd-map-note">
           ${mapNoteHtml()}
         </div>
-        ${job && job.status !== 'delivered' && job.status !== 'cancelled' ? `<button class="rd-map-start" type="button" data-start-trip="${esc(job.id)}">Start</button>` : ''}
       </div>${nav()}`;
     }
 
@@ -1127,7 +1124,6 @@
       state.deliverPin = { open: false, orderId: '', err: '', sending: false, sent: false };
       state.orderId = id;
       state.screen = 'delivered';
-      state.tripStarted = false;
       state.filter = 'done';
       startRiderGps();
       render(true);
@@ -1227,14 +1223,42 @@
       state.tab = 'home';
       state.screen = '';
     }
-    function startTrip(id) {
+    function openGoogleDrive(lat, lng) {
+      const dlat = Number(lat);
+      const dlng = Number(lng);
+      if (!Number.isFinite(dlat) || !Number.isFinite(dlng)) {
+        alert('Location is not on the map yet.');
+        return;
+      }
+      const dest = dlat.toFixed(6) + ',' + dlng.toFixed(6);
+      let url = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(dest) + '&travelmode=driving';
+      if (state.liveLat != null && state.liveLng != null) {
+        url += '&origin=' + encodeURIComponent(Number(state.liveLat).toFixed(6) + ',' + Number(state.liveLng).toFixed(6));
+      }
+      try {
+        if (window.QuickBiteNative) {
+          location.href = url;
+          return;
+        }
+        const w = window.open(url, '_blank', 'noopener');
+        if (!w) location.href = url;
+      } catch (_) {
+        location.href = url;
+      }
+    }
+    function openDriveToOrder(id) {
       const o = (API.orders || []).find((x) => x.id === id) || activeJob();
-      if (!o || o.status === 'delivered' || o.status === 'cancelled') return;
-      state.orderId = o.id;
-      state.screen = 'live';
-      state.tripStarted = true;
-      startLiveGps(o.id);
-      render(true);
+      if (!o) return;
+      let lat;
+      let lng;
+      if (headingToCustomer(o)) {
+        lat = Number(o.deliveryLat);
+        lng = Number(o.deliveryLng);
+      } else {
+        const shop = shopPos(o);
+        if (shop) { lat = shop[0]; lng = shop[1]; }
+      }
+      openGoogleDrive(lat, lng);
     }
     function goRiderDocs() {
       state.needDocs = true;
@@ -1264,7 +1288,6 @@
       try { await API.sendMessage(id, 'QuickBite', 'system', (u.name || 'Rider') + ' accepted your order and is heading to the shop.'); } catch (_) {}
       state.orderId = id;
       state.screen = 'live';
-      state.tripStarted = false;
       startLiveGps(id);
       render(true);
     }
@@ -1518,11 +1541,14 @@
         render(true);
       });
       root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = () => {
-        startTrip(b.dataset.openLive);
+        state.orderId = b.dataset.openLive;
+        state.screen = 'live';
+        startLiveGps(state.orderId);
+        render(true);
       });
-      root.querySelectorAll('[data-start-trip]').forEach((b) => b.onclick = (e) => {
+      root.querySelectorAll('[data-go-maps]').forEach((b) => b.onclick = (e) => {
         e.stopPropagation();
-        startTrip(b.dataset.startTrip);
+        openDriveToOrder(b.dataset.goMaps);
       });
       const online = root.querySelector('[data-online]');
       if (online) online.onclick = () => { state.online = !state.online; render(true); };
@@ -1932,12 +1958,10 @@
           const o = (API.orders || []).find((x) => x.id === state.orderId);
           if (o && o.status === 'delivered') {
             killMap();
-            state.tripStarted = false;
             state.screen = 'delivered';
           } else if (o) {
             const existing = root.querySelector('[data-track-root="'+state.orderId+'"]');
             if (!force && existing && state.mapHandle) {
-              existing.dataset.started = state.tripStarted ? '1' : '0';
               state.mapHandle.update(o);
               TrackUI.paint(existing, o, 'rider');
               ensureDeliverSheet();
@@ -1950,7 +1974,6 @@
             bindMapChrome(o);
             const el = document.getElementById('map');
             if (el) state.mapHandle = mountTrackingMap(el, o);
-            if (state.tripStarted && state.mapHandle && state.mapHandle.followTo) state.mapHandle.followTo(o);
             return;
           }
         }

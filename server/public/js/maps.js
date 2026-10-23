@@ -328,23 +328,6 @@
         const c = p.rider || destLocked;
         map.setView(c, Math.max(map.getZoom(), 14));
       },
-      followTo(order2) {
-        const next = order2 || order;
-        const p = positions(next);
-        const to = goingToShop(next) ? (p.shopPos || p.dest) : p.dest;
-        const live = window.QB_LIVE;
-        const from = p.rider || (live && live.lat != null ? [live.lat, live.lng] : null);
-        const pts = [];
-        if (to && Number.isFinite(to[0])) pts.push(to);
-        if (from && Number.isFinite(from[0])) pts.push(from);
-        if (!pts.length) return;
-        try {
-          if (pts.length === 1) map.setView(pts[0], 16);
-          else map.fitBounds(L.latLngBounds(pts).pad(0.22), pad);
-        } catch (_) {
-          map.setView(pts[0], 16);
-        }
-      },
       destroy() {
         try {
           map.remove();
