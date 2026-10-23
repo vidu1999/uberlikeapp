@@ -553,6 +553,15 @@ html[data-role="shop"] .st-head { color: #111; background: #fff; }
 }
 .ol-step.on .ol-dot { border-color: #00C853; background: #00C853; }
 .ol-step.done .ol-dot { border-color: #00C853; background: #00C853; }
+.ol-step.live .ol-dot {
+  border-color: #00C853; background: #00C853;
+  animation: stepLive 1.5s ease-out infinite;
+}
+@keyframes stepLive {
+  0% { box-shadow: 0 0 0 0 rgba(0, 200, 83, .55); }
+  70% { box-shadow: 0 0 0 10px rgba(0, 200, 83, 0); }
+  100% { box-shadow: 0 0 0 10px rgba(0, 200, 83, 0); }
+}
 .ol-line { width: 2px; flex: 1; min-height: 22px; background: #1F2937; }
 .ol-step.done .ol-line { background: #00C853; }
 .ol-step b { display: block; font-size: 14px; }

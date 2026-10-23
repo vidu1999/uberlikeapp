@@ -110,6 +110,18 @@ body > #root > .track-screen {
 }
 .rd-step.on i { background: #00C853; box-shadow: 0 0 0 3px rgba(0, 200, 83, .22); }
 .rd-step.now span { color: #00C853; }
+.rd-step.live i {
+  position: relative;
+  background: #00C853;
+  box-shadow: 0 0 0 3px rgba(0, 200, 83, .28);
+  animation: stepLive 1.5s ease-out infinite;
+}
+.rd-step.live span { color: #00C853; }
+@keyframes stepLive {
+  0% { box-shadow: 0 0 0 3px rgba(0, 200, 83, .55); }
+  70% { box-shadow: 0 0 0 11px rgba(0, 200, 83, 0); }
+  100% { box-shadow: 0 0 0 11px rgba(0, 200, 83, 0); }
+}
 .rd-steps em {
   flex: 0.55;
   height: 2px;

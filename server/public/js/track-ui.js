@@ -516,20 +516,20 @@
     const st = String((order && order.status) || '');
     const placed = st !== 'cancelled';
     const shopOk = placed && st !== 'pending' && st !== '';
-    const prepOk = shopOk && st !== '';
+    const prepNow = st === 'preparing';
     const readyOk = st === 'ready' || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered';
     const riderOk = !!(order && (order.riderName || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered'));
     let now = 'placed';
     if (riderOk) now = 'rider';
     else if (readyOk) now = 'ready';
-    else if (st === 'preparing') now = 'prepared';
+    else if (prepNow) now = 'prepared';
     else if (shopOk) now = 'shop';
     return {
       now: now,
       items: [
         { id: 'placed', label: 'Order placed', on: placed },
         { id: 'shop', label: 'Shop accepted', on: shopOk },
-        { id: 'prepared', label: 'Prepared', on: prepOk },
+        { id: 'prepared', label: readyOk ? 'Prepared' : 'Preparing', on: readyOk || prepNow, live: prepNow },
         { id: 'ready', label: 'Ready', on: readyOk },
         { id: 'rider', label: 'Rider accepted', on: riderOk },
       ],
@@ -540,8 +540,8 @@
     const s = orderSteps(order);
     let html = '<div class="rd-steps" data-steps>';
     s.items.forEach(function (it, i) {
-      html += '<div class="rd-step' + (it.on ? ' on' : '') + (s.now === it.id ? ' now' : '') + '" data-step="' + it.id + '"><i></i><span>' + it.label + '</span></div>';
-      if (i < s.items.length - 1) html += '<em class="' + (it.on ? 'on' : '') + '"></em>';
+      html += '<div class="rd-step' + (it.on ? ' on' : '') + (s.now === it.id ? ' now' : '') + (it.live ? ' live' : '') + '" data-step="' + it.id + '"><i></i><span>' + it.label + '</span></div>';
+      if (i < s.items.length - 1) html += '<em class="' + (it.on && !it.live ? 'on' : '') + '"></em>';
     });
     return html + '</div>';
   }
@@ -550,8 +550,8 @@
     const s = orderSteps(order);
     if (s.now === 'placed') return 'Waiting for shop to accept';
     if (s.now === 'shop') return 'Shop accepted';
-    if (s.now === 'prepared') return 'Order prepared';
-    if (s.now === 'ready') return 'Order ready · waiting for rider';
+    if (s.now === 'prepared') return 'Preparing';
+    if (s.now === 'ready') return 'Prepared · waiting for rider';
     return 'Rider accepted';
   }
 
