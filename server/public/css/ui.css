@@ -536,9 +536,15 @@ html[data-role="shop"] .st-head { color: #111; background: #fff; }
 .sp-wallet-bal {
   background: #00C853; color: #fff; border-radius: 20px; padding: 18px; margin: 8px 0 16px;
 }
+.sp-wallet-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .sp-wallet-bal span { display: block; opacity: .9; font-size: 13px; }
 .sp-wallet-bal b { display: block; font-size: 28px; margin: 4px 0; }
 .sp-wallet-bal small { display: block; opacity: .9; font-weight: 600; font-size: 12px; }
+.sp-wd {
+  flex: none; border: 0; background: #fff; color: #00C853; font-weight: 800;
+  border-radius: 999px; padding: 10px 14px; cursor: pointer; white-space: nowrap;
+}
+html[data-role="shop"] .sp-edit .rd-docs-note { color: #B45309; margin: 8px 16px 4px; }
 .sp-tx {
   display: flex; align-items: center; gap: 12px; background: var(--navy2); border-radius: 16px;
   padding: 12px 14px; margin-bottom: 8px; color: #fff;
