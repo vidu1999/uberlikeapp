@@ -8,6 +8,7 @@ const otp = require('./otp');
 const db = require('./db');
 const seed = require('./seed');
 const payLk = require('./pay-lk');
+const idVerify = require('./id-verify');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -443,6 +444,35 @@ async function handleApi(req, res, url) {
       cloud: dbReady.cloud,
       error: dbReady.error,
     });
+    return;
+  }
+
+  if (pathname === '/api/verify-id') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, provider: 'didit', configured: idVerify.configured() });
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, message: 'Use POST.' });
+      return;
+    }
+    try {
+      const raw = await readRaw(req);
+      if (raw && raw.length > 7000000) {
+        json(res, 413, { ok: false, message: 'Photos are too large. Try a smaller photo.' });
+        return;
+      }
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await idVerify.verifyIdDocument(body);
+      json(res, out.status, out.body);
+    } catch (e) {
+      json(res, 502, { ok: false, message: (e && e.message) || 'Could not verify this document.' });
+    }
     return;
   }
 

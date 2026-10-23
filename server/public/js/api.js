@@ -2068,12 +2068,93 @@
     if (!out.plate) out.plate = plateFromBlob(out.text);
     return out;
   };
+  function compressIdImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return reject(new Error('Choose a photo.'));
+      if (typeof file === 'string') return resolve(file);
+      let url = '';
+      try { url = URL.createObjectURL(file); } catch (_) {}
+      const img = new Image();
+      const fail = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        blobToDataUrl(file).then(resolve).catch(reject);
+      };
+      img.onload = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        let w = img.naturalWidth || img.width || 1;
+        let h = img.naturalHeight || img.height || 1;
+        const scale = Math.min(1, 1400 / Math.max(w, h, 1));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        if (!ctx) return fail();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        let q = 0.82;
+        function asUrl() {
+          try { resolve(c.toDataURL('image/jpeg', q)); } catch (e) { reject(e); }
+        }
+        if (!c.toBlob) return asUrl();
+        const tryBlob = function () {
+          c.toBlob(function (blob) {
+            if (!blob) return asUrl();
+            if (blob.size > 750000 && q > 0.5) {
+              q -= 0.1;
+              tryBlob();
+              return;
+            }
+            resolve(blob);
+          }, 'image/jpeg', q);
+        };
+        tryBlob();
+      };
+      img.onerror = fail;
+      img.src = url || '';
+    });
+  }
+  function looksLikePhoto(src) {
+    const s = String(src || '');
+    return /^https?:|^data:image\//i.test(s);
+  }
+  API.verifyIdDocument = async function (kind, frontSrc, backSrc) {
+    async function pack(src) {
+      if (!src) throw new Error('Upload front and back photos.');
+      if (typeof src !== 'string' && (src instanceof Blob || src.size)) {
+        const c = await compressIdImage(src);
+        return typeof c === 'string' ? c : await blobToDataUrl(c);
+      }
+      const s = String(src);
+      if (!looksLikePhoto(s)) throw new Error('Upload this photo again.');
+      return s;
+    }
+    const front = await pack(frontSrc);
+    const back = await pack(backSrc);
+    const res = await fetch((API.base || '') + '/api/verify-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: kind,
+        front: front,
+        back: back,
+        riderId: (API.user && API.user.id) || '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not verify this document.');
+    return j;
+  };
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {
       nic: '', licenseId: '', nicPhoto: '', nicPhotoBack: '',
       licensePhoto: '', licensePhotoBack: '',
       plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
+      nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -2090,6 +2171,12 @@
           out.vehicleType = String(j.vehicleType || 'Motorcycle') || 'Motorcycle';
           out.regPhoto = String(j.regPhoto || '');
           out.registered = j.registered === true || j.registered === '1';
+          out.nicKyc = String(j.nicKyc || '').toLowerCase();
+          out.licenseKyc = String(j.licenseKyc || '').toLowerCase();
+          out.nicKycId = String(j.nicKycId || '');
+          out.licenseKycId = String(j.licenseKycId || '');
+          out.nicName = String(j.nicName || '');
+          out.licenseName = String(j.licenseName || '');
         }
       } catch (_) {}
     }
@@ -2108,6 +2195,7 @@
     const d = riderDocsFromUser(user);
     if (!parseSriNic(d.nic) || !d.nicPhoto || !d.nicPhotoBack) return false;
     if (!parseLicenseId(d.licenseId) || !d.licensePhoto || !d.licensePhotoBack) return false;
+    if (d.nicKyc !== 'approved' || d.licenseKyc !== 'approved') return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };
@@ -2137,6 +2225,12 @@
       vehicleType: String(next.vehicleType || 'Motorcycle').trim() || 'Motorcycle',
       regPhoto: String(next.regPhoto || ''),
       registered: next.registered === true,
+      nicKyc: String(next.nicKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.nicKyc || ''),
+      licenseKyc: String(next.licenseKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.licenseKyc || ''),
+      nicKycId: String(next.nicKycId || '').slice(0, 80),
+      licenseKycId: String(next.licenseKycId || '').slice(0, 80),
+      nicName: String(next.nicName || '').slice(0, 80),
+      licenseName: String(next.licenseName || '').slice(0, 80),
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
