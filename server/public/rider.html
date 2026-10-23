@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19am"></script>
+  <script src="/js/api.js?v=19an"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -712,8 +712,8 @@
       const num = kind === 'nic' ? d.nic : d.licenseId;
       const sides = kind === 'nic' ? !!(d.nicPhoto && d.nicPhotoBack) : !!(d.licensePhoto && d.licensePhotoBack);
       const label = kind === 'nic' ? 'NIC' : 'Licence';
-      if (kyc === 'approved' && num) return { cls: 'ok', text: label + ' ' + num + ' · Verified  ✓' };
-      if (kyc === 'declined') return { cls: 'wait', text: label + ' not accepted · use a clearer photo of the real card' };
+      if (kyc === 'approved') return { cls: 'ok', text: label + (num ? ' ' + num : '') + ' · Verified  ✓' };
+      if (kyc === 'declined') return { cls: 'wait', text: label + ' not accepted · tap Verify live with Didit and try again' };
       if (sides && num) return { cls: 'wait', text: label + ' ' + num + ' · checking ID service' };
       if (sides) return { cls: 'wait', text: sideStatus(kind === 'nic' ? d.nicPhoto : d.licensePhoto, kind === 'nic' ? d.nicPhotoBack : d.licensePhotoBack) };
       return { cls: 'wait', text: sideStatus(kind === 'nic' ? d.nicPhoto : d.licensePhoto, kind === 'nic' ? d.nicPhotoBack : d.licensePhotoBack) };
@@ -727,9 +727,9 @@
     }
     function verifyFormHtml() {
       const d = riderDocs();
-      const nicOk = d.nicKyc === 'approved' && !!(d.nic && d.nicPhoto && d.nicPhotoBack);
-      const licOk = d.licenseKyc === 'approved' && !!(d.licenseId && d.licensePhoto && d.licensePhotoBack);
-      const liveOk = d.livenessKyc === 'approved' && !!d.facePhoto;
+      const nicOk = d.nicKyc === 'approved';
+      const licOk = d.licenseKyc === 'approved';
+      const liveOk = d.livenessKyc === 'approved';
       const vehOk = !!(d.plate && d.registered);
       const nicLine = kycStatus('nic', d);
       const licLine = kycStatus('license', d);
@@ -739,8 +739,8 @@
       const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Start free ID & face check. Scan NIC, then driving licence, then your face. Didit gives 500 free checks a month.'}</p>
-          <button class="rd-navbtn" type="button" data-didit-kyc style="position:static;width:100%;margin:0 0 14px">${esc((nicOk && licOk && liveOk) ? 'ID check passed  ✓ · run again' : 'Start free ID & face check')}</button>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Verify live with Didit. You go to Didit, scan NIC, licence, and your face. When Didit says Approved, we mark all three verified here.'}</p>
+          <button class="rd-navbtn" type="button" data-didit-kyc style="position:static;width:100%;margin:0 0 14px">${esc((nicOk && licOk && liveOk) ? 'Verified live  ✓ · run again' : 'Verify live with Didit')}</button>
           <label class="fld">NIC — front and back</label>
           <input class="fld" id="docNic" type="hidden" value="${esc(d.nic)}" />
           <div class="rd-up-row">
@@ -769,7 +769,7 @@
           <div class="${licLine.cls}" style="margin-bottom:10px">${esc(licLine.text)}</div>
           <label class="fld">Your face — live selfie</label>
           ${docBox('face', d.facePhoto, 'Tap to take a selfie', 'user')}
-          <div class="${liveOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(liveOk ? 'Face check passed  ✓' : (d.livenessKyc === 'declined' ? 'Face not accepted · take a clearer selfie of only you' : (d.facePhoto ? 'Selfie saved · checking live face' : 'Take a selfie of your face')))}</div>
+          <div class="${liveOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(liveOk ? 'Selfie verified  ✓' : (d.livenessKyc === 'declined' ? 'Face not accepted · tap Verify live with Didit' : 'Live selfie on Didit'))}</div>
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
@@ -1797,9 +1797,9 @@
           if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
           const after = riderDocs();
-          if (after.nicKyc !== 'approved' || !after.nic) throw new Error('Tap Start free ID & face check and scan your NIC.');
-          if (after.licenseKyc !== 'approved' || !after.licenseId) throw new Error('Tap Start free ID & face check and scan your driving licence.');
-          if (after.livenessKyc !== 'approved') throw new Error('Tap Start free ID & face check and finish the live face step.');
+          if (after.nicKyc !== 'approved' || after.licenseKyc !== 'approved' || after.livenessKyc !== 'approved') {
+            throw new Error('Tap Verify live with Didit and finish NIC, licence, and selfie.');
+          }
           state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = '';
@@ -1821,7 +1821,7 @@
         diditBtn.disabled = true;
         try {
           if (!API.user || !API.user.id) throw new Error('Sign in first.');
-          if (err) err.textContent = 'Opening free ID check…';
+          if (err) err.textContent = 'Opening Didit…';
           const out = await API.startRiderKyc();
           if (out.sessionId) {
             try { sessionStorage.setItem('qb_didit_session', out.sessionId); } catch (_) {}
@@ -2042,33 +2042,51 @@
       }
     }
     async function applyDiditDecision(out) {
-      if (!out || !API.saveRiderDocs) return;
+      if (!out || !API.saveRiderDocs) return out;
       const fields = {};
       if (out.nic) fields.nic = out.nic;
       if (out.licenseId) fields.licenseId = out.licenseId;
       if (out.name) {
-        if (out.nicKyc) fields.nicName = out.name;
-        if (out.licenseKyc) fields.licenseName = out.name;
+        fields.nicName = out.name;
+        fields.licenseName = out.name;
       }
-      if (out.nicKyc) fields.nicKyc = out.nicKyc;
-      if (out.licenseKyc) fields.licenseKyc = out.licenseKyc;
-      if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
+      if (out.approved || String(out.status || '') === 'Approved') {
+        fields.nicKyc = 'approved';
+        fields.licenseKyc = 'approved';
+        fields.livenessKyc = 'approved';
+      } else {
+        if (out.nicKyc) fields.nicKyc = out.nicKyc;
+        if (out.licenseKyc) fields.licenseKyc = out.licenseKyc;
+        if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
+      }
+      if (out.facePhoto) fields.facePhoto = out.facePhoto;
       if (out.sessionId) fields.kycSession = out.sessionId;
       if (Object.keys(fields).length) await API.saveRiderDocs(fields);
+      return out;
     }
     async function consumeDiditReturn() {
       let sid = '';
+      let fromDidit = false;
       try {
         const q = new URLSearchParams(location.search || '');
         sid = q.get('session_id') || q.get('id') || '';
+        fromDidit = q.get('didit') === 'done' || !!(sid);
         if (!sid) sid = sessionStorage.getItem('qb_didit_session') || localStorage.getItem('qb_didit_session') || '';
-        if (q.get('didit') !== 'done' && !sid) return false;
+        if (!fromDidit && !sid) return false;
       } catch (_) { return false; }
       if (!API.user) return false;
+      state.auth = 'home';
+      state.tab = 'profile';
+      state.screen = '';
       try {
         if (API.riderKycDecision && sid) {
-          const out = await API.riderKycDecision(sid);
-          await applyDiditDecision(out);
+          let out = null;
+          for (let i = 0; i < 10; i++) {
+            try { out = await API.riderKycDecision(sid); } catch (_) { out = null; }
+            if (out && (out.approved || /Approved|Declined|Expired/.test(String(out.status || '')))) break;
+            await new Promise(function (ok) { setTimeout(ok, 1200); });
+          }
+          if (out) await applyDiditDecision(out);
         }
       } catch (_) {}
       try {
@@ -2077,7 +2095,6 @@
         }
       } catch (_) {}
       state.needDocs = !riderVerified();
-      if (state.needDocs) state.screen = 'docs';
       return false;
     }
     consumeGoogleRedirect().then(async (ok) => {

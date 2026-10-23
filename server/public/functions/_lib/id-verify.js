@@ -428,12 +428,14 @@ function publicSessionDecision(data) {
     else if (st === 'Declined' && livenessKyc !== 'approved') livenessKyc = 'declined';
   }
   if (status === 'Approved') {
-    if (nic) nicKyc = nicKyc || 'approved';
-    if (licenseId) licenseKyc = licenseKyc || 'approved';
-    livenessKyc = livenessKyc || 'approved';
+    nicKyc = 'approved';
+    licenseKyc = 'approved';
+    livenessKyc = 'approved';
   }
-  let message = 'Finish the ID check in the window that opened.';
-  if (status === 'Approved') message = 'ID check passed  ✓';
+  const face = lives[0] || {};
+  const facePhoto = String(face.reference_image || face.referenceImage || face.face_image || '');
+  let message = 'Finish the ID check on Didit, then you come back here.';
+  if (status === 'Approved') message = 'NIC, licence, and selfie verified  ✓';
   else if (status === 'Declined') message = 'ID check was not accepted. Try again with the real card.';
   else if (status === 'In Review') message = 'ID check is reviewing. Try Save again in a minute.';
   return {
@@ -446,6 +448,7 @@ function publicSessionDecision(data) {
     nicKyc: nicKyc,
     licenseKyc: licenseKyc,
     livenessKyc: livenessKyc,
+    facePhoto: facePhoto,
     sessionId: String(row.session_id || decision.session_id || ''),
     message: message,
   };

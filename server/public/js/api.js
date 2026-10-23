@@ -2164,9 +2164,7 @@
   API.riderDocs = function (user) { return riderDocsFromUser(user); };
   API.isRiderVerified = function (user) {
     const d = riderDocsFromUser(user);
-    if (!parseSriNic(d.nic) || d.nicKyc !== 'approved') return false;
-    if (!parseLicenseId(d.licenseId) || d.licenseKyc !== 'approved') return false;
-    if (d.livenessKyc !== 'approved') return false;
+    if (d.nicKyc !== 'approved' || d.licenseKyc !== 'approved' || d.livenessKyc !== 'approved') return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };

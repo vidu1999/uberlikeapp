@@ -262,12 +262,19 @@ function applyEventToDocs(docs, event) {
     if (st === 'Approved') docs.livenessKyc = 'approved';
     else if (st === 'Declined' && docs.livenessKyc !== 'approved') docs.livenessKyc = 'declined';
   }
-  if (status === 'Approved' && !docs.livenessKyc) docs.livenessKyc = 'approved';
+  if (status === 'Approved') {
+    docs.nicKyc = 'approved';
+    docs.licenseKyc = 'approved';
+    docs.livenessKyc = 'approved';
+    const face = lives[0] || {};
+    const facePhoto = String(face.reference_image || face.referenceImage || face.face_image || '');
+    if (facePhoto) docs.facePhoto = facePhoto;
+  }
 
   if (!ivs.length) {
     if (status === 'Approved') {
-      if (docs.nic) docs.nicKyc = 'approved';
-      if (docs.licenseId) docs.licenseKyc = 'approved';
+      docs.nicKyc = 'approved';
+      docs.licenseKyc = 'approved';
     } else if (status === 'Declined') {
       if (docs.nicKyc !== 'approved') docs.nicKyc = 'declined';
       if (docs.licenseKyc !== 'approved') docs.licenseKyc = 'declined';
