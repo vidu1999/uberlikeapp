@@ -2071,7 +2071,8 @@
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {
-      nic: '', licenseId: '', nicPhoto: '', licensePhoto: '',
+      nic: '', licenseId: '', nicPhoto: '', nicPhotoBack: '',
+      licensePhoto: '', licensePhotoBack: '',
       plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
     };
     const addr = String(u.address || '');
@@ -2081,8 +2082,10 @@
         if (j && typeof j === 'object') {
           out.nic = String(j.nic || '');
           out.licenseId = String(j.licenseId || '');
-          out.nicPhoto = String(j.nicPhoto || '');
-          out.licensePhoto = String(j.licensePhoto || '');
+          out.nicPhoto = String(j.nicPhoto || j.nicPhotoFront || '');
+          out.nicPhotoBack = String(j.nicPhotoBack || '');
+          out.licensePhoto = String(j.licensePhoto || j.licensePhotoFront || '');
+          out.licensePhotoBack = String(j.licensePhotoBack || '');
           out.plate = String(j.plate || '');
           out.vehicleType = String(j.vehicleType || 'Motorcycle') || 'Motorcycle';
           out.regPhoto = String(j.regPhoto || '');
@@ -2103,8 +2106,8 @@
   API.riderDocs = function (user) { return riderDocsFromUser(user); };
   API.isRiderVerified = function (user) {
     const d = riderDocsFromUser(user);
-    if (!parseSriNic(d.nic) || !d.nicPhoto) return false;
-    if (!parseLicenseId(d.licenseId) || !d.licensePhoto) return false;
+    if (!parseSriNic(d.nic) || !d.nicPhoto || !d.nicPhotoBack) return false;
+    if (!parseLicenseId(d.licenseId) || !d.licensePhoto || !d.licensePhotoBack) return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };
@@ -2127,7 +2130,9 @@
       nic: nic || '',
       licenseId: licenseId || '',
       nicPhoto: String(next.nicPhoto || ''),
+      nicPhotoBack: String(next.nicPhotoBack || ''),
       licensePhoto: String(next.licensePhoto || ''),
+      licensePhotoBack: String(next.licensePhotoBack || ''),
       plate: plate || '',
       vehicleType: String(next.vehicleType || 'Motorcycle').trim() || 'Motorcycle',
       regPhoto: String(next.regPhoto || ''),
@@ -2144,7 +2149,7 @@
         await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
       } catch (_) {
         const slim = Object.assign({}, pack);
-        ['nicPhoto', 'licensePhoto', 'regPhoto'].forEach(function (k) {
+        ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (k) {
           if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
         });
         patch = docsPatch(slim);

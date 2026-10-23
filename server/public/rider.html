@@ -9,14 +9,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zh" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zi" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ae"></script>
+  <script src="/js/api.js?v=19af"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -685,37 +685,75 @@
       </div>`;
     }
 
+    function docPic(src, empty) {
+      const s = String(src || '');
+      if (/^https?:|^data:/i.test(s)) return `<img src="${esc(s)}" alt="" />`;
+      if (s) return '<span>Photo uploaded</span>';
+      return `<span>${empty}</span>`;
+    }
+    function sideStatus(front, back) {
+      if (front && back) return 'Front and back uploaded  ✓';
+      if (front && !back) return 'Front uploaded · add the back';
+      if (!front && back) return 'Back uploaded · add the front';
+      return 'Upload front and back';
+    }
     function docStatus(photo, num, ready) {
       if (ready) return 'Read from photo  ✓';
       if (photo && !num) return 'Photo saved · could not read number. Use a clearer photo.';
-      if (num && !photo) return 'Number saved · upload photo';
+      if (num && !photo) return 'Number saved · upload front and back';
       if (photo) return 'Uploaded';
       return 'Tap to upload a clear photo';
     }
     function verifyFormHtml() {
       const d = riderDocs();
-      const nicOk = !!(d.nic && d.nicPhoto);
-      const licOk = !!(d.licenseId && d.licensePhoto);
+      const nicSides = !!(d.nicPhoto && d.nicPhotoBack);
+      const licSides = !!(d.licensePhoto && d.licensePhotoBack);
+      const nicOk = !!(d.nic && nicSides);
+      const licOk = !!(d.licenseId && licSides);
       const vehOk = !!(d.plate && d.registered);
       const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
       const type = d.vehicleType || 'Motorcycle';
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC and driving licence photos. Numbers are read on this phone — not sent to another company.'}</p>
-          <label class="fld">NIC photo</label>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload front and back of your NIC and driving licence. Numbers are read on this phone.'}</p>
+          <label class="fld">NIC — front and back</label>
           <input class="fld" id="docNic" type="hidden" value="${esc(d.nic)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="nic" />
-            ${/^https?:|^data:/i.test(String(d.nicPhoto || '')) ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : (d.nicPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to photograph your NIC</span>')}
-          </label>
-          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.nic ? ('NIC ' + esc(d.nic) + ' · ') : ''}${esc(docStatus(d.nicPhoto, d.nic, nicOk))}</div>
-          <label class="fld">Driving licence photo</label>
+          <div class="rd-up-row">
+            <div>
+              <span class="rd-up-cap">Front</span>
+              <label class="rd-up">
+                <input type="file" accept="image/*" data-doc-file="nic" />
+                ${docPic(d.nicPhoto, 'Tap NIC front')}
+              </label>
+            </div>
+            <div>
+              <span class="rd-up-cap">Back</span>
+              <label class="rd-up">
+                <input type="file" accept="image/*" data-doc-file="nicBack" />
+                ${docPic(d.nicPhotoBack, 'Tap NIC back')}
+              </label>
+            </div>
+          </div>
+          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.nic ? ('NIC ' + esc(d.nic) + ' · ') : ''}${esc(nicOk ? 'Read from photo  ✓' : sideStatus(d.nicPhoto, d.nicPhotoBack))}</div>
+          <label class="fld">Driving licence — front and back</label>
           <input class="fld" id="docLic" type="hidden" value="${esc(d.licenseId)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="license" />
-            ${/^https?:|^data:/i.test(String(d.licensePhoto || '')) ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : (d.licensePhoto ? '<span>Photo uploaded</span>' : '<span>Tap to photograph your driving licence</span>')}
-          </label>
-          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.licenseId ? ('Licence ' + esc(d.licenseId) + ' · ') : ''}${esc(docStatus(d.licensePhoto, d.licenseId, licOk))}</div>
+          <div class="rd-up-row">
+            <div>
+              <span class="rd-up-cap">Front</span>
+              <label class="rd-up">
+                <input type="file" accept="image/*" data-doc-file="license" />
+                ${docPic(d.licensePhoto, 'Tap licence front')}
+              </label>
+            </div>
+            <div>
+              <span class="rd-up-cap">Back</span>
+              <label class="rd-up">
+                <input type="file" accept="image/*" data-doc-file="licenseBack" />
+                ${docPic(d.licensePhotoBack, 'Tap licence back')}
+              </label>
+            </div>
+          </div>
+          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.licenseId ? ('Licence ' + esc(d.licenseId) + ' · ') : ''}${esc(licOk ? 'Read from photo  ✓' : sideStatus(d.licensePhoto, d.licensePhotoBack))}</div>
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
@@ -1670,29 +1708,32 @@
           if (!file || !API.storeImage) return;
           const kind = inp.getAttribute('data-doc-file');
           const err = root.querySelector('[data-err]');
-          if (err) err.textContent = kind === 'nic' || kind === 'license' ? 'Reading this photo on your phone…' : '';
+          const idKind = kind === 'nic' || kind === 'nicBack' || kind === 'license' || kind === 'licenseBack';
+          const readKind = kind === 'nicBack' ? 'nic' : kind === 'licenseBack' ? 'license' : kind;
+          if (err) err.textContent = idKind ? 'Reading this photo on your phone…' : '';
           try {
             const url = await API.storeImage(file, 'rider' + kind);
             const fields = collectDocs();
             if (kind === 'nic') fields.nicPhoto = url;
+            if (kind === 'nicBack') fields.nicPhotoBack = url;
             if (kind === 'license') fields.licensePhoto = url;
+            if (kind === 'licenseBack') fields.licensePhotoBack = url;
             if (kind === 'reg') fields.regPhoto = url;
-            if ((kind === 'nic' || kind === 'license' || kind === 'reg') && API.readDocFromPhoto) {
+            if ((idKind || kind === 'reg') && API.readDocFromPhoto) {
               try {
-                const read = await API.readDocFromPhoto(file, kind);
-                if (kind === 'nic' && read.nic) fields.nic = read.nic;
-                if (kind === 'license' && read.licenseId) fields.licenseId = read.licenseId;
-                if (kind === 'nic' && !read.nic && read.licenseId) fields.nic = fields.nic || '';
+                const read = await API.readDocFromPhoto(file, readKind);
+                if (readKind === 'nic' && read.nic) fields.nic = read.nic;
+                if (readKind === 'license' && read.licenseId) fields.licenseId = read.licenseId;
                 if (kind === 'reg' && read.plate) fields.plate = read.plate;
-                if (kind === 'nic' && !read.nic) {
-                  if (err) err.textContent = 'Could not read the NIC. Use a brighter, flat photo of the card.';
-                } else if (kind === 'license' && !read.licenseId) {
-                  if (err) err.textContent = 'Could not read the licence number. Use a brighter, flat photo of the card.';
-                } else if (err && (kind === 'nic' || kind === 'license')) {
+                if (readKind === 'nic' && !read.nic && !fields.nic) {
+                  if (err) err.textContent = 'Could not read the NIC on this side. Upload the other side, or use a brighter photo.';
+                } else if (readKind === 'license' && !read.licenseId && !fields.licenseId) {
+                  if (err) err.textContent = 'Could not read the licence on this side. Upload the other side, or use a brighter photo.';
+                } else if (err && idKind) {
                   err.textContent = '';
                 }
               } catch (readErr) {
-                if (err && (kind === 'nic' || kind === 'license')) {
+                if (err && idKind) {
                   err.textContent = (readErr && readErr.message) || 'Could not read this photo. Try again.';
                 }
               }
@@ -1716,8 +1757,8 @@
           if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
           const d = riderDocs();
-          if (!d.nicPhoto) throw new Error('Upload your NIC photo.');
-          if (!d.licensePhoto) throw new Error('Upload your driving licence photo.');
+          if (!d.nicPhoto || !d.nicPhotoBack) throw new Error('Upload NIC front and back.');
+          if (!d.licensePhoto || !d.licensePhotoBack) throw new Error('Upload driving licence front and back.');
           state.needDocs = !riderVerified();
           state.screen = '';
           state.tab = 'profile';
