@@ -1925,6 +1925,149 @@
     if (s.length >= 5 && s.length <= 20 && /^[A-Z0-9]+$/.test(s)) return s;
     return '';
   }
+  API.parseSriNic = parseSriNic;
+  API.parseLicenseId = parseLicenseId;
+  API.parseLkPlate = parseLkPlate;
+  var tessLoader = null;
+  var tessWorker = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (tessLoader) return tessLoader;
+    tessLoader = new Promise(function (resolve, reject) {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+      s.async = true;
+      s.onload = function () {
+        if (window.Tesseract) resolve(window.Tesseract);
+        else reject(new Error('Could not load document reader.'));
+      };
+      s.onerror = function () { tessLoader = null; reject(new Error('Could not load document reader.')); };
+      document.head.appendChild(s);
+    });
+    return tessLoader;
+  }
+  function ocrPrepCanvas(file) {
+    return new Promise(function (resolve, reject) {
+      const img = new Image();
+      let url = '';
+      try { url = URL.createObjectURL(file); } catch (_) {}
+      img.onload = function () {
+        try { if (url) URL.revokeObjectURL(url); } catch (_) {}
+        const c = document.createElement('canvas');
+        let w = img.naturalWidth || img.width || 1;
+        let h = img.naturalHeight || img.height || 1;
+        const scale = Math.min(1, 1600 / Math.max(w, h, 1));
+        c.width = Math.max(1, Math.round(w * scale));
+        c.height = Math.max(1, Math.round(h * scale));
+        const ctx = c.getContext('2d');
+        if (!ctx) return reject(new Error('Could not read this photo.'));
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        try {
+          const id = ctx.getImageData(0, 0, c.width, c.height);
+          const d = id.data;
+          for (let i = 0; i < d.length; i += 4) {
+            let g = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+            g = g < 150 ? 0 : 255;
+            d[i] = d[i + 1] = d[i + 2] = g;
+          }
+          ctx.putImageData(id, 0, 0);
+        } catch (_) {}
+        resolve(c);
+      };
+      img.onerror = function () {
+        try { if (url) URL.revokeObjectURL(url); } catch (_) {}
+        reject(new Error('Could not open this photo.'));
+      };
+      img.src = url || '';
+    });
+  }
+  function nicFromBlob(s) {
+    const u = String(s || '').toUpperCase().replace(/O/g, '0');
+    const compact = u.replace(/[^A-Z0-9]/g, '');
+    let m = compact.match(/\d{12}/);
+    if (m && parseSriNic(m[0])) return parseSriNic(m[0]);
+    m = compact.match(/\d{9}[VX]/);
+    if (m && parseSriNic(m[0])) return parseSriNic(m[0]);
+    m = u.match(/\b\d{9}\s*[VX]\b/);
+    if (m && parseSriNic(m[0])) return parseSriNic(m[0]);
+    return '';
+  }
+  function licenseFromBlob(s, skipNic) {
+    const skip = String(skipNic || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const u = String(s || '').toUpperCase();
+    const parts = u.replace(/[^A-Z0-9]/g, ' ').split(/\s+/);
+    let best = '';
+    for (let i = 0; i < parts.length; i++) {
+      const n = parseLicenseId(parts[i]);
+      if (!n) continue;
+      if (skip && n === skip) continue;
+      if (parseSriNic(n)) continue;
+      if (n.length >= 6 && n.length <= 16) {
+        if (!best || n.length > best.length) best = n;
+      }
+    }
+    const compact = u.replace(/[^A-Z0-9]/g, '');
+    if (!best) {
+      const n = parseLicenseId(compact.slice(0, 16));
+      if (n && n !== skip && !parseSriNic(n)) best = n;
+    }
+    return best;
+  }
+  function plateFromBlob(s) {
+    const u = String(s || '').toUpperCase();
+    const lines = u.split(/[\n,;]+/);
+    for (let i = 0; i < lines.length; i++) {
+      const p = parseLkPlate(lines[i].replace(/[^A-Z0-9\s-]/g, ' ').trim());
+      if (p) return p;
+    }
+    const bits = u.replace(/[^A-Z0-9]/g, ' ').split(/\s+/);
+    for (let i = 0; i < bits.length - 1; i++) {
+      const p = parseLkPlate(bits[i] + '-' + bits[i + 1]);
+      if (p) return p;
+      const p2 = parseLkPlate(bits[i] + bits[i + 1]);
+      if (p2) return p2;
+    }
+    return '';
+  }
+  async function barcodeText(file) {
+    if (typeof BarcodeDetector !== 'function') return '';
+    try {
+      const det = new BarcodeDetector({ formats: ['qr_code', 'pdf417', 'aztec', 'data_matrix'] });
+      const bmp = await createImageBitmap(file);
+      const codes = await det.detect(bmp);
+      try { bmp.close && bmp.close(); } catch (_) {}
+      if (!codes || !codes.length) return '';
+      return codes.map(function (c) { return c && c.rawValue; }).filter(Boolean).join('\n');
+    } catch (_) {
+      return '';
+    }
+  }
+  API.readDocFromPhoto = async function (file, kind) {
+    if (!file) throw new Error('Choose a photo.');
+    const out = { nic: '', licenseId: '', plate: '', text: '' };
+    const qr = await barcodeText(file);
+    if (qr) {
+      out.text = qr;
+      out.nic = nicFromBlob(qr) || out.nic;
+      out.licenseId = licenseFromBlob(qr, out.nic) || out.licenseId;
+      out.plate = plateFromBlob(qr) || out.plate;
+    }
+    if ((kind === 'nic' && out.nic) || (kind === 'license' && out.licenseId) || (kind === 'reg' && out.plate)) {
+      return out;
+    }
+    const T = await loadTesseract();
+    if (!tessWorker) {
+      tessWorker = await T.createWorker('eng');
+    }
+    const canvas = await ocrPrepCanvas(file);
+    const result = await tessWorker.recognize(canvas);
+    const text = String((result && result.data && result.data.text) || '');
+    out.text = (out.text ? out.text + '\n' : '') + text;
+    if (!out.nic) out.nic = nicFromBlob(out.text);
+    if (!out.licenseId) out.licenseId = licenseFromBlob(out.text, out.nic);
+    if (!out.plate) out.plate = plateFromBlob(out.text);
+    return out;
+  };
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {

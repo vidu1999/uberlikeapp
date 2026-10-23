@@ -16,7 +16,7 @@
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ad"></script>
+  <script src="/js/api.js?v=19ae"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -686,11 +686,11 @@
     }
 
     function docStatus(photo, num, ready) {
-      if (ready) return 'Verified  ✓';
-      if (photo && !num) return 'Photo uploaded · enter the number';
+      if (ready) return 'Read from photo  ✓';
+      if (photo && !num) return 'Photo saved · could not read number. Use a clearer photo.';
       if (num && !photo) return 'Number saved · upload photo';
       if (photo) return 'Uploaded';
-      return 'Tap to upload';
+      return 'Tap to upload a clear photo';
     }
     function verifyFormHtml() {
       const d = riderDocs();
@@ -701,21 +701,21 @@
       const type = d.vehicleType || 'Motorcycle';
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC, licence, and vehicle number. Then tap Save.'}</p>
-          <label class="fld" for="docNic">NIC number</label>
-          <input class="fld" id="docNic" inputmode="text" autocomplete="off" placeholder="123456789V or 12 digits" value="${esc(d.nic)}" />
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC and driving licence photos. Numbers are read on this phone — not sent to another company.'}</p>
+          <label class="fld">NIC photo</label>
+          <input class="fld" id="docNic" type="hidden" value="${esc(d.nic)}" />
           <label class="rd-up">
             <input type="file" accept="image/*" data-doc-file="nic" />
-            ${/^https?:|^data:/i.test(String(d.nicPhoto || '')) ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : (d.nicPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload NIC photo</span>')}
+            ${/^https?:|^data:/i.test(String(d.nicPhoto || '')) ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : (d.nicPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to photograph your NIC</span>')}
           </label>
-          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.nicPhoto, d.nic, nicOk))}</div>
-          <label class="fld" for="docLic">Licence ID</label>
-          <input class="fld" id="docLic" inputmode="text" autocomplete="off" placeholder="Licence number" value="${esc(d.licenseId)}" />
+          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.nic ? ('NIC ' + esc(d.nic) + ' · ') : ''}${esc(docStatus(d.nicPhoto, d.nic, nicOk))}</div>
+          <label class="fld">Driving licence photo</label>
+          <input class="fld" id="docLic" type="hidden" value="${esc(d.licenseId)}" />
           <label class="rd-up">
             <input type="file" accept="image/*" data-doc-file="license" />
-            ${/^https?:|^data:/i.test(String(d.licensePhoto || '')) ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : (d.licensePhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload licence photo</span>')}
+            ${/^https?:|^data:/i.test(String(d.licensePhoto || '')) ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : (d.licensePhoto ? '<span>Photo uploaded</span>' : '<span>Tap to photograph your driving licence</span>')}
           </label>
-          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.licensePhoto, d.licenseId, licOk))}</div>
+          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${d.licenseId ? ('Licence ' + esc(d.licenseId) + ' · ') : ''}${esc(docStatus(d.licensePhoto, d.licenseId, licOk))}</div>
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
@@ -1670,13 +1670,33 @@
           if (!file || !API.storeImage) return;
           const kind = inp.getAttribute('data-doc-file');
           const err = root.querySelector('[data-err]');
-          if (err) err.textContent = '';
+          if (err) err.textContent = kind === 'nic' || kind === 'license' ? 'Reading this photo on your phone…' : '';
           try {
             const url = await API.storeImage(file, 'rider' + kind);
             const fields = collectDocs();
             if (kind === 'nic') fields.nicPhoto = url;
             if (kind === 'license') fields.licensePhoto = url;
             if (kind === 'reg') fields.regPhoto = url;
+            if ((kind === 'nic' || kind === 'license' || kind === 'reg') && API.readDocFromPhoto) {
+              try {
+                const read = await API.readDocFromPhoto(file, kind);
+                if (kind === 'nic' && read.nic) fields.nic = read.nic;
+                if (kind === 'license' && read.licenseId) fields.licenseId = read.licenseId;
+                if (kind === 'nic' && !read.nic && read.licenseId) fields.nic = fields.nic || '';
+                if (kind === 'reg' && read.plate) fields.plate = read.plate;
+                if (kind === 'nic' && !read.nic) {
+                  if (err) err.textContent = 'Could not read the NIC. Use a brighter, flat photo of the card.';
+                } else if (kind === 'license' && !read.licenseId) {
+                  if (err) err.textContent = 'Could not read the licence number. Use a brighter, flat photo of the card.';
+                } else if (err && (kind === 'nic' || kind === 'license')) {
+                  err.textContent = '';
+                }
+              } catch (readErr) {
+                if (err && (kind === 'nic' || kind === 'license')) {
+                  err.textContent = (readErr && readErr.message) || 'Could not read this photo. Try again.';
+                }
+              }
+            }
             await API.saveRiderDocs(fields);
             render(true);
           } catch (e) {
@@ -1690,8 +1710,8 @@
         if (btn) btn.disabled = true;
         try {
           const fields = collectDocs();
-          if (!fields.nic) throw new Error('Enter your NIC number.');
-          if (!fields.licenseId) throw new Error('Enter your driving licence ID.');
+          if (!fields.nic) throw new Error('Upload a clear NIC photo so we can read the number.');
+          if (!fields.licenseId) throw new Error('Upload a clear driving licence photo so we can read the number.');
           if (!fields.plate) throw new Error('Enter your vehicle number.');
           if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
