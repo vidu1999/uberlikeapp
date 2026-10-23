@@ -9,14 +9,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zi" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zj" />
   <link rel="stylesheet" href="/css/track.css?v=19zv" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ag"></script>
+  <script src="/js/api.js?v=19ah"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19zv"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
@@ -688,9 +688,16 @@
 
     function docPic(src, empty) {
       const s = String(src || '');
-      if (/^https?:|^data:/i.test(s)) return `<img src="${esc(s)}" alt="" />`;
-      if (s) return '<span>Photo uploaded</span>';
+      if (/^https?:|^data:/i.test(s)) return `<img src="${esc(s)}" alt="" /><em class="rd-up-change">Change</em>`;
+      if (s) return '<span>Photo uploaded</span><em class="rd-up-change">Change</em>';
       return `<span>${empty}</span>`;
+    }
+    function docBox(kind, src, empty) {
+      const has = !!(src && src !== '');
+      return `<label class="rd-up${has ? ' has' : ''}">
+                <input type="file" accept="image/*" data-doc-file="${esc(kind)}" />
+                ${docPic(src, empty)}
+              </label>`;
     }
     function sideStatus(front, back) {
       if (front && back) return 'Front and back uploaded  ✓';
@@ -733,17 +740,11 @@
           <div class="rd-up-row">
             <div>
               <span class="rd-up-cap">Front</span>
-              <label class="rd-up">
-                <input type="file" accept="image/*" data-doc-file="nic" />
-                ${docPic(d.nicPhoto, 'Tap NIC front')}
-              </label>
+              ${docBox('nic', d.nicPhoto, 'Tap NIC front')}
             </div>
             <div>
               <span class="rd-up-cap">Back</span>
-              <label class="rd-up">
-                <input type="file" accept="image/*" data-doc-file="nicBack" />
-                ${docPic(d.nicPhotoBack, 'Tap NIC back')}
-              </label>
+              ${docBox('nicBack', d.nicPhotoBack, 'Tap NIC back')}
             </div>
           </div>
           <div class="${nicLine.cls}" style="margin-bottom:10px">${esc(nicLine.text)}</div>
@@ -752,17 +753,11 @@
           <div class="rd-up-row">
             <div>
               <span class="rd-up-cap">Front</span>
-              <label class="rd-up">
-                <input type="file" accept="image/*" data-doc-file="license" />
-                ${docPic(d.licensePhoto, 'Tap licence front')}
-              </label>
+              ${docBox('license', d.licensePhoto, 'Tap licence front')}
             </div>
             <div>
               <span class="rd-up-cap">Back</span>
-              <label class="rd-up">
-                <input type="file" accept="image/*" data-doc-file="licenseBack" />
-                ${docPic(d.licensePhotoBack, 'Tap licence back')}
-              </label>
+              ${docBox('licenseBack', d.licensePhotoBack, 'Tap licence back')}
             </div>
           </div>
           <div class="${licLine.cls}" style="margin-bottom:10px">${esc(licLine.text)}</div>
@@ -771,10 +766,7 @@
           <label class="fld" for="vehPlate">Vehicle number</label>
           <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
           <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="reg" />
-            ${/^https?:|^data:/i.test(String(d.regPhoto || '')) ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : (d.regPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload registration book (optional)</span>')}
-          </label>
+          ${docBox('reg', d.regPhoto, 'Tap to upload registration book (optional)')}
           <div class="${vehOk ? 'ok' : 'wait'}">${vehOk ? 'Vehicle registered  ✓' : (d.plate ? 'Number saved · tick registered' : 'Enter vehicle number')}</div>
           <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
           <button class="rd-navbtn" type="button" data-save-verify style="position:static;width:100%;margin:12px 0 0">Save verification</button>
@@ -846,10 +838,7 @@
           <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
           <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
           <label class="fld">Vehicle registration photo</label>
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="reg" />
-            ${d.regPhoto ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : '<span>Tap to upload registration book</span>'}
-          </label>
+          ${docBox('reg', d.regPhoto, 'Tap to upload registration book')}
           <div class="kv"><span>License plate</span><b>${esc(d.plate || '—')}</b></div>
           <div class="kv"><span>Registered</span><b>${d.registered ? 'Yes' : 'No'}</b></div>
           <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
@@ -1734,15 +1723,43 @@
         await one('license', docFiles.license || d.licensePhoto, docFiles.licenseBack || d.licensePhotoBack, 'licenseKyc', 'licenseKycId', 'licenseName', 'licenseId');
       }
       root.querySelectorAll('[data-doc-file]').forEach((inp) => {
+        inp.onclick = () => { try { inp.value = ''; } catch (_) {} };
         inp.onchange = async () => {
           const file = inp.files && inp.files[0];
-          if (!file || !API.storeImage) return;
+          if (!file) return;
+          if (!API.storeImage) {
+            const err0 = root.querySelector('[data-err]');
+            if (err0) err0.textContent = 'Could not upload this photo.';
+            return;
+          }
           const kind = inp.getAttribute('data-doc-file');
           const err = root.querySelector('[data-err]');
+          const box = inp.closest('.rd-up');
           const idKind = kind === 'nic' || kind === 'nicBack' || kind === 'license' || kind === 'licenseBack';
           const readKind = kind === 'nicBack' ? 'nic' : kind === 'licenseBack' ? 'license' : kind;
           if (docFiles[kind] !== undefined) docFiles[kind] = file;
-          if (err) err.textContent = idKind ? 'Reading this photo…' : '';
+          if (box) box.classList.add('busy', 'has');
+          try {
+            const preview = URL.createObjectURL(file);
+            if (box) {
+              let img = box.querySelector('img');
+              if (!img) {
+                img = document.createElement('img');
+                img.alt = '';
+                box.appendChild(img);
+              }
+              img.src = preview;
+              const sp = box.querySelector('span');
+              if (sp) sp.remove();
+              if (!box.querySelector('.rd-up-change')) {
+                const em = document.createElement('em');
+                em.className = 'rd-up-change';
+                em.textContent = 'Change';
+                box.appendChild(em);
+              }
+            }
+          } catch (_) {}
+          if (err) err.textContent = idKind ? 'Saving this photo…' : 'Saving this photo…';
           try {
             const url = await API.storeImage(file, 'rider' + kind);
             const fields = collectDocs();
@@ -1760,6 +1777,7 @@
               } catch (_) {}
             }
             await API.saveRiderDocs(fields);
+            if (err) err.textContent = '';
             if (idKind && API.verifyIdDocument) {
               try {
                 await runKyc(fields, readKind, err);
@@ -1767,13 +1785,16 @@
               } catch (kycErr) {
                 try { await API.saveRiderDocs(fields); } catch (_) {}
                 if (err) err.textContent = (kycErr && kycErr.message) || 'Could not verify this card.';
+                if (box) box.classList.remove('busy');
                 render(true);
                 return;
               }
             }
+            if (box) box.classList.remove('busy');
             render(true);
           } catch (e) {
-            if (err) err.textContent = (e && e.message) || 'Could not upload';
+            if (box) box.classList.remove('busy');
+            if (err) err.textContent = (e && e.message) || 'Could not upload. Try another photo.';
           }
         };
       });

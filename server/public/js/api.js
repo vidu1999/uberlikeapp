@@ -498,6 +498,48 @@
       return new Blob([arr], { type: m[1] || 'image/jpeg' });
     } catch (_) { return null; }
   }
+  function canvasFromImage(src) {
+    let w = src.naturalWidth || src.width || 1;
+    let h = src.naturalHeight || src.height || 1;
+    const scale = Math.min(1, 720 / Math.max(w, h, 1));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(src, 0, 0, w, h);
+    return c;
+  }
+  function canvasToJpeg(c, resolve, reject) {
+    let q = 0.74;
+    function asUrl() {
+      try {
+        let dataUrl = c.toDataURL('image/jpeg', q);
+        while (dataUrl.length > 140000 && q > 0.4) {
+          q -= 0.12;
+          dataUrl = c.toDataURL('image/jpeg', q);
+        }
+        resolve(dataUrl);
+      } catch (e) { reject(e); }
+    }
+    if (!c.toBlob) return asUrl();
+    const tryBlob = function () {
+      c.toBlob(function (blob) {
+        if (!blob) return asUrl();
+        if (blob.size > 110000 && q > 0.4) {
+          q -= 0.12;
+          tryBlob();
+          return;
+        }
+        resolve(blob);
+      }, 'image/jpeg', q);
+    };
+    tryBlob();
+  }
   function compressImageFile(file) {
     return new Promise(function (resolve, reject) {
       if (!file) return reject(new Error('Choose an image'));
@@ -506,47 +548,24 @@
       const img = new Image();
       const failRead = function () {
         if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        if (typeof createImageBitmap === 'function') {
+          createImageBitmap(file).then(function (bmp) {
+            const c = canvasFromImage(bmp);
+            try { bmp.close && bmp.close(); } catch (_) {}
+            if (!c) return blobToDataUrl(file).then(resolve).catch(reject);
+            canvasToJpeg(c, resolve, reject);
+          }).catch(function () {
+            blobToDataUrl(file).then(resolve).catch(reject);
+          });
+          return;
+        }
         blobToDataUrl(file).then(resolve).catch(reject);
       };
       img.onload = function () {
         if (url) try { URL.revokeObjectURL(url); } catch (_) {}
-        let w = img.naturalWidth || img.width || 1;
-        let h = img.naturalHeight || img.height || 1;
-        const scale = Math.min(1, 720 / Math.max(w, h, 1));
-        w = Math.max(1, Math.round(w * scale));
-        h = Math.max(1, Math.round(h * scale));
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext('2d');
-        if (!ctx) return failRead();
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        let q = 0.74;
-        function asUrl() {
-          try {
-            let dataUrl = c.toDataURL('image/jpeg', q);
-            while (dataUrl.length > 140000 && q > 0.4) {
-              q -= 0.12;
-              dataUrl = c.toDataURL('image/jpeg', q);
-            }
-            resolve(dataUrl);
-          } catch (e) { reject(e); }
-        }
-        if (!c.toBlob) return asUrl();
-        const tryBlob = function () {
-          c.toBlob(function (blob) {
-            if (!blob) return asUrl();
-            if (blob.size > 110000 && q > 0.4) {
-              q -= 0.12;
-              tryBlob();
-              return;
-            }
-            resolve(blob);
-          }, 'image/jpeg', q);
-        };
-        tryBlob();
+        const c = canvasFromImage(img);
+        if (!c) return failRead();
+        canvasToJpeg(c, resolve, reject);
       };
       img.onerror = failRead;
       img.src = url || (typeof file === 'string' ? file : '');
@@ -587,7 +606,10 @@
   }
   API.storeImage = async function (file, kind) {
     if (!file) throw new Error('Choose an image');
-    if (file.type && String(file.type).indexOf('image/') !== 0) throw new Error('Choose a photo file.');
+    const t = String(file.type || '').toLowerCase();
+    if (t && t.indexOf('image/') !== 0 && t !== 'application/octet-stream') {
+      throw new Error('Choose a photo file.');
+    }
     const compressed = await compressImageFile(file);
     const path = String(kind || 'img').replace(/[^a-z]/gi, '').slice(0, 12) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '.jpg';
     let blob = null;
@@ -2120,6 +2142,29 @@
     const s = String(src || '');
     return /^https?:|^data:image\//i.test(s);
   }
+  function riderDocCacheKey(user) {
+    const u = user || API.user || {};
+    const id = String(u.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return id ? 'qb_rdoc_' + id : '';
+  }
+  function readCachedDocPhotos(user) {
+    try {
+      const k = riderDocCacheKey(user);
+      if (!k) return {};
+      const j = JSON.parse(localStorage.getItem(k) || '{}');
+      return j && typeof j === 'object' ? j : {};
+    } catch (_) { return {}; }
+  }
+  function writeCachedDocPhotos(user, fields) {
+    const k = riderDocCacheKey(user);
+    if (!k || !fields) return;
+    const cur = readCachedDocPhotos(user);
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (key) {
+      const v = String(fields[key] || '');
+      if (looksLikePhoto(v)) cur[key] = v;
+    });
+    try { localStorage.setItem(k, JSON.stringify(cur)); } catch (_) {}
+  }
   API.verifyIdDocument = async function (kind, frontSrc, backSrc) {
     async function pack(src) {
       if (!src) throw new Error('Upload front and back photos.');
@@ -2180,6 +2225,11 @@
         }
       } catch (_) {}
     }
+    const cached = readCachedDocPhotos(u);
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'regPhoto'].forEach(function (k) {
+      const cur = String(out[k] || '');
+      if ((!cur || cur === 'uploaded') && looksLikePhoto(cached[k])) out[k] = cached[k];
+    });
     const veh = String(u.vehicle || '').trim();
     if (veh && !/^https?:/i.test(veh)) {
       const bits = veh.split(/\s*[·|,]\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -2237,6 +2287,7 @@
       if (body.plate) patch.vehicle = body.vehicleType + ' · ' + body.plate;
       return patch;
     }
+    writeCachedDocPhotos(u, pack);
     let patch = docsPatch(pack);
     if (sbConfigured()) {
       try {
