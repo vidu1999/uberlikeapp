@@ -671,6 +671,7 @@ export function normalizeSupport(raw, id) {
     agentClosedAt: 0,
     closeReason: '',
     ratedAt: 0,
+    chatGen: 0,
   };
   if (!p || typeof p !== 'object') return s;
   s.mode = p.mode === 'agent' ? 'agent' : 'ai';
@@ -687,6 +688,7 @@ export function normalizeSupport(raw, id) {
   s.agentClosedAt = Number(p.agentClosedAt) || 0;
   s.closeReason = String(p.closeReason || '');
   s.ratedAt = Number(p.ratedAt) || 0;
+  s.chatGen = Math.max(0, Math.round(Number(p.chatGen) || 0));
   s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
   s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
   s.internal = Array.isArray(p.internal) ? p.internal : [];
@@ -695,7 +697,7 @@ export function normalizeSupport(raw, id) {
     const text = String(m.text || m.content || '').trim();
     if (!text) return null;
     const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
-    return { role: role, text: text, ts: Number(m.ts) || Date.now(), internal: !!m.internal };
+    return { role: role, text: text, ts: Number(m.ts) || Date.now(), internal: !!m.internal, gen: Math.max(0, Math.round(Number(m.gen) || 0)) };
   }).filter(Boolean);
   if (!s.subject) {
     const first = s.messages.find((m) => m.role === 'user');
@@ -742,10 +744,12 @@ export function closeAgentSession(thread, reason, now) {
   t.agentClosedAt = ts;
   t.closeReason = why;
   t.escalatedAt = 0;
+  const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
   t.sessions = (Array.isArray(t.sessions) ? t.sessions : []).concat([{
     closedAt: ts,
     reason: why,
     rating: 0,
+    gen: gen,
   }]);
   t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([{
     role: 'system',
@@ -753,7 +757,9 @@ export function closeAgentSession(thread, reason, now) {
       ? 'The agent session closed after 3 minutes with no reply. Rate this agent, then AI Help continues.'
       : 'The agent closed this chat. Rate this agent session. AI Help continues after you rate.',
     ts: ts,
+    gen: gen,
   }]);
+  t.chatGen = gen + 1;
   return t;
 }
 
@@ -779,6 +785,7 @@ export function rateAgentSession(thread, stars, now) {
     role: 'system',
     text: 'Thanks. You rated this agent ' + n + ' star' + (n === 1 ? '' : 's') + '. AI Help is ready.',
     ts: ts,
+    gen: Math.max(0, Math.round(Number(t.chatGen) || 1) - 1),
   }]);
   return t;
 }

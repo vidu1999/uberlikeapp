@@ -35,4 +35,20 @@ describe('fresh AI chat after agent close', () => {
     assert.equal(gate.yes, true);
     assert.equal(gate.reason, 'asked_agent');
   });
+
+  it('does not connect an agent after one suggestion', () => {
+    const gate = shouldEscalate(
+      [{ role: 'user', content: 'Where is my order?' }],
+      'Where is my order?'
+    );
+    assert.equal(gate.yes, false);
+  });
+
+  it('does not connect after Payment or wallet in a fresh session', () => {
+    const gate = shouldEscalate(
+      [{ role: 'user', content: 'Payment or wallet' }],
+      'Payment or wallet'
+    );
+    assert.equal(gate.yes, false);
+  });
 });

@@ -1,4 +1,4 @@
-import { aiReply, freshAiHistory, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
+import { aiReply, faqReply, freshAiHistory, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
 
 export async function onRequest(context) {
   const request = context.request;
@@ -46,21 +46,18 @@ export async function onRequest(context) {
 
   try {
     const out = await aiReply(env, history);
-    const maybe = shouldEscalate(history.concat([{ role: 'assistant', content: out.text }]), latest);
-    const handoff = /connect(ing)? you to a real|real QuickBite agent|live agent/i.test(out.text);
     return json(200, {
       ok: true,
-      escalate: !!(handoff || maybe.yes),
-      reason: handoff ? 'ai_handoff' : maybe.reason,
+      escalate: false,
       reply: out.text,
       provider: out.provider,
     });
   } catch (e) {
     return json(200, {
       ok: true,
-      escalate: true,
+      escalate: false,
       reason: 'ai_error',
-      reply: 'I could not finish that just now, so I am connecting you to a real QuickBite agent. Keep typing here.',
+      reply: faqReply(latest),
       error: (e && e.message) || 'support',
     });
   }

@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19au"></script>
+  <script src="/js/api.js?v=19av"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1589,11 +1589,13 @@
       const s = API.support || {};
       const msgs = s.messages || [];
       const phase = supportPhase(s);
+      const gen = Math.max(0, Math.round(Number(s.chatGen) || 0));
       if (phase === 'rate') {
-        const sessions = s.sessions || [];
-        const prev = sessions.length >= 2 ? Number(sessions[sessions.length - 2].closedAt) || 0 : 0;
-        return prev ? msgs.filter((m) => (Number(m.ts) || 0) > prev) : msgs;
+        const want = Math.max(0, gen - 1);
+        return msgs.filter((m) => (Number(m.gen) || 0) === want);
       }
+      const current = msgs.filter((m) => (Number(m.gen) || 0) === gen);
+      if (current.length || gen > 0) return current;
       const epoch = supportEpoch(s);
       if (!epoch) return msgs;
       return msgs.filter((m) => (Number(m.ts) || 0) > epoch);
@@ -1634,7 +1636,7 @@
         </div>` : ''}
         ${phase === 'rate' ? supportStarsHtml() : `<form class="composer" id="supportForm">
           <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="${agent ? 'Message the agent…' : 'Describe the problem…'}" />
-          <button class="btn sm green" type="submit"${state.supportBusy ? ' disabled' : ''}>Send</button>
+          <button class="btn sm green" type="submit">Send</button>
         </form>`}
       </div>`;
     }
@@ -2811,9 +2813,11 @@
       async function sendSupport(text) {
         const body = String(text || '').trim();
         if (!body || state.supportBusy) return;
+        if (API.support && API.support.awaitingRating) { render(); return; }
         const form = document.getElementById('supportForm');
         if (form && form.text) form.text.value = '';
         state.supportBusy = true;
+        const sendBtn = document.querySelector('#supportForm button[type="submit"]');
         const bubbles = document.getElementById('supportBubbles');
         if (bubbles) {
           bubbles.insertAdjacentHTML('beforeend', `<div class="bubble me">${esc(body)}</div><div class="bubble sys" data-sup-wait>…</div>`);
@@ -2823,17 +2827,21 @@
           await API.askSupport(body);
         } catch (e) {
           if (API.support) {
-            API.support.messages = (API.support.messages || []).concat([{ role: 'system', text: (e && e.message) || 'Could not send.', ts: Date.now() }]);
+            API.support.messages = (API.support.messages || []).concat([{ role: 'system', text: (e && e.message) || 'Could not send.', ts: Date.now(), gen: Number(API.support.chatGen) || 0 }]);
           }
+        } finally {
+          state.supportBusy = false;
+          if (sendBtn) sendBtn.disabled = false;
         }
-        state.supportBusy = false;
+        const nextPhase = supportPhase();
         const rootEl = document.querySelector('[data-support-root]');
-        const wasAgent = !!(rootEl && rootEl.getAttribute('data-support-root') === 'agent');
-        const nowAgent = API.support && API.support.mode === 'agent';
-        if (nowAgent && !wasAgent) {
+        const was = rootEl && rootEl.getAttribute('data-support-root');
+        if (was !== nextPhase) {
           render();
         } else {
           paintSupport();
+          const btn = document.querySelector('#supportForm button[type="submit"]');
+          if (btn) btn.disabled = false;
         }
         const input = document.querySelector('#supportForm input[name="text"]');
         if (input) input.focus();

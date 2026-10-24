@@ -95,10 +95,11 @@ export function freshAiHistory(messages) {
 
 export function shouldEscalate(messages, latest) {
   const text = String(latest || '');
-  if (ASK_HUMAN.test(text) || NOT_RESOLVED.test(text)) {
-    return { yes: true, reason: ASK_HUMAN.test(text) ? 'asked_agent' : 'not_resolved' };
-  }
+  if (ASK_HUMAN.test(text)) return { yes: true, reason: 'asked_agent' };
   const users = (messages || []).filter((m) => m && m.role === 'user').map((m) => String(m.content || m.text || ''));
+  // One suggestion / first messages of a fresh session stay with AI.
+  if (users.length < 3) return { yes: false, reason: '' };
+  if (NOT_RESOLVED.test(text)) return { yes: true, reason: 'not_resolved' };
   const prev = users.slice(0, -1);
   const last = users[users.length - 1] || text;
   for (let i = 0; i < prev.length; i++) {
@@ -115,9 +116,9 @@ Facts:
 - User: live GPS pin, basket, card (Payments.lk) or cash on delivery (one open COD). Track shop until pickup, then the rider. Call left of Chat. After delivery, rate shop, item, rider.
 - Shop: Open Shop → Sign In. Preparing pulses until Food is ready. Card wallet withdraw needs Sri Lanka bank details first.
 - Rider: dashboard first. Didit for NIC + licence + live face. Start navigates to the shop. Pickup/delivered only when very close. Card jobs send a 4-digit PIN on WhatsApp.
-If you cannot solve it, or the user is stuck, say you will connect them to a real QuickBite agent. Never put API keys in a reply.`;
+Answer the current question only. Do not offer to connect a real agent unless the user clearly asks to talk to a person. Never put API keys in a reply.`;
 
-function faqReply(text) {
+export function faqReply(text) {
   const t = norm(text);
   if (/otp|whatsapp|code|sms/.test(t)) return 'We send a 4-digit code on WhatsApp, not SMS. Open that chat, enter the code, then you are in. Stay signed in until Log Out.';
   if (/track|where.*order|rider|map/.test(t)) return 'Open the order and tap Track. You see the shop until pickup, then the rider on OpenStreetMap. Call is left of Chat.';

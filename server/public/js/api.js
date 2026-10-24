@@ -2444,7 +2444,7 @@
   function emptySupport() {
     return {
       mode: 'ai', ticket: '', status: 'open', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
-      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '', ratedAt: 0,
+      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '', ratedAt: 0, chatGen: 0,
     };
   }
   var AGENT_IDLE_MS = 3 * 60 * 1000;
@@ -2478,14 +2478,17 @@
     t.agentClosedAt = ts;
     t.closeReason = why;
     t.escalatedAt = 0;
-    t.sessions = (t.sessions || []).concat([{ closedAt: ts, reason: why, rating: 0 }]);
+    const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
+    t.sessions = (t.sessions || []).concat([{ closedAt: ts, reason: why, rating: 0, gen: gen }]);
     t.messages = (t.messages || []).concat([{
       role: 'system',
       text: why === 'idle'
         ? 'The agent session closed after 3 minutes with no reply. Rate this agent, then AI Help continues.'
         : 'The agent closed this chat. Rate this agent session. AI Help continues after you rate.',
       ts: ts,
+      gen: gen,
     }]);
+    t.chatGen = gen + 1;
     return t;
   }
   function normalizeSupport(raw) {
@@ -2508,6 +2511,7 @@
     s.agentClosedAt = Number(p.agentClosedAt) || 0;
     s.closeReason = String(p.closeReason || '');
     s.ratedAt = Number(p.ratedAt) || 0;
+    s.chatGen = Math.max(0, Math.round(Number(p.chatGen) || 0));
     s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
     s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
     s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
@@ -2515,7 +2519,7 @@
       const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
       const text = String(m.text || m.content || '').trim();
       if (!text) return null;
-      return { role: role, text: text, ts: Number(m.ts) || Date.now() };
+      return { role: role, text: text, ts: Number(m.ts) || Date.now(), gen: Math.max(0, Math.round(Number(m.gen) || 0)) };
     }).filter(Boolean).slice(-80);
     return s;
   }
@@ -2586,6 +2590,7 @@
       role: 'system',
       text: 'Thanks. You rated this agent ' + n + ' star' + (n === 1 ? '' : 's') + '. AI Help is ready.',
       ts: ts,
+      gen: Math.max(0, Math.round(Number(API.support.chatGen) || 1) - 1),
     }]);
     await persistSupport();
     notify(true);
@@ -2602,17 +2607,18 @@
     }
     if (API.support.awaitingRating) throw new Error('Rate the agent first.');
     if (!API.support.ticket) API.support.ticket = 'HS-' + Date.now().toString(36).toUpperCase().slice(-7);
-    API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now() }]);
-    const epoch = Math.max(Number(API.support.agentClosedAt) || 0, Number(API.support.ratedAt) || 0);
+    const gen = Math.max(0, Math.round(Number(API.support.chatGen) || 0));
+    const liveAgent = API.support.mode === 'agent' && API.support.status !== 'closed' && API.support.status !== 'resolved';
+    API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now(), gen: gen }]);
     const aiMsgs = (API.support.messages || []).filter(function (m) {
       if (!m) return false;
-      if (epoch && (Number(m.ts) || 0) <= epoch) return false;
+      if ((Number(m.gen) || 0) !== gen) return false;
       return m.role === 'user' || m.role === 'assistant';
     });
     const payload = {
-      mode: API.support.mode || 'ai',
+      mode: liveAgent ? 'agent' : 'ai',
       text: body,
-      messages: aiMsgs.map(function (m) {
+      messages: liveAgent ? [] : aiMsgs.map(function (m) {
         return { role: m.role === 'user' ? 'user' : 'assistant', content: m.text };
       }),
     };
@@ -2626,13 +2632,14 @@
       data = await res.json().catch(function () { return {}; });
       if (!res.ok && !data.reply && !data.escalate) throw new Error(data.message || 'Could not reach support');
     } catch (e) {
-      data = { escalate: true, reason: 'offline', reply: 'I could not reach Help just now, so this chat is with a real agent queue. Keep this thread — we have your message.' };
+      data = { escalate: false, reason: 'offline', reply: 'I could not reach Help just now. Try again — you are still with AI Help.' };
     }
     if (data.reply) {
       API.support.messages.push({
         role: data.escalate ? 'system' : 'assistant',
         text: String(data.reply),
         ts: Date.now(),
+        gen: gen,
       });
     }
     if (data.escalate) {
@@ -2640,13 +2647,13 @@
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || 'escalate');
-      API.support.escalatedAt = API.support.escalatedAt || Date.now();
+      API.support.escalatedAt = Date.now();
       if (!data.reply) {
         const note = API.support.queuedNote
           ? ('Queued for the agent. Ticket ' + API.support.ticket + '.')
           : ('You are in real agent mode. Ticket ' + API.support.ticket + '. An agent will reply in this chat.');
         API.support.queuedNote = true;
-        API.support.messages.push({ role: 'system', text: note, ts: Date.now() });
+        API.support.messages.push({ role: 'system', text: note, ts: Date.now(), gen: gen });
       } else {
         API.support.queuedNote = true;
       }

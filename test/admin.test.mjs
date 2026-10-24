@@ -160,6 +160,7 @@ describe('agent session close and rating', () => {
     const t = closeAgentSession({ mode: 'agent', messages: [], escalatedAt: 1 }, 'admin', 50);
     assert.equal(t.mode, 'ai');
     assert.equal(t.status, 'closed');
+    assert.equal(t.chatGen, 1);
     assert.equal(t.awaitingRating, true);
     assert.equal(t.closeReason, 'admin');
     assert.equal(isLiveAgentThread(t), false);
