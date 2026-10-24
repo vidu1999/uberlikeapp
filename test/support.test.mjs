@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { freshAiHistory, shouldEscalate } from '../functions/_lib/support.js';
+import { freshAiHistory, isAgentHandoffText, shouldEscalate } from '../functions/_lib/support.js';
 
 describe('fresh AI chat after agent close', () => {
   it('drops messages before the closed-session marker', () => {
@@ -50,5 +50,10 @@ describe('fresh AI chat after agent close', () => {
       'Payment or wallet'
     );
     assert.equal(gate.yes, false);
+  });
+
+  it('treats connecting-to-agent copy as a real handoff', () => {
+    assert.equal(isAgentHandoffText('Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.'), true);
+    assert.equal(isAgentHandoffText('I can connect a real agent if this is not resolved.'), false);
   });
 });

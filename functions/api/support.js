@@ -1,4 +1,4 @@
-import { aiReply, faqReply, freshAiHistory, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
+import { aiReply, faqReply, freshAiHistory, isAgentHandoffText, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
 
 export async function onRequest(context) {
   const request = context.request;
@@ -46,9 +46,11 @@ export async function onRequest(context) {
 
   try {
     const out = await aiReply(env, history);
+    const handoff = isAgentHandoffText(out.text);
     return json(200, {
       ok: true,
-      escalate: false,
+      escalate: handoff,
+      reason: handoff ? 'ai_handoff' : '',
       reply: out.text,
       provider: out.provider,
     });

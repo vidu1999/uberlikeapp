@@ -2554,15 +2554,22 @@
     next.ratedAt = Math.max(Number(r.ratedAt) || 0, Number(l.ratedAt) || 0);
     if ((l.sessions || []).length > (r.sessions || []).length) next.sessions = l.sessions;
     else if ((r.sessions || []).length) next.sessions = r.sessions;
-    const remoteLive = r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved';
+    const localLive = l.mode === 'agent' && l.status !== 'closed' && l.status !== 'resolved' && !l.awaitingRating;
+    const remoteLive = r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved' && !r.awaitingRating;
     const rated = (!l.awaitingRating && (Number(l.ratedAt) > 0 || Number(l.rating) > 0))
       || (!r.awaitingRating && (Number(r.ratedAt) > 0 || Number(r.rating) > 0));
-    const lastAgent = supportLastTs(r.messages, ['agent']);
-    if (remoteLive && !(rated && lastAgent && lastAgent <= Number(l.ratedAt || l.agentClosedAt || 0))) {
+    const localClosedAt = Math.max(Number(l.agentClosedAt) || 0, Number(l.ratedAt) || 0);
+    const remoteEscalated = Number(r.escalatedAt) || 0;
+    if (localLive) {
+      next.mode = 'agent';
+      next.status = l.status || 'open';
+      next.awaitingRating = false;
+      next.escalatedAt = Number(l.escalatedAt) || Date.now();
+    } else if (remoteLive && localClosedAt < remoteEscalated) {
       next.mode = 'agent';
       next.status = r.status || 'in_progress';
       next.awaitingRating = false;
-      next.escalatedAt = Number(r.escalatedAt) || next.escalatedAt || Date.now();
+      next.escalatedAt = remoteEscalated;
     } else if (rated) {
       next.awaitingRating = false;
       next.mode = 'ai';
@@ -2691,19 +2698,21 @@
     } catch (e) {
       data = { escalate: false, reason: 'offline', reply: 'I could not reach Help just now. Try again — you are still with AI Help.' };
     }
+    const handoff = /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(data.reply || ''));
+    const wantAgent = !!(data.escalate || handoff);
     if (data.reply) {
       API.support.messages.push({
-        role: data.escalate ? 'system' : 'assistant',
+        role: wantAgent ? 'system' : 'assistant',
         text: String(data.reply),
         ts: Date.now(),
         gen: gen,
       });
     }
-    if (data.escalate) {
-      if (API.support.mode !== 'agent') API.support.status = 'open';
+    if (wantAgent) {
+      API.support.status = 'open';
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
-      API.support.reason = String(data.reason || 'escalate');
+      API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
       API.support.escalatedAt = Date.now();
       if (!data.reply) {
         const note = API.support.queuedNote
@@ -2716,6 +2725,11 @@
       }
     }
     await persistSupport();
+    if (wantAgent && API.support) {
+      API.support.mode = 'agent';
+      API.support.status = (API.support.status === 'closed' || API.support.status === 'resolved') ? 'open' : (API.support.status || 'open');
+      API.support.awaitingRating = false;
+    }
     notify(true);
     return API.support;
   };

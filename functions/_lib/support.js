@@ -93,6 +93,10 @@ export function freshAiHistory(messages) {
   }));
 }
 
+export function isAgentHandoffText(text) {
+  return /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(text || ''));
+}
+
 export function shouldEscalate(messages, latest) {
   const text = String(latest || '');
   if (ASK_HUMAN.test(text)) return { yes: true, reason: 'asked_agent' };
