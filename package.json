@@ -5,7 +5,9 @@
   "description": "Live-linked User, Shop, and Rider delivery apps",
   "scripts": {
     "start": "node server/index.js",
-    "wipe-demo": "node server/wipe-demo.js"
+    "wipe-demo": "node server/wipe-demo.js",
+    "test": "node --test test/admin.test.mjs",
+    "test:admin": "node --test test/admin.test.mjs"
   },
   "engines": {
     "node": ">=18"
