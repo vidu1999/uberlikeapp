@@ -52,6 +52,20 @@
     return 2 * R * Math.asin(Math.sqrt(s));
   }
 
+  function bearingDeg(a, b) {
+    const lat1 = (a[0] * Math.PI) / 180;
+    const lat2 = (b[0] * Math.PI) / 180;
+    const dLng = ((b[1] - a[1]) * Math.PI) / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  function lerpHeading(a, b, t) {
+    const d = ((b - a + 540) % 360) - 180;
+    return (a + d * t + 360) % 360;
+  }
+
   const SHOP_SVG =
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg>';
 
@@ -365,6 +379,8 @@
       spd: 0,
       lastFix: null,
       prev: null,
+      heading: 0,
+      headingSet: false,
     };
     let lastOrder = order;
 
@@ -395,6 +411,58 @@
 
     function destTitle(next) {
       return goingToShop(next) ? 'Go to shop' : 'Go to customer';
+    }
+
+    function headingAlongRoad(from, road) {
+      if (!from || !road || !road.coords || road.coords.length < 2) return null;
+      const i = nearestIndex(road.coords, from);
+      const a = road.coords[i];
+      const b = road.coords[Math.min(road.coords.length - 1, i + 3)];
+      if (!a || !b || (a[0] === b[0] && a[1] === b[1])) return null;
+      return bearingDeg(a, b);
+    }
+
+    function applyMapRotate(heading, on) {
+      const box = map.getContainer();
+      const root = el.closest && el.closest('[data-track-root]');
+      if (!on) {
+        box.style.transform = '';
+        box.style.transformOrigin = '';
+        box.style.transition = '';
+        if (root) {
+          root.classList.remove('is-nav');
+          root.style.removeProperty('--nav-rot');
+        }
+        nav.headingSet = false;
+        return;
+      }
+      if (root) {
+        root.classList.add('is-nav');
+        root.style.setProperty('--nav-rot', Number(heading).toFixed(1) + 'deg');
+      }
+      box.style.transformOrigin = '50% 58%';
+      box.style.transition = 'transform 0.4s linear';
+      box.style.transform = 'rotate(' + (-Number(heading)).toFixed(1) + 'deg) scale(1.38)';
+    }
+
+    function updateHeading(from, road, kmh) {
+      let target = headingAlongRoad(from, road);
+      if (nav.lastFix && kmh >= 3.5) {
+        const moved = haversineKm([nav.lastFix.lat, nav.lastFix.lng], from) * 1000;
+        if (moved >= 4) {
+          const gps = bearingDeg([nav.lastFix.lat, nav.lastFix.lng], from);
+          if (target == null) target = gps;
+          else if (kmh >= 10) target = lerpHeading(target, gps, 0.28);
+        }
+      }
+      if (target == null) return nav.headingSet ? nav.heading : 0;
+      if (!nav.headingSet) {
+        nav.heading = target;
+        nav.headingSet = true;
+      } else {
+        nav.heading = lerpHeading(nav.heading, target, 0.3);
+      }
+      return nav.heading;
     }
 
     function clearChips() {
@@ -523,8 +591,10 @@
         const ends = routeEnds(next, p);
         drawRoutes(map, layers, ends.from, ends.to, p.rider);
       }
-      paintHint(next, from, nav.road);
       const me = mePoint(p) || from;
+      const head = updateHeading(me || from, nav.road, nav.spd);
+      paintHint(next, from, nav.road);
+      applyMapRotate(head, true);
       if (!me) return;
       try {
         if (force) map.setView(me, Math.max(map.getZoom(), 17), { animate: true });
@@ -536,6 +606,8 @@
       nav.on = false;
       nav.road = null;
       nav.toKey = '';
+      nav.headingSet = false;
+      applyMapRotate(0, false);
       clearChips();
       const p = positions(next || lastOrder || order);
       p.dest = destLocked;
@@ -648,10 +720,12 @@
           nav.prev = null;
         }
         nav.on = true;
+        nav.headingSet = false;
         refreshRoad(next, true);
       },
       destroy() {
         nav.on = false;
+        applyMapRotate(0, false);
         clearChips();
         try {
           map.remove();

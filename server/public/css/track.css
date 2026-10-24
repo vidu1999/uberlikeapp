@@ -195,3 +195,14 @@ body > #root > .track-screen {
   box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
   white-space: nowrap;
 }
+.rd-screen.is-nav #map,
+.rd-screen.is-nav .leaflet-container {
+  will-change: transform;
+}
+.rd-screen.is-nav .pin-lab,
+.rd-screen.is-nav .pin-bike,
+.rd-screen.is-nav .live-dot,
+.rd-screen.is-nav .nav-chip {
+  transform: rotate(var(--nav-rot, 0deg));
+  transform-origin: center center;
+}
