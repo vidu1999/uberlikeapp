@@ -2428,6 +2428,121 @@
     return req;
   };
 
+  function supportKey(user) {
+    const u = user || API.user;
+    if (!u || !u.id) return '';
+    const id = String(u.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return 'qb_support_customer_' + id;
+  }
+  function emptySupport() {
+    return { mode: 'ai', ticket: '', messages: [], escalatedAt: 0, reason: '', queuedNote: false };
+  }
+  function normalizeSupport(raw) {
+    const s = emptySupport();
+    let p = raw;
+    if (typeof p === 'string') {
+      try { p = JSON.parse(p); } catch (_) { p = null; }
+    }
+    if (!p || typeof p !== 'object') return s;
+    s.mode = p.mode === 'agent' ? 'agent' : 'ai';
+    s.ticket = String(p.ticket || '').trim();
+    s.escalatedAt = Number(p.escalatedAt) || 0;
+    s.reason = String(p.reason || '');
+    s.queuedNote = !!p.queuedNote;
+    s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
+      if (!m) return null;
+      const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
+      const text = String(m.text || m.content || '').trim();
+      if (!text) return null;
+      return { role: role, text: text, ts: Number(m.ts) || Date.now() };
+    }).filter(Boolean).slice(-80);
+    return s;
+  }
+  API.support = emptySupport();
+  async function persistSupport() {
+    const key = supportKey();
+    if (!key) return;
+    const payload = API.support || emptySupport();
+    if (sbConfigured()) {
+      await sbPutRow('app_state', { id: key, payload: payload });
+      return;
+    }
+    try { storeSet(key, JSON.stringify(payload)); } catch (_) {}
+  }
+  API.loadSupport = async function () {
+    const key = supportKey();
+    if (!key) {
+      API.support = emptySupport();
+      return API.support;
+    }
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        API.support = normalizeSupport(rows[0] && rows[0].payload);
+        return API.support;
+      } catch (_) {}
+    }
+    try {
+      const raw = storeGet(key);
+      API.support = raw ? normalizeSupport(JSON.parse(raw)) : emptySupport();
+    } catch (_) {
+      API.support = emptySupport();
+    }
+    return API.support;
+  };
+  API.askSupport = async function (text) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    const body = String(text || '').trim();
+    if (!body) throw new Error('Type a message.');
+    if (!API.support) API.support = emptySupport();
+    if (!API.support.ticket) API.support.ticket = 'HS-' + Date.now().toString(36).toUpperCase().slice(-7);
+    API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now() }]);
+    const payload = {
+      mode: API.support.mode || 'ai',
+      text: body,
+      messages: (API.support.messages || []).map(function (m) {
+        return { role: m.role === 'user' ? 'user' : 'assistant', content: m.text };
+      }),
+    };
+    let data = {};
+    try {
+      const res = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      data = await res.json().catch(function () { return {}; });
+      if (!res.ok && !data.reply && !data.escalate) throw new Error(data.message || 'Could not reach support');
+    } catch (e) {
+      data = { escalate: true, reason: 'offline', reply: 'I could not reach Help just now, so this chat is with a real agent queue. Keep this thread — we have your message.' };
+    }
+    if (data.reply) {
+      API.support.messages.push({
+        role: data.escalate ? 'system' : 'assistant',
+        text: String(data.reply),
+        ts: Date.now(),
+      });
+    }
+    if (data.escalate) {
+      API.support.mode = 'agent';
+      API.support.reason = String(data.reason || 'escalate');
+      API.support.escalatedAt = API.support.escalatedAt || Date.now();
+      if (!data.reply) {
+        const note = API.support.queuedNote
+          ? ('Queued for the agent. Ticket ' + API.support.ticket + '.')
+          : ('You are in real agent mode. Ticket ' + API.support.ticket + '. An agent will reply in this chat.');
+        API.support.queuedNote = true;
+        API.support.messages.push({ role: 'system', text: note, ts: Date.now() });
+      } else {
+        API.support.queuedNote = true;
+      }
+    }
+    await persistSupport();
+    notify(true);
+    return API.support;
+  };
+
   function nextOrderId() {
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
