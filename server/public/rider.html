@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
   <link rel="stylesheet" href="/css/ui.css?v=19zs" />
-  <link rel="stylesheet" href="/css/track.css?v=19zy" />
+  <link rel="stylesheet" href="/css/track.css?v=19zz" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19be"></script>
-  <script src="/js/maps.js?v=19zza"></script>
+  <script src="/js/maps.js?v=19zzb"></script>
   <script src="/js/track-ui.js?v=19aag"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -259,7 +259,8 @@
       const push = (pos) => {
         const lat = pos.coords.latitude, lng = pos.coords.longitude;
         state.liveLat = lat; state.liveLng = lng;
-        window.QB_LIVE = { lat, lng, acc: pos.coords.accuracy };
+        window.QB_LIVE = { lat, lng, acc: pos.coords.accuracy, heading: pos.coords.heading, speed: pos.coords.speed };
+        if (state.mapHandle && state.mapHandle.tickNav) state.mapHandle.tickNav();
         if (API.setViewOrigin) API.setViewOrigin(lat, lng);
         if (!orderId) return;
         const o = (API.orders || []).find((x) => x.id === orderId);
@@ -275,7 +276,8 @@
       const opt = { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 };
       const onPos = (pos) => {
         state.liveLat = pos.coords.latitude; state.liveLng = pos.coords.longitude;
-        window.QB_LIVE = { lat: state.liveLat, lng: state.liveLng, acc: pos.coords.accuracy };
+        window.QB_LIVE = { lat: state.liveLat, lng: state.liveLng, acc: pos.coords.accuracy, heading: pos.coords.heading, speed: pos.coords.speed };
+        if (state.mapHandle && state.mapHandle.tickNav) state.mapHandle.tickNav();
         if (API.setViewOrigin) API.setViewOrigin(state.liveLat, state.liveLng);
         const live = ongoing().find((o) => liveJob(o) && o.status !== 'delivered');
         if (live) API.patch(live.id, { riderLat: state.liveLat, riderLng: state.liveLng });

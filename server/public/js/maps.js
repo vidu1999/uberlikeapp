@@ -381,6 +381,10 @@
       prev: null,
       heading: 0,
       headingSet: false,
+      compass: null,
+      timer: null,
+      orientBound: false,
+      onOrient: null,
     };
     let lastOrder = order;
 
@@ -416,10 +420,26 @@
     function headingAlongRoad(from, road) {
       if (!from || !road || !road.coords || road.coords.length < 2) return null;
       const i = nearestIndex(road.coords, from);
+      let j = i;
+      for (let k = i + 1; k < road.coords.length; k++) {
+        j = k;
+        if (haversineKm(road.coords[i], road.coords[k]) * 1000 >= 32) break;
+      }
+      if (j <= i) j = Math.min(road.coords.length - 1, i + 2);
       const a = road.coords[i];
-      const b = road.coords[Math.min(road.coords.length - 1, i + 3)];
+      const b = road.coords[j];
       if (!a || !b || (a[0] === b[0] && a[1] === b[1])) return null;
       return bearingDeg(a, b);
+    }
+
+    function liveCourse() {
+      const live = window.QB_LIVE;
+      if (!live) return null;
+      const h = Number(live.heading);
+      const spd = Number(live.speed);
+      if (!Number.isFinite(h) || h < 0) return null;
+      if (Number.isFinite(spd) && spd >= 0 && spd < 0.6) return null;
+      return h;
     }
 
     function applyMapRotate(heading, on) {
@@ -441,28 +461,73 @@
         root.style.setProperty('--nav-rot', Number(heading).toFixed(1) + 'deg');
       }
       box.style.transformOrigin = '50% 58%';
-      box.style.transition = 'transform 0.4s linear';
+      box.style.transition = 'transform 0.18s linear';
       box.style.transform = 'rotate(' + (-Number(heading)).toFixed(1) + 'deg) scale(1.38)';
     }
 
     function updateHeading(from, road, kmh) {
-      let target = headingAlongRoad(from, road);
-      if (nav.lastFix && kmh >= 3.5) {
+      let target = liveCourse();
+      if (target == null) target = headingAlongRoad(from, road);
+      if (target == null && nav.compass != null && Number.isFinite(nav.compass)) target = nav.compass;
+      if (target == null && nav.lastFix && kmh >= 2.5) {
         const moved = haversineKm([nav.lastFix.lat, nav.lastFix.lng], from) * 1000;
-        if (moved >= 4) {
-          const gps = bearingDeg([nav.lastFix.lat, nav.lastFix.lng], from);
-          if (target == null) target = gps;
-          else if (kmh >= 10) target = lerpHeading(target, gps, 0.28);
-        }
+        if (moved >= 3) target = bearingDeg([nav.lastFix.lat, nav.lastFix.lng], from);
       }
       if (target == null) return nav.headingSet ? nav.heading : 0;
       if (!nav.headingSet) {
         nav.heading = target;
         nav.headingSet = true;
       } else {
-        nav.heading = lerpHeading(nav.heading, target, 0.3);
+        nav.heading = lerpHeading(nav.heading, target, 0.22);
       }
       return nav.heading;
+    }
+
+    function bindCompass() {
+      if (nav.orientBound) return;
+      nav.orientBound = true;
+      nav.onOrient = function (e) {
+        if (!e) return;
+        let h = null;
+        if (e.webkitCompassHeading != null && !isNaN(e.webkitCompassHeading)) h = Number(e.webkitCompassHeading);
+        else if (e.alpha != null && !isNaN(e.alpha)) h = (360 - Number(e.alpha) + 360) % 360;
+        if (h != null) nav.compass = h;
+      };
+      window.addEventListener('deviceorientationabsolute', nav.onOrient, true);
+      window.addEventListener('deviceorientation', nav.onOrient, true);
+    }
+
+    function unbindCompass() {
+      if (!nav.orientBound) return;
+      nav.orientBound = false;
+      if (nav.onOrient) {
+        window.removeEventListener('deviceorientationabsolute', nav.onOrient, true);
+        window.removeEventListener('deviceorientation', nav.onOrient, true);
+      }
+      nav.onOrient = null;
+      nav.compass = null;
+    }
+
+    function stopHeadingLoop() {
+      if (nav.timer) {
+        clearInterval(nav.timer);
+        nav.timer = null;
+      }
+      unbindCompass();
+    }
+
+    function startHeadingLoop() {
+      if (nav.timer) return;
+      bindCompass();
+      nav.timer = setInterval(function () {
+        if (!nav.on) return;
+        const next = lastOrder;
+        if (!next || next.status === 'delivered' || next.status === 'cancelled') {
+          restoreOverview(next);
+          return;
+        }
+        tickFollow(next, false);
+      }, 220);
     }
 
     function clearChips() {
@@ -513,17 +578,29 @@
 
     function speedKmh(from) {
       const now = Date.now();
-      let kmh = 0;
+      const liveSpd = window.QB_LIVE && Number(window.QB_LIVE.speed);
+      if (Number.isFinite(liveSpd) && liveSpd >= 0) {
+        const kmh = liveSpd * 3.6;
+        if (kmh <= 90) {
+          nav.spd = kmh;
+          if (!nav.lastFix || haversineKm([nav.lastFix.lat, nav.lastFix.lng], from) * 1000 >= 2) {
+            nav.lastFix = { lat: from[0], lng: from[1], t: now, kmh: kmh };
+          }
+          return kmh;
+        }
+      }
+      let kmh = nav.spd || 0;
       if (nav.lastFix && nav.lastFix.t) {
         const dt = (now - nav.lastFix.t) / 1000;
-        if (dt >= 1.2 && dt < 40) {
-          const dkm = haversineKm([nav.lastFix.lat, nav.lastFix.lng], from);
+        const dkm = haversineKm([nav.lastFix.lat, nav.lastFix.lng], from);
+        if (dt >= 0.8 && dt < 40 && dkm * 1000 >= 2) {
           const raw = (dkm / dt) * 3600;
-          if (raw >= 0 && raw <= 80) kmh = nav.lastFix.kmh ? nav.lastFix.kmh * 0.55 + raw * 0.45 : raw;
-          else kmh = nav.lastFix.kmh || 0;
-        } else kmh = nav.lastFix.kmh || 0;
+          if (raw >= 0 && raw <= 80) kmh = nav.lastFix.kmh ? nav.lastFix.kmh * 0.6 + raw * 0.4 : raw;
+          nav.lastFix = { lat: from[0], lng: from[1], t: now, kmh: kmh };
+        } else kmh = nav.lastFix.kmh || kmh;
+      } else {
+        nav.lastFix = { lat: from[0], lng: from[1], t: now, kmh: kmh };
       }
-      nav.lastFix = { lat: from[0], lng: from[1], t: now, kmh: kmh };
       nav.spd = kmh;
       return kmh;
     }
@@ -545,17 +622,29 @@
       const title = destTitle(next);
       const label = turnLabel(coming[0], title);
       nav.hint = label;
-      if (turnEl) turnEl.textContent = label;
+      if (turnEl && turnEl.textContent !== label) turnEl.textContent = label;
       const kmh = Math.round(speedKmh(from));
-      if (spdEl) {
-        spdEl.textContent = kmh >= 2 ? (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h') : '';
-      }
-      clearChips();
-      coming.forEach(function (s, i) {
-        let txt = turnLabel(s, title);
-        if (i === 0 && kmh >= 2) txt = txt + ' · ' + (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h');
-        layers.chips.push(L.marker(s.loc, { icon: navChipIcon(txt), interactive: false, zIndexOffset: 700 }).addTo(map));
-      });
+      const spdTxt = kmh >= 2 ? (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h') : '';
+      if (spdEl && spdEl.textContent !== spdTxt) spdEl.textContent = spdTxt;
+    }
+
+    function tickFollow(next, force) {
+      if (!nav.on || !next) return;
+      const p = positions(next);
+      p.dest = destLocked;
+      const from = navFrom(next, p);
+      const me = mePoint(p) || from;
+      if (!me) return;
+      paintLive(p);
+      if (nav.road) drawNavRoute(me, nav.road);
+      const kmh = nav.spd || 0;
+      const head = updateHeading(me, nav.road, kmh);
+      paintHint(next, me, nav.road);
+      applyMapRotate(head, true);
+      try {
+        if (force) map.setView(me, Math.max(map.getZoom(), 17), { animate: true });
+        else map.panTo(me, { animate: false });
+      } catch (_) {}
     }
 
     function offRoute(from, road) {
@@ -591,15 +680,8 @@
         const ends = routeEnds(next, p);
         drawRoutes(map, layers, ends.from, ends.to, p.rider);
       }
-      const me = mePoint(p) || from;
-      const head = updateHeading(me || from, nav.road, nav.spd);
-      paintHint(next, from, nav.road);
-      applyMapRotate(head, true);
-      if (!me) return;
-      try {
-        if (force) map.setView(me, Math.max(map.getZoom(), 17), { animate: true });
-        else map.panTo(me, { animate: true });
-      } catch (_) {}
+      tickFollow(next, force);
+      startHeadingLoop();
     }
 
     function restoreOverview(next) {
@@ -607,6 +689,7 @@
       nav.road = null;
       nav.toKey = '';
       nav.headingSet = false;
+      stopHeadingLoop();
       applyMapRotate(0, false);
       clearChips();
       const p = positions(next || lastOrder || order);
@@ -668,6 +751,11 @@
         const p = positions(next);
         p.dest = destLocked;
         paintLive(p);
+        if (nav.on && (next.status === 'delivered' || next.status === 'cancelled')) {
+          restoreOverview(next);
+          paintRider(next, p);
+          return;
+        }
         if (nav.on) {
           refreshRoad(next, false);
           paintRider(next, p);
@@ -722,9 +810,14 @@
         nav.on = true;
         nav.headingSet = false;
         refreshRoad(next, true);
+        startHeadingLoop();
+      },
+      tickNav() {
+        if (nav.on) tickFollow(lastOrder || order, false);
       },
       destroy() {
         nav.on = false;
+        stopHeadingLoop();
         applyMapRotate(0, false);
         clearChips();
         try {

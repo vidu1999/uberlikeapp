@@ -199,10 +199,9 @@ body > #root > .track-screen {
 .rd-screen.is-nav .leaflet-container {
   will-change: transform;
 }
-.rd-screen.is-nav .pin-lab,
-.rd-screen.is-nav .pin-bike,
-.rd-screen.is-nav .live-dot,
-.rd-screen.is-nav .nav-chip {
+.rd-screen.is-nav .km-tip { display: none !important; }
+.rd-screen.is-nav .pin-lab > span {
   transform: rotate(var(--nav-rot, 0deg));
   transform-origin: center center;
+  display: inline-block;
 }
