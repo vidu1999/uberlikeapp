@@ -364,7 +364,9 @@
       hint: '',
       spd: 0,
       lastFix: null,
+      prev: null,
     };
+    let lastOrder = order;
 
     function isRiderView() {
       return typeof document !== 'undefined' && document.documentElement.getAttribute('data-role') === 'rider';
@@ -379,6 +381,12 @@
       const live = window.QB_LIVE;
       if (live && live.lat != null) return [Number(live.lat), Number(live.lng)];
       return null;
+    }
+
+    function mePoint(p) {
+      const live = window.QB_LIVE;
+      if (live && live.lat != null) return [Number(live.lat), Number(live.lng)];
+      return navFrom(lastOrder, p);
     }
 
     function navTo(next, p) {
@@ -516,8 +524,37 @@
         drawRoutes(map, layers, ends.from, ends.to, p.rider);
       }
       paintHint(next, from, nav.road);
+      const me = mePoint(p) || from;
+      if (!me) return;
       try {
-        map.setView(from, Math.max(map.getZoom(), 16), { animate: true });
+        if (force) map.setView(me, Math.max(map.getZoom(), 17), { animate: true });
+        else map.panTo(me, { animate: true });
+      } catch (_) {}
+    }
+
+    function restoreOverview(next) {
+      nav.on = false;
+      nav.road = null;
+      nav.toKey = '';
+      clearChips();
+      const p = positions(next || lastOrder || order);
+      p.dest = destLocked;
+      const ends = routeEnds(next || lastOrder || order, p);
+      drawRoutes(map, layers, ends.from, ends.to, p.rider);
+      paintHint(next || lastOrder || order, navFrom(next || lastOrder || order, p), null);
+      const prev = nav.prev;
+      nav.prev = null;
+      try {
+        if (prev && Number.isFinite(prev.lat) && Number.isFinite(prev.lng)) {
+          map.setView([prev.lat, prev.lng], prev.zoom || 14, { animate: true });
+          return;
+        }
+      } catch (_) {}
+      const pts = [p.dest];
+      if (p.shopPos) pts.push(p.shopPos);
+      if (p.rider) pts.push(p.rider);
+      try {
+        map.fitBounds(L.latLngBounds(pts).pad(0.18), pad);
       } catch (_) {}
     }
 
@@ -555,6 +592,7 @@
       map,
       update(next) {
         if (!next) return;
+        lastOrder = next;
         const p = positions(next);
         p.dest = destLocked;
         paintLive(p);
@@ -597,7 +635,18 @@
         }
       },
       startNav(order2) {
-        const next = order2 || order;
+        const next = order2 || lastOrder || order;
+        lastOrder = next;
+        if (nav.on) {
+          restoreOverview(next);
+          return;
+        }
+        try {
+          const c = map.getCenter();
+          nav.prev = { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+        } catch (_) {
+          nav.prev = null;
+        }
         nav.on = true;
         refreshRoad(next, true);
       },
