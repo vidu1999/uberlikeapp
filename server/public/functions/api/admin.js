@@ -2,7 +2,7 @@ import {
   STATE_KEYS, PERMS, can, json, optionsResponse, corsHeaders, cookieHeader, readSessionToken,
   bootstrapAdmin, signSession, verifySession, hashPassword, safeEq, sha256b64, envVal, adminConfigHint,
   parseOrder, isDemoAccount, isDemoShop, isDemoOrder, maskPhone, maskEmail, maskBank,
-  shouldIdleClose, closeAgentSession, appendAgentReply, filterSupportQueue, hadAgentSession, isLiveAgentThread, applySupportLane,
+  shouldIdleClose, closeAgentSession, appendAgentReply, filterSupportQueue, hadAgentSession, isLiveAgentThread, applySupportLane, assignSupportStatus,
   normalizeWallet, applyWithdrawDecision, walletHeld, defaultConfig, normalizeConfig,
   metricsFrom, parseRiderDocs, riderVerified, normalizeSupport, parseSupportKey,
   supportPublicMessages, ordersToCsv, paginate, searchHay, applyOrderCancel, canCancelOrder,
@@ -792,7 +792,7 @@ async function dispatch(env, actor, body, request) {
     if (closing && t.mode === 'agent') {
       t = closeAgentSession(t, 'admin');
     } else {
-      if (body.status) t.status = String(body.status);
+      if (body.status) t = assignSupportStatus(t, body.status);
       if (body.priority) t.priority = String(body.priority);
       if (body.assignee != null) t.assignee = String(body.assignee);
     }

@@ -796,10 +796,7 @@ export function appendAgentReply(thread, text, now) {
   const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
   const msg = { role: 'agent', text: String(text || '').trim(), ts: ts, internal: false, gen: gen };
   if (!msg.text) return t;
-  t.messages = (Array.isArray(t.messages) ? t.messages : []).map((m) => {
-    if (m && m.role === 'system' && isQueueNote(m.text)) return Object.assign({}, m, { text: waitingCopy() });
-    return m;
-  }).concat([msg]);
+  t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([msg]);
   t.mode = 'agent';
   t.awaitingRating = false;
   t.status = 'in_progress';
@@ -821,24 +818,30 @@ function currentLaneMessages(thread) {
   return lane.length ? lane : msgs;
 }
 
-function isQueueNote(text) {
-  return /queued for the agent|you are in real agent mode|connecting you to a real/i.test(String(text || ''));
+function laneHasAgent(thread) {
+  return currentLaneMessages(thread).some((m) => m && m.role === 'agent');
 }
 
-export function waitingCopy() {
-  return 'Waiting';
-}
-
-/** Queued (no agent reply) = waiting. After the first agent message = in_progress. Open stays New. */
+/** Waiting is admin-only, and only after the agent has messaged the user. No agent message stays New. */
 export function deriveSupportStatus(thread) {
   const t = thread || {};
   const st = String(t.status || '');
   if (st === 'closed' || st === 'resolved') return 'closed';
   if (t.mode !== 'agent') return st || 'open';
-  const lane = currentLaneMessages(t);
-  const hasAgent = lane.some((m) => m.role === 'agent');
-  if (!hasAgent) return (st === 'open' || st === 'new') ? st : 'waiting';
+  if (!laneHasAgent(t)) return (st === 'new') ? 'new' : 'open';
+  if (st === 'waiting') return 'waiting';
   return 'in_progress';
+}
+
+export function assignSupportStatus(thread, status) {
+  const t = thread && typeof thread === 'object' ? thread : {};
+  const st = String(status || '');
+  if (st === 'waiting' && !laneHasAgent(t)) {
+    t.status = 'open';
+    return t;
+  }
+  if (st) t.status = st;
+  return t;
 }
 
 export function applySupportLane(thread) {
@@ -855,7 +858,7 @@ export function hadAgentSession(thread) {
   return Array.isArray(thread.sessions) && thread.sessions.length > 0;
 }
 
-/** Admin queue: New = open; Waiting = queue / waiting on customer; In Progress = agent has replied and user spoke. */
+/** Admin queue: New = no agent message; Waiting = admin set it after messaging; In Progress = agent has replied. */
 export function filterSupportQueue(tickets, status) {
   const pool = (tickets || []).filter(hadAgentSession).map((t) => applySupportLane(Object.assign({}, t)));
   const live = pool.filter(isLiveAgentThread);

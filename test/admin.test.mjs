@@ -6,7 +6,7 @@ import {
   signSession, verifySession, hashPassword, safeEq, paginate, ordersToCsv,
   parseOrder, normalizeSupport, supportPublicMessages, bootstrapAdmin, envConfigured,
   envVal, adminConfigHint, shouldIdleClose, closeAgentSession, rateAgentSession, appendAgentReply, AGENT_IDLE_MS,
-  filterSupportQueue, isLiveAgentThread, hadAgentSession, deriveSupportStatus,
+  filterSupportQueue, isLiveAgentThread, hadAgentSession, deriveSupportStatus, assignSupportStatus,
 } from '../functions/_lib/admin.js';
 
 describe('permissions', () => {
@@ -179,20 +179,28 @@ describe('agent session close and rating', () => {
     };
     const fresh = { mode: 'agent', status: 'open', subject: 'Need a human' };
     const queued = { mode: 'agent', status: 'waiting', subject: 'In queue', messages: [{ role: 'user', text: 'help', ts: 1 }] };
+    const parked = {
+      mode: 'agent', status: 'waiting', subject: 'Need docs',
+      messages: [{ role: 'user', text: 'help', ts: 1 }, { role: 'agent', text: 'please send the receipt', ts: 2 }],
+    };
     const closed = closeAgentSession({ mode: 'agent', status: 'in_progress', messages: [], escalatedAt: 1, subject: 'Old' }, 'admin', 50);
     assert.equal(hadAgentSession(ai), false);
     assert.equal(hadAgentSession(live), true);
-    assert.equal(deriveSupportStatus(queued), 'waiting');
+    assert.equal(deriveSupportStatus(queued), 'open');
     assert.equal(deriveSupportStatus(fresh), 'open');
     assert.equal(deriveSupportStatus(live), 'in_progress');
-    const all = filterSupportQueue([ai, fresh, live, queued, closed], 'all');
-    assert.equal(all.counts.all, 4);
-    assert.equal(all.counts.new, 1);
+    assert.equal(deriveSupportStatus(parked), 'waiting');
+    assert.equal(assignSupportStatus({ mode: 'agent', messages: [{ role: 'user', text: 'help' }] }, 'waiting').status, 'open');
+    assert.equal(assignSupportStatus(parked, 'waiting').status, 'waiting');
+    const all = filterSupportQueue([ai, fresh, live, queued, parked, closed], 'all');
+    assert.equal(all.counts.all, 5);
+    assert.equal(all.counts.new, 2);
     assert.equal(all.counts.waiting, 1);
     assert.equal(all.counts.in_progress, 1);
     assert.equal(all.counts.resolved, 1);
-    assert.equal(filterSupportQueue([ai, fresh, live, queued, closed], 'new').rows[0].subject, 'Need a human');
-    assert.equal(filterSupportQueue([ai, fresh, live, queued, closed], 'waiting').rows[0].subject, 'In queue');
+    const news = filterSupportQueue([ai, fresh, live, queued, parked, closed], 'new').rows.map((t) => t.subject).sort();
+    assert.deepEqual(news, ['In queue', 'Need a human']);
+    assert.equal(filterSupportQueue([ai, fresh, live, queued, parked, closed], 'waiting').rows[0].subject, 'Need docs');
     const done = filterSupportQueue([ai, fresh, live, queued, closed], 'resolved');
     assert.equal(done.rows[0].status, 'closed');
   });
@@ -205,10 +213,6 @@ describe('agent session close and rating', () => {
     assert.equal(last.gen, live.chatGen);
     assert.equal(last.text, 'We are looking at your order');
     assert.equal(live.status, 'in_progress');
-    const queued = appendAgentReply({
-      mode: 'agent', chatGen: 0, messages: [{ role: 'system', text: 'Queued for the agent. Ticket HS-1.', ts: 1, gen: 0 }],
-    }, 'Hello', 2);
-    assert.equal(queued.messages[0].text, 'Waiting');
   });
 });
 

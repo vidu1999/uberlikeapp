@@ -2562,9 +2562,11 @@
     const remoteEscalated = Number(r.escalatedAt) || 0;
     if (localLive) {
       next.mode = 'agent';
-      next.status = l.status || 'open';
       next.awaitingRating = false;
       next.escalatedAt = Number(l.escalatedAt) || Date.now();
+      if (remoteLive && r.status === 'waiting') next.status = 'waiting';
+      else if (l.status === 'waiting') next.status = r.status || 'open';
+      else next.status = l.status || 'open';
     } else if (remoteLive && localClosedAt < remoteEscalated) {
       next.mode = 'agent';
       next.status = r.status || 'in_progress';
@@ -2701,25 +2703,27 @@
     const rawReply = String(data.reply || '');
     const handoff = /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent|^waiting$/i.test(rawReply);
     const wantAgent = !!(data.escalate || handoff);
-    const replyText = wantAgent && /queued for the agent|you are in real agent mode|connecting you to a real|^waiting$/i.test(rawReply)
-      ? 'Waiting'
-      : rawReply;
-    if (replyText) {
+    if (rawReply) {
       API.support.messages.push({
         role: wantAgent ? 'system' : 'assistant',
-        text: replyText,
+        text: rawReply,
         ts: Date.now(),
         gen: gen,
       });
     }
     if (wantAgent) {
-      API.support.status = 'waiting';
+      API.support.status = 'open';
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
       API.support.escalatedAt = Date.now();
-      if (!replyText) {
-        API.support.messages.push({ role: 'system', text: 'Waiting', ts: Date.now(), gen: gen });
+      if (!rawReply) {
+        API.support.messages.push({
+          role: 'system',
+          text: 'Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.',
+          ts: Date.now(),
+          gen: gen,
+        });
       }
       API.support.queuedNote = true;
     }
@@ -2727,7 +2731,9 @@
     if (wantAgent && API.support) {
       API.support.mode = 'agent';
       const hasAgentMsg = (API.support.messages || []).some(function (m) { return m && m.role === 'agent'; });
-      API.support.status = hasAgentMsg ? 'in_progress' : 'waiting';
+      if (API.support.status !== 'waiting') {
+        API.support.status = hasAgentMsg ? 'in_progress' : 'open';
+      }
       API.support.awaitingRating = false;
     }
     notify(true);

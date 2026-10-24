@@ -557,10 +557,10 @@
     const st = state.filters.status;
     const empty = st === 'resolved' ? 'No closed sessions yet.'
       : st === 'new' ? 'No new agent chats.'
-      : st === 'waiting' ? 'No customers waiting in queue.'
+      : st === 'waiting' ? 'No chats on Waiting. Set Waiting after you have messaged the customer.'
       : st === 'in_progress' ? 'No in-progress agent chats.'
       : 'No customers in New, Waiting, In Progress, or Closed yet. They appear here live.';
-    return listChrome('Questions & Support', 'Open chats sit under New until the agent sends a first message, then they move to In Progress.',
+    return listChrome('Questions & Support', 'New = questions with no agent message. Waiting is only if you set it after messaging. First agent reply moves the chat to In Progress.',
       '<span class="ad-live"><i></i>Live</span>', `
       <div class="ad-tabs">
         ${tabBtn('status','all','All ('+(c.all||0)+')')}
@@ -583,12 +583,6 @@
   }
 
   function supportWaitLabel(t) {
-    if (!t || t.mode !== 'agent' || t.status === 'closed' || t.status === 'resolved') return '';
-    const msgs = (t.messages || []).filter((m) => m && !m.internal);
-    const hasAgent = msgs.some((m) => m.role === 'agent');
-    const last = msgs[msgs.length - 1];
-    if (!hasAgent) return 'Waiting';
-    if (last && last.role === 'agent') return 'Waiting';
     return '';
   }
 
