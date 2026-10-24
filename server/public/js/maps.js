@@ -268,6 +268,7 @@
           modifier: String(m.modifier || ''),
           name: String(st.name || ''),
           dist: Number(st.distance) || 0,
+          exit: Number(m.exit) || 0,
           idx: nearestIndex(coords, [loc[1], loc[0]]),
         });
       });
@@ -300,18 +301,50 @@
     return null;
   }
 
+  function exitWords(n) {
+    const x = Math.round(Number(n) || 0);
+    if (x === 1) return '1st exit';
+    if (x === 2) return '2nd exit';
+    if (x === 3) return '3rd exit';
+    if (x > 3) return x + 'th exit';
+    return '';
+  }
+
   function turnLabel(step, fallback) {
     if (!step) return fallback || 'Go to shop';
     const t = String(step.type || '');
     const mod = String(step.modifier || '').replace(/_/g, ' ');
     if (t === 'arrive') return 'Arrive';
     if (t === 'depart') return fallback || 'Start';
-    if (t === 'roundabout' || t === 'rotary') return 'Roundabout';
+    if (t === 'roundabout' || t === 'rotary' || t === 'roundabout turn') {
+      const ex = exitWords(step.exit);
+      return ex ? 'Roundabout, ' + ex : 'Roundabout';
+    }
     if (/left/.test(mod)) return /slight/.test(mod) ? 'Keep Left' : /sharp/.test(mod) ? 'Sharp Left' : 'Turn Left';
     if (/right/.test(mod)) return /slight/.test(mod) ? 'Keep Right' : /sharp/.test(mod) ? 'Sharp Right' : 'Turn Right';
     if (/uturn|u-turn/.test(mod) || t === 'uturn') return 'U-turn';
     if (t === 'continue' || /straight/.test(mod)) return 'Go Straight';
     return fallback || 'Continue';
+  }
+
+  function fmtMeters(m) {
+    const n = Math.max(0, Number(m) || 0);
+    if (n < 8) return 'now';
+    if (n < 1000) return String(Math.max(5, Math.round(n / 5) * 5)) + ' m';
+    const km = n / 1000;
+    return (km >= 10 ? km.toFixed(0) : km.toFixed(1)) + ' km';
+  }
+
+  function metersAlong(coords, fromIdx, toIdx, from) {
+    if (!coords || !coords.length) return 0;
+    const a = Math.max(0, Math.min(fromIdx, coords.length - 1));
+    const b = Math.max(0, Math.min(toIdx, coords.length - 1));
+    let m = 0;
+    if (from && coords[a]) m += haversineKm(from, coords[a]) * 1000;
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    for (let i = lo; i < hi; i++) m += haversineKm(coords[i], coords[i + 1]) * 1000;
+    return m;
   }
 
   function navChipIcon(text) {
@@ -571,9 +604,31 @@
         if (s.type === 'depart') continue;
         if ((s.idx || 0) + 1 < idx) continue;
         out.push(s);
-        if (out.length >= 2) break;
+        if (out.length >= 3) break;
       }
       return out;
+    }
+
+    function nextTurn(from, road) {
+      const coming = upcomingSteps(from, road);
+      for (let i = 0; i < coming.length; i++) {
+        const s = coming[i];
+        const t = String(s.type || '');
+        if (t === 'continue') continue;
+        return s;
+      }
+      return coming[0] || null;
+    }
+
+    function metersToTurn(from, road, step) {
+      if (!from || !road || !road.coords) return 0;
+      if (!step) {
+        const last = road.coords[road.coords.length - 1];
+        return last ? haversineKm(from, last) * 1000 : 0;
+      }
+      const idx = nearestIndex(road.coords, from);
+      const end = Number.isFinite(step.idx) ? step.idx : nearestIndex(road.coords, step.loc);
+      return metersAlong(road.coords, idx, end, from);
     }
 
     function speedKmh(from) {
@@ -609,6 +664,7 @@
       const root = el.closest && el.closest('[data-track-root]');
       const box = root && root.querySelector('[data-nav-hint]');
       const turnEl = root && root.querySelector('[data-nav-turn]');
+      const inEl = root && root.querySelector('[data-nav-in]');
       const spdEl = root && root.querySelector('[data-nav-spd]');
       const fab = root && root.querySelector('[data-nav-live]');
       if (fab) fab.classList.toggle('on', !!nav.on);
@@ -618,11 +674,14 @@
         return;
       }
       box.classList.remove('hidden');
-      const coming = upcomingSteps(from, road);
+      const step = nextTurn(from, road);
       const title = destTitle(next);
-      const label = turnLabel(coming[0], title);
+      const label = turnLabel(step, title);
+      const meters = metersToTurn(from, road, step);
+      const inTxt = !step ? '' : (meters < 8 ? 'Now' : 'in ' + fmtMeters(meters));
       nav.hint = label;
       if (turnEl && turnEl.textContent !== label) turnEl.textContent = label;
+      if (inEl && inEl.textContent !== inTxt) inEl.textContent = inTxt;
       const kmh = Math.round(speedKmh(from));
       const spdTxt = kmh >= 2 ? (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h') : '';
       if (spdEl && spdEl.textContent !== spdTxt) spdEl.textContent = spdTxt;

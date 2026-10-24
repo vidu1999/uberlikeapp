@@ -376,7 +376,10 @@
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 3.2 4.2 20.2l.8.4L12 17.2l7 3.4.8-.4L12 3.2z"/></svg>
       </button>
       <div class="rd-navhint hidden" data-nav-hint>
-        <b data-nav-turn>Go to shop</b>
+        <div class="grow">
+          <b data-nav-turn>Go to shop</b>
+          <small data-nav-in></small>
+        </div>
         <span data-nav-spd></span>
       </div>
       <div class="rd-card">

@@ -182,7 +182,8 @@ body > #root > .track-screen {
   box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
 }
 .rd-navhint.hidden { display: none !important; }
-.rd-navhint b { font-size: 16px; font-weight: 800; }
+.rd-navhint b { font-size: 18px; font-weight: 800; display: block; }
+.rd-navhint small { display: block; font-size: 13px; font-weight: 700; color: #4B5563; margin-top: 2px; }
 .rd-navhint span { font-size: 13px; font-weight: 700; color: #1A73E8; white-space: nowrap; }
 .nav-chip-wrap { background: none !important; border: none !important; }
 .nav-chip {
@@ -194,6 +195,22 @@ body > #root > .track-screen {
   border-radius: 12px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
   white-space: nowrap;
+}
+.rd-screen.is-nav .rd-top,
+.rd-screen.is-nav .rd-card,
+.rd-screen.is-nav .rd-zoom,
+.rd-screen.is-nav .rd-chat-fab {
+  display: none !important;
+}
+.rd-screen.is-nav .rd-navfab {
+  top: auto;
+  bottom: 28px;
+  left: 16px;
+}
+.rd-screen.is-nav .rd-navhint {
+  top: 16px;
+  left: 12px;
+  right: 12px;
 }
 .rd-screen.is-nav #map,
 .rd-screen.is-nav .leaflet-container {
