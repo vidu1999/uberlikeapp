@@ -8,6 +8,7 @@ const otp = require('./otp');
 const db = require('./db');
 const seed = require('./seed');
 const payLk = require('./pay-lk');
+const idVerify = require('./id-verify');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -446,6 +447,100 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (pathname === '/api/verify-session') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      const sid = url.searchParams.get('id') || url.searchParams.get('session_id') || '';
+      if (!sid) {
+        json(res, 200, { ok: true, provider: 'didit', feature: 'session', free: true, configured: idVerify.configured() });
+        return;
+      }
+      try {
+        const out = await idVerify.riderKycDecision(sid);
+        json(res, out.status, out.body);
+      } catch (e) {
+        json(res, 502, { ok: false, message: (e && e.message) || 'Could not read this ID check.' });
+      }
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, message: 'Use POST.' });
+      return;
+    }
+    try {
+      const raw = await readRaw(req);
+      const body = raw ? JSON.parse(raw) : {};
+      const origin = (req.headers.origin && String(req.headers.origin)) || 'https://quickbite-2ao.pages.dev';
+      const out = await idVerify.startRiderKycSession(body, origin);
+      json(res, out.status, out.body);
+    } catch (e) {
+      json(res, 502, { ok: false, message: (e && e.message) || 'Could not start free ID check.' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/verify-liveness') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, provider: 'didit', feature: 'passive-liveness', configured: idVerify.configured() });
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, message: 'Use POST.' });
+      return;
+    }
+    try {
+      const raw = await readRaw(req);
+      if (raw && raw.length > 7000000) {
+        json(res, 413, { ok: false, message: 'Selfie is too large. Try a smaller photo.' });
+        return;
+      }
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await idVerify.verifyLiveness(body);
+      json(res, out.status, out.body);
+    } catch (e) {
+      json(res, 502, { ok: false, message: (e && e.message) || 'Could not check this selfie.' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/verify-id') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, provider: 'didit', configured: idVerify.configured() });
+      return;
+    }
+    if (req.method !== 'POST') {
+      json(res, 405, { ok: false, message: 'Use POST.' });
+      return;
+    }
+    try {
+      const raw = await readRaw(req);
+      if (raw && raw.length > 7000000) {
+        json(res, 413, { ok: false, message: 'Photos are too large. Try a smaller photo.' });
+        return;
+      }
+      const body = raw ? JSON.parse(raw) : {};
+      const out = await idVerify.verifyIdDocument(body);
+      json(res, out.status, out.body);
+    } catch (e) {
+      json(res, 502, { ok: false, message: (e && e.message) || 'Could not verify this document.' });
+    }
+    return;
+  }
+
   if (pathname === '/api/pay') {
     const body = req.method === 'POST' ? await readBody(req) : {};
     const out = await payLk.handle(req.method, body);
@@ -461,6 +556,22 @@ async function handleApi(req, res, url) {
       origin: origin,
     });
     json(res, out.status, out.body);
+    return;
+  }
+
+  if (pathname === '/webhooks/didit' || pathname === '/webhooks/didit/' || pathname === '/api/webhooks/didit' || pathname === '/api/webhooks/didit/') {
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, cors(res));
+      res.end();
+      return;
+    }
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      json(res, 200, { ok: true, provider: 'didit' });
+      return;
+    }
+    const raw = await readRaw(req);
+    const out = await idVerify.handleWebhook(raw, req.headers);
+    json(res, (out && out.status) || 200, (out && out.body) || { received: true, provider: 'didit' });
     return;
   }
 

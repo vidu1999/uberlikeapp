@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -220,9 +221,24 @@ class _WebShellState extends State<WebShell> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.image,
         allowMultiple: params.mode == FileSelectorMode.openMultiple,
+        withData: true,
       );
       if (result == null) return const <String>[];
-      return result.paths.whereType<String>().map((p) => Uri.file(p).toString()).toList();
+      final out = <String>[];
+      for (final f in result.files) {
+        var path = f.path;
+        if ((path == null || path.isEmpty) && f.bytes != null) {
+          final name = (f.name.isNotEmpty ? f.name : 'photo.jpg')
+              .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+          final file = File(
+            '${Directory.systemTemp.path}/qb_${DateTime.now().millisecondsSinceEpoch}_$name',
+          );
+          await file.writeAsBytes(f.bytes!, flush: true);
+          path = file.path;
+        }
+        if (path != null && path.isNotEmpty) out.add(Uri.file(path).toString());
+      }
+      return out;
     } catch (_) {
       return const <String>[];
     }

@@ -498,6 +498,48 @@
       return new Blob([arr], { type: m[1] || 'image/jpeg' });
     } catch (_) { return null; }
   }
+  function canvasFromImage(src) {
+    let w = src.naturalWidth || src.width || 1;
+    let h = src.naturalHeight || src.height || 1;
+    const scale = Math.min(1, 720 / Math.max(w, h, 1));
+    w = Math.max(1, Math.round(w * scale));
+    h = Math.max(1, Math.round(h * scale));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(src, 0, 0, w, h);
+    return c;
+  }
+  function canvasToJpeg(c, resolve, reject) {
+    let q = 0.74;
+    function asUrl() {
+      try {
+        let dataUrl = c.toDataURL('image/jpeg', q);
+        while (dataUrl.length > 140000 && q > 0.4) {
+          q -= 0.12;
+          dataUrl = c.toDataURL('image/jpeg', q);
+        }
+        resolve(dataUrl);
+      } catch (e) { reject(e); }
+    }
+    if (!c.toBlob) return asUrl();
+    const tryBlob = function () {
+      c.toBlob(function (blob) {
+        if (!blob) return asUrl();
+        if (blob.size > 110000 && q > 0.4) {
+          q -= 0.12;
+          tryBlob();
+          return;
+        }
+        resolve(blob);
+      }, 'image/jpeg', q);
+    };
+    tryBlob();
+  }
   function compressImageFile(file) {
     return new Promise(function (resolve, reject) {
       if (!file) return reject(new Error('Choose an image'));
@@ -506,47 +548,24 @@
       const img = new Image();
       const failRead = function () {
         if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        if (typeof createImageBitmap === 'function') {
+          createImageBitmap(file).then(function (bmp) {
+            const c = canvasFromImage(bmp);
+            try { bmp.close && bmp.close(); } catch (_) {}
+            if (!c) return blobToDataUrl(file).then(resolve).catch(reject);
+            canvasToJpeg(c, resolve, reject);
+          }).catch(function () {
+            blobToDataUrl(file).then(resolve).catch(reject);
+          });
+          return;
+        }
         blobToDataUrl(file).then(resolve).catch(reject);
       };
       img.onload = function () {
         if (url) try { URL.revokeObjectURL(url); } catch (_) {}
-        let w = img.naturalWidth || img.width || 1;
-        let h = img.naturalHeight || img.height || 1;
-        const scale = Math.min(1, 720 / Math.max(w, h, 1));
-        w = Math.max(1, Math.round(w * scale));
-        h = Math.max(1, Math.round(h * scale));
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext('2d');
-        if (!ctx) return failRead();
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        let q = 0.74;
-        function asUrl() {
-          try {
-            let dataUrl = c.toDataURL('image/jpeg', q);
-            while (dataUrl.length > 140000 && q > 0.4) {
-              q -= 0.12;
-              dataUrl = c.toDataURL('image/jpeg', q);
-            }
-            resolve(dataUrl);
-          } catch (e) { reject(e); }
-        }
-        if (!c.toBlob) return asUrl();
-        const tryBlob = function () {
-          c.toBlob(function (blob) {
-            if (!blob) return asUrl();
-            if (blob.size > 110000 && q > 0.4) {
-              q -= 0.12;
-              tryBlob();
-              return;
-            }
-            resolve(blob);
-          }, 'image/jpeg', q);
-        };
-        tryBlob();
+        const c = canvasFromImage(img);
+        if (!c) return failRead();
+        canvasToJpeg(c, resolve, reject);
       };
       img.onerror = failRead;
       img.src = url || (typeof file === 'string' ? file : '');
@@ -585,9 +604,32 @@
     if (!res.ok) throw new Error('upload ' + res.status);
     return base + '/storage/v1/object/public/qb-images/' + path;
   }
+  API.storeRiderAvatar = async function (src) {
+    const s = String(src || '').trim();
+    if (!s) return '';
+    if (/\/storage\/v1\/object\/public\/qb-images\//.test(s) && /^https?:\/\//i.test(s)) return s;
+    let file = s;
+    if (/^https?:\/\//i.test(s)) {
+      try {
+        const r = await fetch(s);
+        if (!r.ok) return s;
+        file = await r.blob();
+      } catch (_) {
+        return s;
+      }
+    }
+    try {
+      return await API.storeImage(file, 'riderface');
+    } catch (_) {
+      return /^https?:\/\//i.test(s) ? s : '';
+    }
+  };
   API.storeImage = async function (file, kind) {
     if (!file) throw new Error('Choose an image');
-    if (file.type && String(file.type).indexOf('image/') !== 0) throw new Error('Choose a photo file.');
+    const t = String(file.type || '').toLowerCase();
+    if (t && t.indexOf('image/') !== 0 && t !== 'application/octet-stream') {
+      throw new Error('Choose a photo file.');
+    }
     const compressed = await compressImageFile(file);
     const path = String(kind || 'img').replace(/[^a-z]/gi, '').slice(0, 12) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + '.jpg';
     let blob = null;
@@ -827,6 +869,7 @@
     o.riderId = d.riderId || o.riderId || null;
     o.riderName = d.riderName || o.riderName || null;
     o.riderPhone = d.riderPhone || o.riderPhone || null;
+    o.riderPhoto = d.riderPhoto || o.riderPhoto || '';
     o.riderLat = d.riderLat != null ? d.riderLat : o.riderLat;
     o.riderLng = d.riderLng != null ? d.riderLng : o.riderLng;
     o.shopLat = finiteNum(d.shopLat != null ? d.shopLat : o.shopLat);
@@ -1925,11 +1968,174 @@
     if (s.length >= 5 && s.length <= 20 && /^[A-Z0-9]+$/.test(s)) return s;
     return '';
   }
+  API.parseSriNic = parseSriNic;
+  API.parseLicenseId = parseLicenseId;
+  API.parseLkPlate = parseLkPlate;
+  function compressIdImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return reject(new Error('Choose a photo.'));
+      if (typeof file === 'string') return resolve(file);
+      let url = '';
+      try { url = URL.createObjectURL(file); } catch (_) {}
+      const img = new Image();
+      const fail = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        blobToDataUrl(file).then(resolve).catch(reject);
+      };
+      img.onload = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (_) {}
+        let w = img.naturalWidth || img.width || 1;
+        let h = img.naturalHeight || img.height || 1;
+        const scale = Math.min(1, 1400 / Math.max(w, h, 1));
+        w = Math.max(1, Math.round(w * scale));
+        h = Math.max(1, Math.round(h * scale));
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        if (!ctx) return fail();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        let q = 0.82;
+        function asUrl() {
+          try { resolve(c.toDataURL('image/jpeg', q)); } catch (e) { reject(e); }
+        }
+        if (!c.toBlob) return asUrl();
+        const tryBlob = function () {
+          c.toBlob(function (blob) {
+            if (!blob) return asUrl();
+            if (blob.size > 750000 && q > 0.5) {
+              q -= 0.1;
+              tryBlob();
+              return;
+            }
+            resolve(blob);
+          }, 'image/jpeg', q);
+        };
+        tryBlob();
+      };
+      img.onerror = fail;
+      img.src = url || '';
+    });
+  }
+  function looksLikePhoto(src) {
+    const s = String(src || '');
+    return /^https?:|^data:image\//i.test(s);
+  }
+  function riderDocCacheKey(user) {
+    const u = user || API.user || {};
+    const id = String(u.id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return id ? 'qb_rdoc_' + id : '';
+  }
+  function readCachedDocPhotos(user) {
+    try {
+      const k = riderDocCacheKey(user);
+      if (!k) return {};
+      const j = JSON.parse(localStorage.getItem(k) || '{}');
+      return j && typeof j === 'object' ? j : {};
+    } catch (_) { return {}; }
+  }
+  function writeCachedDocPhotos(user, fields) {
+    const k = riderDocCacheKey(user);
+    if (!k || !fields) return;
+    const cur = readCachedDocPhotos(user);
+    ['nicPhoto', 'nicPhotoBack', 'licensePhoto', 'licensePhotoBack', 'facePhoto'].forEach(function (key) {
+      delete cur[key];
+    });
+    ['regPhoto', 'avatar'].forEach(function (key) {
+      const v = String(fields[key] || '');
+      if (looksLikePhoto(v)) cur[key] = v;
+    });
+    try { localStorage.setItem(k, JSON.stringify(cur)); } catch (_) {}
+  }
+  API.verifyIdDocument = async function (kind, frontSrc, backSrc) {
+    async function pack(src) {
+      if (!src) throw new Error('Upload front and back photos.');
+      if (typeof src !== 'string' && (src instanceof Blob || src.size)) {
+        const c = await compressIdImage(src);
+        return typeof c === 'string' ? c : await blobToDataUrl(c);
+      }
+      const s = String(src);
+      if (!looksLikePhoto(s)) throw new Error('Upload this photo again.');
+      return s;
+    }
+    const front = await pack(frontSrc);
+    const back = await pack(backSrc);
+    const res = await fetch((API.base || '') + '/api/verify-id', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: kind,
+        front: front,
+        back: back,
+        riderId: (API.user && API.user.id) || '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not verify this document.');
+    return j;
+  };
+  API.verifyLiveness = async function (faceSrc) {
+    async function pack(src) {
+      if (!src) throw new Error('Take a selfie of your face.');
+      if (typeof src !== 'string' && (src instanceof Blob || src.size)) {
+        const c = await compressIdImage(src);
+        return typeof c === 'string' ? c : await blobToDataUrl(c);
+      }
+      const s = String(src);
+      if (!looksLikePhoto(s)) throw new Error('Take a selfie of your face.');
+      return s;
+    }
+    const face = await pack(faceSrc);
+    const res = await fetch((API.base || '') + '/api/verify-liveness', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        face: face,
+        riderId: (API.user && API.user.id) || '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not check this selfie.');
+    return j;
+  };
+  API.startRiderKyc = async function () {
+    const origin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
+    const res = await fetch((API.base || '') + '/api/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        riderId: (API.user && API.user.id) || '',
+        callback: origin ? origin + '/rider.html?didit=done' : '',
+      }),
+    });
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not start free ID check.');
+    return j;
+  };
+  API.riderKycDecision = async function (sessionId) {
+    const id = String(sessionId || '').trim();
+    if (!id) throw new Error('Missing session.');
+    const res = await fetch((API.base || '') + '/api/verify-session?id=' + encodeURIComponent(id));
+    let j = {};
+    try { j = await res.json(); } catch (_) { j = {}; }
+    if (!res.ok || j.ok === false) throw new Error(j.message || 'Could not read this ID check.');
+    return j;
+  };
   function riderDocsFromUser(user) {
     const u = user || API.user || {};
     const out = {
-      nic: '', licenseId: '', nicPhoto: '', licensePhoto: '',
+      nic: '', licenseId: '', nicPhoto: '', nicPhotoBack: '',
+      licensePhoto: '', licensePhotoBack: '', facePhoto: '',
       plate: '', vehicleType: 'Motorcycle', regPhoto: '', registered: false,
+      nicKyc: '', licenseKyc: '', nicKycId: '', licenseKycId: '', nicName: '', licenseName: '',
+      amlKyc: '', amlHits: 0, amlRequestId: '',
+      livenessKyc: '', livenessScore: null, livenessRequestId: '',
+      kycSession: '', kycEvent: '', avatar: '',
     };
     const addr = String(u.address || '');
     if (addr.indexOf(RIDER_DOCS_MARK) === 0) {
@@ -1938,15 +2144,38 @@
         if (j && typeof j === 'object') {
           out.nic = String(j.nic || '');
           out.licenseId = String(j.licenseId || '');
-          out.nicPhoto = String(j.nicPhoto || '');
-          out.licensePhoto = String(j.licensePhoto || '');
+          out.nicPhoto = '';
+          out.nicPhotoBack = '';
+          out.licensePhoto = '';
+          out.licensePhotoBack = '';
           out.plate = String(j.plate || '');
           out.vehicleType = String(j.vehicleType || 'Motorcycle') || 'Motorcycle';
           out.regPhoto = String(j.regPhoto || '');
           out.registered = j.registered === true || j.registered === '1';
+          out.nicKyc = String(j.nicKyc || '').toLowerCase();
+          out.licenseKyc = String(j.licenseKyc || '').toLowerCase();
+          out.nicKycId = String(j.nicKycId || '');
+          out.licenseKycId = String(j.licenseKycId || '');
+          out.nicName = String(j.nicName || '');
+          out.licenseName = String(j.licenseName || '');
+          out.amlKyc = String(j.amlKyc || '').toLowerCase();
+          out.amlHits = Math.max(0, Math.round(Number(j.amlHits) || 0));
+          out.amlRequestId = String(j.amlRequestId || '');
+          out.facePhoto = '';
+          out.livenessKyc = String(j.livenessKyc || '').toLowerCase();
+          out.livenessScore = j.livenessScore == null || j.livenessScore === '' ? null : Number(j.livenessScore);
+          out.livenessRequestId = String(j.livenessRequestId || '');
+          out.kycSession = String(j.kycSession || '');
+          out.kycEvent = String(j.kycEvent || '');
+          out.avatar = /^https?:\/\//i.test(String(j.avatar || '')) ? String(j.avatar) : '';
         }
       } catch (_) {}
     }
+    const cached = readCachedDocPhotos(u);
+    ['regPhoto', 'avatar'].forEach(function (k) {
+      const cur = String(out[k] || '');
+      if ((!cur || cur === 'uploaded') && looksLikePhoto(cached[k])) out[k] = cached[k];
+    });
     const veh = String(u.vehicle || '').trim();
     if (veh && !/^https?:/i.test(veh)) {
       const bits = veh.split(/\s*[·|,]\s*/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -1960,8 +2189,7 @@
   API.riderDocs = function (user) { return riderDocsFromUser(user); };
   API.isRiderVerified = function (user) {
     const d = riderDocsFromUser(user);
-    if (!parseSriNic(d.nic) || !d.nicPhoto) return false;
-    if (!parseLicenseId(d.licenseId) || !d.licensePhoto) return false;
+    if (d.nicKyc !== 'approved' || d.licenseKyc !== 'approved' || d.livenessKyc !== 'approved') return false;
     if (!parseLkPlate(d.plate) || !d.registered) return false;
     return true;
   };
@@ -1983,25 +2211,44 @@
     const pack = {
       nic: nic || '',
       licenseId: licenseId || '',
-      nicPhoto: String(next.nicPhoto || ''),
-      licensePhoto: String(next.licensePhoto || ''),
+      nicPhoto: '',
+      nicPhotoBack: '',
+      licensePhoto: '',
+      licensePhotoBack: '',
       plate: plate || '',
       vehicleType: String(next.vehicleType || 'Motorcycle').trim() || 'Motorcycle',
       regPhoto: String(next.regPhoto || ''),
       registered: next.registered === true,
+      nicKyc: String(next.nicKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.nicKyc || ''),
+      licenseKyc: String(next.licenseKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.licenseKyc || ''),
+      nicKycId: String(next.nicKycId || '').slice(0, 80),
+      licenseKycId: String(next.licenseKycId || '').slice(0, 80),
+      nicName: String(next.nicName || '').slice(0, 80),
+      licenseName: String(next.licenseName || '').slice(0, 80),
+      amlKyc: String(next.amlKyc || '').slice(0, 24),
+      amlHits: Math.max(0, Math.round(Number(next.amlHits) || 0)),
+      amlRequestId: String(next.amlRequestId || '').slice(0, 80),
+      facePhoto: '',
+      livenessKyc: String(next.livenessKyc || '').toLowerCase() === 'approved' ? 'approved' : String(next.livenessKyc || ''),
+      livenessScore: next.livenessScore == null || next.livenessScore === '' ? null : Number(next.livenessScore),
+      livenessRequestId: String(next.livenessRequestId || '').slice(0, 80),
+      kycSession: String(next.kycSession || '').slice(0, 80),
+      kycEvent: String(next.kycEvent || '').slice(0, 80),
+      avatar: /^https?:\/\//i.test(String(next.avatar || '')) ? String(next.avatar) : '',
     };
     function docsPatch(body) {
       const patch = { address: RIDER_DOCS_MARK + JSON.stringify(body) };
       if (body.plate) patch.vehicle = body.vehicleType + ' · ' + body.plate;
       return patch;
     }
+    writeCachedDocPhotos(u, pack);
     let patch = docsPatch(pack);
     if (sbConfigured()) {
       try {
         await sbSend('accounts?id=eq.' + encodeURIComponent(u.id), 'PATCH', patch);
       } catch (_) {
         const slim = Object.assign({}, pack);
-        ['nicPhoto', 'licensePhoto', 'regPhoto'].forEach(function (k) {
+        ['regPhoto'].forEach(function (k) {
           if (String(slim[k] || '').indexOf('data:') === 0) slim[k] = 'uploaded';
         });
         patch = docsPatch(slim);
@@ -2017,6 +2264,168 @@
     saveSession();
     notify(true);
     return u;
+  };
+
+  function emptyWallet() {
+    return {
+      bank: { bankName: '', accountName: '', accountNo: '', branch: '' },
+      requests: [],
+    };
+  }
+  function walletKey(user) {
+    const u = user || API.user;
+    if (!u || !u.id) return '';
+    const role = roleTag(u.role || 'rider');
+    const id = String(u.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return 'qb_wallet_' + role + '_' + id;
+  }
+  function normalizeWallet(raw) {
+    const w = emptyWallet();
+    let p = raw;
+    if (typeof p === 'string') {
+      try { p = JSON.parse(p); } catch (_) { p = null; }
+    }
+    if (!p || typeof p !== 'object') return w;
+    const b = p.bank || {};
+    w.bank.bankName = String(b.bankName || b.name || '').trim();
+    w.bank.accountName = String(b.accountName || b.holder || '').trim();
+    w.bank.accountNo = String(b.accountNo || b.number || '').replace(/\s+/g, '');
+    w.bank.branch = String(b.branch || '').trim();
+    w.requests = (Array.isArray(p.requests) ? p.requests : []).map(function (r) {
+      if (!r) return null;
+      const amount = Math.max(0, Math.round(Number(r.amount) || 0));
+      if (!amount) return null;
+      const status = String(r.status || 'pending') === 'transferred' ? 'transferred' : 'pending';
+      return {
+        id: String(r.id || ('WD-' + Date.now().toString(36))),
+        amount: amount,
+        ts: Number(r.ts) || Date.now(),
+        status: status,
+        transferredAt: Number(r.transferredAt) || 0,
+        bankName: String(r.bankName || '').trim(),
+        accountNo: String(r.accountNo || '').trim(),
+      };
+    }).filter(Boolean);
+    return w;
+  }
+  API.wallet = emptyWallet();
+  API.sriLankaBanks = [
+    'Amana Bank PLC',
+    'Bank of Ceylon',
+    'Bank of China Ltd.',
+    'Cargills Bank PLC',
+    'Citibank N.A.',
+    'Commercial Bank of Ceylon PLC',
+    'Deutsche Bank AG',
+    'DFCC Bank PLC',
+    'Habib Bank Ltd.',
+    'Hatton National Bank PLC',
+    'HDFC Bank of Sri Lanka',
+    'HSBC',
+    'Indian Bank',
+    'Indian Overseas Bank',
+    'MCB Bank Ltd.',
+    'National Development Bank PLC',
+    'National Savings Bank',
+    'Nations Trust Bank PLC',
+    'Pan Asia Banking Corporation PLC',
+    "People's Bank",
+    'Pradeshiya Sanwardhana Bank',
+    'Public Bank Berhad',
+    'Sampath Bank PLC',
+    'SANASA Development Bank PLC',
+    'Seylan Bank PLC',
+    'Sri Lanka Savings Bank Ltd.',
+    'Standard Chartered Bank',
+    'State Bank of India',
+    'State Mortgage and Investment Bank',
+    'Union Bank of Colombo PLC',
+  ];
+  API.bankReady = function () {
+    const b = (API.wallet && API.wallet.bank) || {};
+    return !!(b.bankName && b.accountName && b.accountNo && b.branch);
+  };
+  API.walletHeld = function () {
+    return (API.wallet && API.wallet.requests || []).reduce(function (n, r) {
+      if (!r || r.status === 'cancelled') return n;
+      return n + Math.max(0, Number(r.amount) || 0);
+    }, 0);
+  };
+  API.walletAvailable = function (gross) {
+    return Math.max(0, Math.round(Number(gross) || 0) - API.walletHeld());
+  };
+  async function persistWallet() {
+    const key = walletKey();
+    if (!key) throw new Error('Sign in first');
+    const payload = API.wallet || emptyWallet();
+    if (sbConfigured()) {
+      await sbPutRow('app_state', { id: key, payload: payload });
+      return;
+    }
+    try { storeSet(key, JSON.stringify(payload)); } catch (_) {}
+  }
+  API.loadWallet = async function () {
+    const key = walletKey();
+    if (!key) {
+      API.wallet = emptyWallet();
+      return API.wallet;
+    }
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        API.wallet = normalizeWallet(rows[0] && rows[0].payload);
+        return API.wallet;
+      } catch (_) {}
+    }
+    try {
+      const raw = storeGet(key);
+      if (raw) API.wallet = normalizeWallet(JSON.parse(raw));
+      else API.wallet = emptyWallet();
+    } catch (_) {
+      API.wallet = emptyWallet();
+    }
+    return API.wallet;
+  };
+  API.saveBankDetails = async function (fields) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    const bankName = String(fields && fields.bankName || '').trim();
+    const accountName = String(fields && fields.accountName || '').trim();
+    const accountNo = String(fields && fields.accountNo || '').replace(/\s+/g, '');
+    const branch = String(fields && fields.branch || '').trim();
+    const allowed = API.sriLankaBanks || [];
+    if (!bankName || allowed.indexOf(bankName) < 0) throw new Error('Choose your bank from the list.');
+    if (accountName.length < 2) throw new Error('Enter the account holder name.');
+    if (!/^\d{6,20}$/.test(accountNo)) throw new Error('Enter a valid account number.');
+    if (branch.length < 2) throw new Error('Enter the branch.');
+    if (!API.wallet) API.wallet = emptyWallet();
+    API.wallet.bank = { bankName: bankName, accountName: accountName, accountNo: accountNo, branch: branch };
+    await persistWallet();
+    notify(true);
+    return API.wallet.bank;
+  };
+  API.applyWithdraw = async function (amount, gross) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    if (!API.bankReady()) throw new Error('Add bank details first.');
+    const n = Math.round(Number(amount) || 0);
+    if (n < 1) throw new Error('Enter an amount to withdraw.');
+    const avail = API.walletAvailable(gross);
+    if (n > avail) throw new Error('Not enough available balance.');
+    const b = API.wallet.bank;
+    const req = {
+      id: 'WD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      amount: n,
+      ts: Date.now(),
+      status: 'pending',
+      transferredAt: 0,
+      bankName: b.bankName,
+      accountNo: b.accountNo,
+    };
+    API.wallet.requests = [req].concat(API.wallet.requests || []);
+    await persistWallet();
+    notify(true);
+    return req;
   };
 
   function nextOrderId() {
@@ -2111,6 +2520,9 @@
     await wipeTestNumber();
     await wipeDemo();
     await hydrateUser();
+    if (API.user && (sameRole(API.user.role, 'rider') || sameRole(API.user.role, 'shop'))) {
+      try { await API.loadWallet(); } catch (_) {}
+    }
     if (API.user && sameRole(API.user.role, 'shop')) {
       try { API.user = await ensureShopRow(API.user); } catch (_) {}
     }
@@ -3372,6 +3784,7 @@
     API.token = null;
     API.orders = [];
     API.messages = {};
+    API.wallet = emptyWallet();
     resetKept();
     clearVerified(role);
     try {
@@ -3894,6 +4307,10 @@
         err.code = 'WHATSAPP_REQUIRED';
         throw err;
       }
+    }
+    if (API.user && sameRole(API.user.role, 'rider') && (body.status === 'accepted' || body.riderId)) {
+      const d = riderDocsFromUser(API.user);
+      if (!body.riderPhoto && /^https?:\/\//i.test(String(d.avatar || ''))) body.riderPhoto = d.avatar;
     }
     if (API.user && sameRole(API.user.role, 'rider') && body.status === 'accepted') {
       const open = (API.orders || []).find(function (o) {
