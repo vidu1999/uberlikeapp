@@ -170,18 +170,21 @@ describe('agent session close and rating', () => {
     assert.equal(rated.status, 'closed');
     assert.equal(rated.sessions[0].rating, 4);
   });
-  it('admin queue lists live agent chats only; AI Help stays off the list', () => {
+  it('admin queue lists New, In Progress, and Closed agent chats; AI Help stays off the list', () => {
     const ai = { mode: 'ai', status: 'open', subject: 'Where is my order?' };
     const live = { mode: 'agent', status: 'in_progress', subject: 'Card failed' };
-    const closed = closeAgentSession({ mode: 'agent', status: 'in_progress', messages: [], escalatedAt: 1 }, 'admin', 50);
+    const fresh = { mode: 'agent', status: 'open', subject: 'Need a human' };
+    const closed = closeAgentSession({ mode: 'agent', status: 'in_progress', messages: [], escalatedAt: 1, subject: 'Old' }, 'admin', 50);
     assert.equal(hadAgentSession(ai), false);
     assert.equal(hadAgentSession(live), true);
-    const all = filterSupportQueue([ai, live, closed], 'all');
-    assert.equal(all.counts.all, 1);
-    assert.equal(all.rows.length, 1);
-    assert.equal(all.rows[0].subject, 'Card failed');
-    const done = filterSupportQueue([ai, live, closed], 'resolved');
-    assert.equal(done.counts.resolved, 1);
+    const all = filterSupportQueue([ai, fresh, live, closed], 'all');
+    assert.equal(all.counts.all, 3);
+    assert.equal(all.counts.new, 1);
+    assert.equal(all.counts.in_progress, 1);
+    assert.equal(all.counts.resolved, 1);
+    assert.equal(all.rows.length, 3);
+    assert.equal(filterSupportQueue([ai, fresh, live, closed], 'new').rows[0].subject, 'Need a human');
+    const done = filterSupportQueue([ai, fresh, live, closed], 'resolved');
     assert.equal(done.rows[0].status, 'closed');
   });
 });

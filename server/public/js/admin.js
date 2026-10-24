@@ -140,7 +140,7 @@
   function badge(status) {
     const s = String(status || '').toLowerCase().replace(/_/g, ' ');
     let k = 'muted';
-    if (/deliver|active|approv|complete|online|resolv|open shop|captured/.test(s)) k = 'ok';
+    if (/deliver|active|approv|complete|online|resolv|closed|open shop|captured/.test(s)) k = 'ok';
     else if (/pend|prepar|new|wait/.test(s)) k = 'warn';
     else if (/way|progress|ready|info/.test(s)) k = 'info';
     else if (/cancel|reject|suspend|offline|fail/.test(s)) k = 'danger';
@@ -554,11 +554,13 @@
   function supportView() {
     const d = state.data || {};
     const c = d.counts || {};
-    const closedTab = state.filters.status === 'resolved';
-    const empty = closedTab
-      ? 'No closed agent sessions.'
-      : 'No live agent chats. Users appear here only while they are in agent mode.';
-    return listChrome('Questions & Support', 'Live agent chats only. AI Help users stay off this list. After close, the session is Closed.', '', `
+    const st = state.filters.status;
+    const empty = st === 'resolved' ? 'No closed sessions yet.'
+      : st === 'new' ? 'No new agent chats.'
+      : st === 'in_progress' ? 'No in-progress agent chats.'
+      : 'No customers in New, In Progress, or Closed yet. They appear here live.';
+    return listChrome('Questions & Support', 'Live queue — New, In Progress, and Closed customers update here without refresh.',
+      '<span class="ad-live"><i></i>Live</span>', `
       <div class="ad-tabs">
         ${tabBtn('status','all','All ('+(c.all||0)+')')}
         ${tabBtn('status','new','New ('+(c.new||0)+')')}
@@ -583,7 +585,7 @@
     if (!t) return '<div class="ad-empty">Ticket not found.</div>';
     const live = t.mode === 'agent' && t.status !== 'closed' && t.status !== 'resolved';
     const msgs = (t.messages || []).filter((m) => !m.internal);
-    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(live ? 'agent' : (t.status || 'closed'))}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''}</p></div>
+    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(live ? 'agent' : (t.status || 'closed'))}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''} · <span class="ad-live"><i></i>Live</span></p></div>
       <div>${live ? '<button class="ad-btn ghost" type="button" id="adCloseAgent">Close agent</button>' : ''}<a class="ad-btn ghost" href="#/support">Back</a></div></div>
       <div class="ad-card ad-chat">
         <div class="ad-bubbles" id="adBubbles">${msgs.map((m)=>`<div class="ad-bubble ${m.role==='user'?'them':(m.role==='system'?'sys':'me')}">${esc(m.text)}</div>`).join('') || '<div class="ad-empty">No messages.</div>'}</div>
@@ -597,7 +599,7 @@
             ${['open','in_progress','waiting','closed'].map((s)=>`<option ${t.status===s?'selected':''} value="${s}">${s}</option>`).join('')}
           </select>
         </div>
-        <p class="ad-delta">Close agent marks this session closed, returns the user to AI Help, and asks them to rate. Idle 3 minutes with no user reply does the same. Internal notes are not sent to the customer.</p>` : `<p class="ad-delta">Session closed. This user is back in AI Help and will not appear in the live agent list.</p>`}
+        <p class="ad-delta">Close agent marks this session closed, returns the user to AI Help, and asks them to rate. Idle 3 minutes with no user reply does the same. Internal notes are not sent to the customer. New customer messages appear here live.</p>` : `<p class="ad-delta">Session closed. This user is back in AI Help and stays on the Closed tab.</p>`}
       </div>`;
   }
 
@@ -909,7 +911,7 @@
       return;
     }
     const lo = document.getElementById('adLogout');
-    if (lo) lo.onclick = async () => { try { await api('session.logout'); } catch (_) {} tokenSet(''); state.actor = null; render(); };
+    if (lo) lo.onclick = async () => { stopSupportPoll(); try { await api('session.logout'); } catch (_) {} tokenSet(''); state.actor = null; render(); };
     $$('[data-nav]').forEach((b) => b.onclick = () => document.getElementById('adApp').classList.toggle('nav-open'));
     $$('[data-go]').forEach((b) => b.onclick = () => {
       if (b.getAttribute('data-open')) state.modalKind = b.getAttribute('data-open');
@@ -1105,8 +1107,87 @@
     $$('[data-href]').forEach((tr) => tr.onclick = () => { location.hash = tr.getAttribute('data-href'); });
   }
 
+  let supportPollTimer = 0;
+  let supportPollBusy = false;
+  const SUPPORT_POLL_MS = 3000;
+
+  function supportPayloadSnap(data) {
+    try { return JSON.stringify(data || {}); } catch (_) { return ''; }
+  }
+  function snapshotSupportUi() {
+    const el = document.activeElement;
+    const reply = document.querySelector('#adReply [name="text"]');
+    const q = document.getElementById('adQ');
+    const bubbles = document.getElementById('adBubbles');
+    return {
+      id: el && el.id,
+      name: el && el.getAttribute && el.getAttribute('name'),
+      start: el && el.selectionStart,
+      end: el && el.selectionEnd,
+      q: q ? q.value : '',
+      draft: reply ? reply.value : '',
+      y: window.scrollY,
+      bubblesY: bubbles ? bubbles.scrollTop : 0,
+      bubblesBottom: bubbles ? (bubbles.scrollHeight - bubbles.scrollTop - bubbles.clientHeight < 56) : false,
+    };
+  }
+  function restoreSupportUi(snap) {
+    if (!snap) return;
+    const q = document.getElementById('adQ');
+    if (q && snap.q != null) {
+      q.value = snap.q;
+      state.filters.q = snap.q;
+    }
+    const reply = document.querySelector('#adReply [name="text"]');
+    if (reply && snap.draft != null) reply.value = snap.draft;
+    const bubbles = document.getElementById('adBubbles');
+    if (bubbles) bubbles.scrollTop = snap.bubblesBottom ? bubbles.scrollHeight : snap.bubblesY;
+    window.scrollTo(0, snap.y);
+    let el = snap.id ? document.getElementById(snap.id) : null;
+    if (!el && snap.name === 'text') el = document.querySelector('#adReply [name="text"]');
+    if (!el && snap.id === 'adQ') el = document.getElementById('adQ');
+    if (el && typeof el.focus === 'function') {
+      el.focus();
+      try { if (typeof snap.start === 'number') el.setSelectionRange(snap.start, snap.end); } catch (_) {}
+    }
+  }
+  function stopSupportPoll() {
+    if (supportPollTimer) {
+      clearInterval(supportPollTimer);
+      supportPollTimer = 0;
+    }
+  }
+  function startSupportPoll() {
+    stopSupportPoll();
+    if (!state.actor || state.route !== 'support') return;
+    supportPollTimer = setInterval(function () { pollSupport(); }, SUPPORT_POLL_MS);
+  }
+  async function fetchSupportData() {
+    const f = state.filters;
+    if (state.id) return api('support.get', { id: state.id });
+    return api('support.list', { q: f.q, status: f.status, role: f.role, page: state.page, size: 100 });
+  }
+  async function pollSupport() {
+    if (supportPollBusy || state.loading || state.modalKind) return;
+    if (!state.actor || state.route !== 'support') return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    supportPollBusy = true;
+    try {
+      const next = await fetchSupportData();
+      if (state.route !== 'support') return;
+      if (supportPayloadSnap(next) === supportPayloadSnap(state.data)) return;
+      const snap = snapshotSupportUi();
+      state.data = next;
+      render();
+      restoreSupportUi(snap);
+    } catch (_) {}
+    finally {
+      supportPollBusy = false;
+    }
+  }
+
   async function load() {
-    if (!state.actor) { render(); return; }
+    if (!state.actor) { stopSupportPoll(); render(); return; }
     state.loading = true;
     state.error = '';
     render();
@@ -1135,9 +1216,9 @@
       } else if (state.route === 'withdrawals') {
         state.data = await api('withdrawals.list', { q: f.q, status: f.status, role: f.role, page: state.page });
       } else if (state.route === 'support' && state.id) {
-        state.data = await api('support.get', { id: state.id });
+        state.data = await fetchSupportData();
       } else if (state.route === 'support') {
-        state.data = await api('support.list', { q: f.q, status: f.status, role: f.role, page: state.page });
+        state.data = await fetchSupportData();
       } else if (state.route === 'notifications') {
         state.data = await api('notifications.list');
       } else if (state.route === 'analytics' || state.route === 'reports') {
@@ -1160,6 +1241,8 @@
     render();
     paintCharts();
     paintMap();
+    if (state.route === 'support') startSupportPoll();
+    else stopSupportPoll();
   }
 
   function render() {
@@ -1196,6 +1279,10 @@
     if (state.actor) await load();
     else render();
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.route === 'support') pollSupport();
+  });
 
   window.addEventListener('hashchange', () => {
     const prev = state.route + '/' + state.id;
