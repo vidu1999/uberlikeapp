@@ -2550,12 +2550,23 @@
     next.messages = mergeSupportMessages(r.messages, l.messages);
     next.chatGen = Math.max(Number(r.chatGen) || 0, Number(l.chatGen) || 0);
     next.ticket = r.ticket || l.ticket || next.ticket;
-    if (r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved') {
+    next.rating = Math.max(Number(r.rating) || 0, Number(l.rating) || 0);
+    next.ratedAt = Math.max(Number(r.ratedAt) || 0, Number(l.ratedAt) || 0);
+    if ((l.sessions || []).length > (r.sessions || []).length) next.sessions = l.sessions;
+    else if ((r.sessions || []).length) next.sessions = r.sessions;
+    const remoteLive = r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved';
+    const rated = (!l.awaitingRating && (Number(l.ratedAt) > 0 || Number(l.rating) > 0))
+      || (!r.awaitingRating && (Number(r.ratedAt) > 0 || Number(r.rating) > 0));
+    const lastAgent = supportLastTs(r.messages, ['agent']);
+    if (remoteLive && !(rated && lastAgent && lastAgent <= Number(l.ratedAt || l.agentClosedAt || 0))) {
       next.mode = 'agent';
       next.status = r.status || 'in_progress';
       next.awaitingRating = false;
       next.escalatedAt = Number(r.escalatedAt) || next.escalatedAt || Date.now();
-    } else if (r.awaitingRating && r.mode !== 'agent') {
+    } else if (rated) {
+      next.awaitingRating = false;
+      next.mode = 'ai';
+    } else if ((r.awaitingRating || l.awaitingRating) && !remoteLive) {
       next.awaitingRating = true;
       next.mode = 'ai';
     }
@@ -2635,6 +2646,10 @@
       gen: Math.max(0, Math.round(Number(API.support.chatGen) || 1) - 1),
     }]);
     await persistSupport();
+    if (API.support) {
+      API.support.awaitingRating = false;
+      API.support.mode = 'ai';
+    }
     notify(true);
     return API.support;
   };
