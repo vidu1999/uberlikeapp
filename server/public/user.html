@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/css/app.css?v=19a2" />
   <link rel="stylesheet" href="/css/ui.css?v=19a2" />
   <link rel="stylesheet" href="/css/track.css?v=19zw" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a9" />
+  <link rel="stylesheet" href="/css/qb.css?v=19aa" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
@@ -2836,15 +2836,26 @@
       root.querySelectorAll('[data-sup-quick]').forEach((b) => {
         b.onclick = () => sendSupport(b.getAttribute('data-sup-quick'));
       });
-      root.querySelectorAll('[data-star]').forEach((b) => {
-        b.onclick = async () => {
-          const n = Number(b.getAttribute('data-star'));
-          try {
-            if (API.rateSupportAgent) await API.rateSupportAgent(n);
-          } catch (e) {}
-          render();
+      const rateBox = root.querySelector('[data-rate-agent]');
+      if (rateBox) {
+        const fillStars = (n) => {
+          rateBox.querySelectorAll('[data-star]').forEach((btn) => {
+            btn.classList.toggle('on', Number(btn.getAttribute('data-star')) <= n);
+          });
         };
-      });
+        rateBox.onmouseleave = () => fillStars(0);
+        rateBox.querySelectorAll('[data-star]').forEach((b) => {
+          b.onmouseenter = () => fillStars(Number(b.getAttribute('data-star')));
+          b.onclick = async () => {
+            const n = Number(b.getAttribute('data-star'));
+            fillStars(n);
+            try {
+              if (API.rateSupportAgent) await API.rateSupportAgent(n);
+            } catch (e) {}
+            render();
+          };
+        });
+      }
       if (state.screen === 'support' && !state._supTick) {
         state._supTick = setInterval(async () => {
           if (state.screen !== 'support' || state.supportBusy) return;
@@ -3102,7 +3113,7 @@
           btn.classList.toggle('on', Number(btn.dataset.star) <= n);
         });
       }
-      root.querySelectorAll('[data-star]').forEach((b) => {
+      root.querySelectorAll('[data-rate] [data-star]').forEach((b) => {
         b.onclick = () => {
           if (b.disabled) return;
           const wrap = b.closest('[data-rate]');
@@ -3116,6 +3127,23 @@
           else if (item) state.rateDraft.items[item] = n;
           state.rateDraft.err = '';
           paintStars(wrap, n);
+        };
+        b.onmouseenter = () => {
+          if (b.disabled) return;
+          const wrap = b.closest('[data-rate]');
+          if (wrap) paintStars(wrap, Number(b.dataset.star));
+        };
+      });
+      root.querySelectorAll('[data-rate]').forEach((wrap) => {
+        wrap.onmouseleave = () => {
+          const kind = wrap.dataset.rate;
+          const item = wrap.dataset.item;
+          const d = state.rateDraft || {};
+          let cur = 0;
+          if (kind === 'shop') cur = d.shop || 0;
+          else if (kind === 'rider') cur = d.rider || 0;
+          else if (item) cur = (d.items && d.items[item]) || 0;
+          paintStars(wrap, cur);
         };
       });
       const rateSubmit = root.querySelector('[data-rate-submit]');

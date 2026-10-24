@@ -32,6 +32,7 @@
   border: 0; background: transparent; font-size: 28px; line-height: 1;
   color: #D1D5DB; cursor: pointer; padding: 4px;
 }
+.qb-stars button.on,
 .qb-stars button:hover, .qb-stars button:focus { color: #F59E0B; }
 
 .qb-splash {

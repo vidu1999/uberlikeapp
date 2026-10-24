@@ -148,6 +148,13 @@
     const label = s.replace(/\b\w/g, (c) => c.toUpperCase());
     return `<span class="ad-badge ${k}">${esc(label || '—')}</span>`;
   }
+  function rateMarks(n) {
+    n = Math.max(0, Math.min(5, Math.round(Number(n) || 0)));
+    if (!n) return '<span class="ad-muted">—</span>';
+    let html = '<span class="ad-rate-mark" title="' + n + ' / 5">';
+    for (let i = 1; i <= 5; i++) html += `<span class="${i <= n ? 'on' : ''}">★</span>`;
+    return html + '</span>';
+  }
 
   function pager(p) {
     if (!p || p.pages <= 1) return '';
@@ -556,13 +563,14 @@
       </div>
       <div class="ad-filters"><input id="adQ" value="${esc(state.filters.q)}" placeholder="Search by name or subject…" /></div>
       ${(d.rows||[]).length ? `<div class="ad-card" style="padding:0 8px"><table class="ad-table">
-        <thead><tr><th>User</th><th>Type</th><th>Subject</th><th>Status</th><th>Date</th></tr></thead>
+        <thead><tr><th>User</th><th>Type</th><th>Subject</th><th>Status</th><th>Date</th><th>Rating</th></tr></thead>
         <tbody>${d.rows.map((t)=>`<tr data-href="#/support/${esc(t.id)}">
           <td><div class="ad-person"><div class="ad-ava">${esc(initials(t.userName))}</div><b>${esc(t.userName)}</b></div></td>
           <td>${esc(t.role)}</td>
           <td>${esc(t.subject)}</td>
           <td>${badge(t.status)}</td>
-          <td><span class="ad-date-cell">${t.rating ? `<span class="ad-rate-mark">★ ${esc(t.rating)}</span>` : ''}<span>${esc(when((t.messages[t.messages.length-1]&&t.messages[t.messages.length-1].ts)||t.escalatedAt||t.agentClosedAt))}</span></span></td>
+          <td>${esc(when((t.messages[t.messages.length-1]&&t.messages[t.messages.length-1].ts)||t.escalatedAt||t.agentClosedAt))}</td>
+          <td>${rateMarks(t.rating)}</td>
         </tr>`).join('')}</tbody></table>${pager(d)}</div>` : '<div class="ad-empty">No support threads yet. They appear when a user opens Help & Support.</div>'}`);
   }
 
