@@ -6,6 +6,7 @@ import {
   signSession, verifySession, hashPassword, safeEq, paginate, ordersToCsv,
   parseOrder, normalizeSupport, supportPublicMessages, bootstrapAdmin, envConfigured,
   envVal, adminConfigHint, shouldIdleClose, closeAgentSession, rateAgentSession, AGENT_IDLE_MS,
+  filterSupportQueue, isLiveAgentThread, hadAgentSession,
 } from '../functions/_lib/admin.js';
 
 describe('permissions', () => {
@@ -158,13 +159,30 @@ describe('agent session close and rating', () => {
   it('admin close returns to AI and asks for a rating', () => {
     const t = closeAgentSession({ mode: 'agent', messages: [], escalatedAt: 1 }, 'admin', 50);
     assert.equal(t.mode, 'ai');
+    assert.equal(t.status, 'closed');
     assert.equal(t.awaitingRating, true);
     assert.equal(t.closeReason, 'admin');
+    assert.equal(isLiveAgentThread(t), false);
     const rated = rateAgentSession(t, 4, 60);
     assert.equal(rated.awaitingRating, false);
     assert.equal(rated.rating, 4);
     assert.equal(rated.mode, 'ai');
+    assert.equal(rated.status, 'closed');
     assert.equal(rated.sessions[0].rating, 4);
+  });
+  it('admin queue lists live agent chats only; AI Help stays off the list', () => {
+    const ai = { mode: 'ai', status: 'open', subject: 'Where is my order?' };
+    const live = { mode: 'agent', status: 'in_progress', subject: 'Card failed' };
+    const closed = closeAgentSession({ mode: 'agent', status: 'in_progress', messages: [], escalatedAt: 1 }, 'admin', 50);
+    assert.equal(hadAgentSession(ai), false);
+    assert.equal(hadAgentSession(live), true);
+    const all = filterSupportQueue([ai, live, closed], 'all');
+    assert.equal(all.counts.all, 1);
+    assert.equal(all.rows.length, 1);
+    assert.equal(all.rows[0].subject, 'Card failed');
+    const done = filterSupportQueue([ai, live, closed], 'resolved');
+    assert.equal(done.counts.resolved, 1);
+    assert.equal(done.rows[0].status, 'closed');
   });
 });
 

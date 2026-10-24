@@ -2,7 +2,7 @@ import {
   STATE_KEYS, PERMS, can, json, optionsResponse, corsHeaders, cookieHeader, readSessionToken,
   bootstrapAdmin, signSession, verifySession, hashPassword, safeEq, sha256b64, envVal, adminConfigHint,
   parseOrder, isDemoAccount, isDemoShop, isDemoOrder, maskPhone, maskEmail, maskBank,
-  shouldIdleClose, closeAgentSession,
+  shouldIdleClose, closeAgentSession, filterSupportQueue, hadAgentSession, isLiveAgentThread,
   normalizeWallet, applyWithdrawDecision, walletHeld, defaultConfig, normalizeConfig,
   metricsFrom, parseRiderDocs, riderVerified, normalizeSupport, parseSupportKey,
   supportPublicMessages, ordersToCsv, paginate, searchHay, applyOrderCancel, canCancelOrder,
@@ -145,7 +145,7 @@ async function loadSupport(env, accounts) {
     t.accountId = parsed.accountId;
     t.userName = acc.name || parsed.accountId;
     t.userPhoneMasked = maskPhone(acc.phone);
-    t.unread = t.mode === 'agent' && t.status !== 'resolved' && t.status !== 'closed';
+    t.unread = isLiveAgentThread(t);
     list.push(t);
   }
   list.sort((a, b) => {
@@ -315,7 +315,7 @@ async function buildNotices(env, actor, withdrawals, support, orders) {
     }
   });
   (support || []).forEach((t) => {
-    if (t.mode === 'agent' && t.status !== 'resolved' && t.status !== 'closed') {
+    if (isLiveAgentThread(t)) {
       items.push({
         id: 'sup-' + t.id,
         type: 'support',
@@ -435,7 +435,7 @@ async function dispatch(env, actor, body, request) {
     if (!a) return { ok: false, message: 'Account not found.' };
     const metaBag = (await getState(env, STATE_KEYS.accounts)) || {};
     const orders = (await loadOrders(env)).filter((o) => relatedOrder(o, a));
-    const support = (await loadSupport(env, accounts)).filter((t) => t.accountId === a.id);
+    const support = (await loadSupport(env, accounts)).filter((t) => t.accountId === a.id && hadAgentSession(t));
     return { ok: true, account: publicAccount(a, accountMeta(metaBag, a.id)), orders: orders.slice(0, 40).map(publicOrder), tickets: support };
   }
 
@@ -754,18 +754,11 @@ async function dispatch(env, actor, body, request) {
     const status = String(body.status || 'all');
     const role = String(body.role || 'all');
     const q = String(body.q || '').trim().toLowerCase();
-    if (status === 'new') tickets = tickets.filter((t) => t.status === 'new' || t.status === 'open');
-    else if (status !== 'all') tickets = tickets.filter((t) => t.status === status);
     if (role !== 'all') tickets = tickets.filter((t) => t.role === role);
     if (q) tickets = tickets.filter((t) => searchHay(t).indexOf(q) >= 0);
-    const counts = {
-      all: tickets.length,
-      new: tickets.filter((t) => t.status === 'new' || t.status === 'open').length,
-      in_progress: tickets.filter((t) => t.status === 'in_progress').length,
-      resolved: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed').length,
-    };
-    const page = paginate(tickets, body.page, body.size);
-    return { ok: true, counts: counts, ...page };
+    const queued = filterSupportQueue(tickets, status);
+    const page = paginate(queued.rows, body.page, body.size);
+    return { ok: true, counts: queued.counts, ...page };
   }
 
   if (action === 'support.reply') {

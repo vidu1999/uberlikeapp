@@ -554,12 +554,16 @@
   function supportView() {
     const d = state.data || {};
     const c = d.counts || {};
-    return listChrome('Questions & Support', 'User questions and support tickets', '', `
+    const closedTab = state.filters.status === 'resolved';
+    const empty = closedTab
+      ? 'No closed agent sessions.'
+      : 'No live agent chats. Users appear here only while they are in agent mode.';
+    return listChrome('Questions & Support', 'Live agent chats only. AI Help users stay off this list. After close, the session is Closed.', '', `
       <div class="ad-tabs">
         ${tabBtn('status','all','All ('+(c.all||0)+')')}
         ${tabBtn('status','new','New ('+(c.new||0)+')')}
         ${tabBtn('status','in_progress','In Progress ('+(c.in_progress||0)+')')}
-        ${tabBtn('status','resolved','Resolved ('+(c.resolved||0)+')')}
+        ${tabBtn('status','resolved','Closed ('+(c.resolved||0)+')')}
       </div>
       <div class="ad-filters"><input id="adQ" value="${esc(state.filters.q)}" placeholder="Search by name or subject…" /></div>
       ${(d.rows||[]).length ? `<div class="ad-card" style="padding:0 8px"><table class="ad-table">
@@ -571,28 +575,29 @@
           <td>${badge(t.status)}</td>
           <td>${esc(when((t.messages[t.messages.length-1]&&t.messages[t.messages.length-1].ts)||t.escalatedAt||t.agentClosedAt))}</td>
           <td>${rateMarks(t.rating)}</td>
-        </tr>`).join('')}</tbody></table>${pager(d)}</div>` : '<div class="ad-empty">No support threads yet. They appear when a user opens Help & Support.</div>'}`);
+        </tr>`).join('')}</tbody></table>${pager(d)}</div>` : `<div class="ad-empty">${empty}</div>`}`);
   }
 
   function supportChatView() {
     const t = state.data.ticket;
     if (!t) return '<div class="ad-empty">Ticket not found.</div>';
+    const live = t.mode === 'agent' && t.status !== 'closed' && t.status !== 'resolved';
     const msgs = (t.messages || []).filter((m) => !m.internal);
-    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(t.mode)}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''}</p></div>
-      <div>${t.mode === 'agent' ? '<button class="ad-btn ghost" type="button" id="adCloseAgent">Close agent</button>' : ''}<a class="ad-btn ghost" href="#/support">Back</a></div></div>
+    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(live ? 'agent' : (t.status || 'closed'))}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''}</p></div>
+      <div>${live ? '<button class="ad-btn ghost" type="button" id="adCloseAgent">Close agent</button>' : ''}<a class="ad-btn ghost" href="#/support">Back</a></div></div>
       <div class="ad-card ad-chat">
         <div class="ad-bubbles" id="adBubbles">${msgs.map((m)=>`<div class="ad-bubble ${m.role==='user'?'them':(m.role==='system'?'sys':'me')}">${esc(m.text)}</div>`).join('') || '<div class="ad-empty">No messages.</div>'}</div>
-        <form id="adReply" class="ad-filters" style="margin:0">
+        ${live ? `<form id="adReply" class="ad-filters" style="margin:0">
           <input name="text" class="ad-input" placeholder="Type a message…" required />
           <button class="ad-btn" type="submit">Send</button>
           <button class="ad-btn ghost" type="submit" name="internal" value="1">Internal note</button>
         </form>
         <div class="ad-filters">
           <select id="tStatus">
-            ${['open','in_progress','waiting','resolved','closed'].map((s)=>`<option ${t.status===s?'selected':''} value="${s}">${s}</option>`).join('')}
+            ${['open','in_progress','waiting','closed'].map((s)=>`<option ${t.status===s?'selected':''} value="${s}">${s}</option>`).join('')}
           </select>
         </div>
-        <p class="ad-delta">Close agent returns the user to AI Help and asks them to rate this session. Idle 3 minutes with no user reply does the same. Internal notes are not sent to the customer.</p>
+        <p class="ad-delta">Close agent marks this session closed, returns the user to AI Help, and asks them to rate. Idle 3 minutes with no user reply does the same. Internal notes are not sent to the customer.</p>` : `<p class="ad-delta">Session closed. This user is back in AI Help and will not appear in the live agent list.</p>`}
       </div>`;
   }
 
@@ -1025,7 +1030,7 @@
     if (closeAg) closeAg.onclick = async () => {
       try {
         await api('support.close', { id: state.id });
-        toast('Agent closed. User is back on AI Help and will be asked to rate.');
+        toast('Session closed. User is back on AI Help and left the live list.');
         load();
       } catch (e) { toast(e.message); }
     };

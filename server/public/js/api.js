@@ -2443,7 +2443,7 @@
   }
   function emptySupport() {
     return {
-      mode: 'ai', ticket: '', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
+      mode: 'ai', ticket: '', status: 'open', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
       awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '',
     };
   }
@@ -2472,6 +2472,7 @@
     const ts = Number(now) || Date.now();
     const why = String(reason || 'closed');
     t.mode = 'ai';
+    t.status = 'closed';
     t.queuedNote = false;
     t.awaitingRating = true;
     t.agentClosedAt = ts;
@@ -2495,6 +2496,9 @@
     }
     if (!p || typeof p !== 'object') return s;
     s.mode = p.mode === 'agent' ? 'agent' : 'ai';
+    s.status = p.status === 'closed' || p.status === 'resolved' || p.status === 'in_progress' || p.status === 'waiting' || p.status === 'new' || p.status === 'open'
+      ? String(p.status)
+      : (s.mode === 'agent' ? 'in_progress' : 'open');
     s.ticket = String(p.ticket || '').trim();
     s.escalatedAt = Number(p.escalatedAt) || 0;
     s.reason = String(p.reason || '');
@@ -2571,6 +2575,7 @@
     API.support.awaitingRating = false;
     API.support.rating = n;
     API.support.mode = 'ai';
+    API.support.status = 'closed';
     const sessions = (API.support.sessions || []).slice();
     if (sessions.length) sessions[sessions.length - 1] = Object.assign({}, sessions[sessions.length - 1], { rating: n, ratedAt: ts });
     API.support.sessions = sessions;
@@ -2623,6 +2628,7 @@
       });
     }
     if (data.escalate) {
+      if (API.support.mode !== 'agent') API.support.status = 'open';
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || 'escalate');

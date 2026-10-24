@@ -734,7 +734,7 @@ export function closeAgentSession(thread, reason, now) {
   const ts = Number(now) || Date.now();
   const why = String(reason || 'closed');
   t.mode = 'ai';
-  t.status = 'resolved';
+  t.status = 'closed';
   t.queuedNote = false;
   t.awaitingRating = true;
   t.agentClosedAt = ts;
@@ -768,6 +768,7 @@ export function rateAgentSession(thread, stars, now) {
   t.rating = n;
   t.ratedAt = ts;
   t.mode = 'ai';
+  t.status = 'closed';
   const sessions = Array.isArray(t.sessions) ? t.sessions.slice() : [];
   if (sessions.length) sessions[sessions.length - 1] = Object.assign({}, sessions[sessions.length - 1], { rating: n, ratedAt: ts });
   t.sessions = sessions;
@@ -778,6 +779,38 @@ export function rateAgentSession(thread, stars, now) {
     ts: ts,
   }]);
   return t;
+}
+
+export function isLiveAgentThread(thread) {
+  if (!thread || thread.mode !== 'agent') return false;
+  const st = String(thread.status || '');
+  return st !== 'resolved' && st !== 'closed';
+}
+
+export function hadAgentSession(thread) {
+  if (!thread) return false;
+  if (thread.mode === 'agent') return true;
+  if (Number(thread.agentClosedAt) > 0) return true;
+  return Array.isArray(thread.sessions) && thread.sessions.length > 0;
+}
+
+/** Admin queue: live agent chats on All/New/In Progress; closed agent sessions on Closed. AI-only Help never appears. */
+export function filterSupportQueue(tickets, status) {
+  const pool = (tickets || []).filter(hadAgentSession);
+  const live = pool.filter(isLiveAgentThread);
+  const closed = pool.filter((t) => !isLiveAgentThread(t));
+  const counts = {
+    all: live.length,
+    new: live.filter((t) => t.status === 'new' || t.status === 'open').length,
+    in_progress: live.filter((t) => t.status === 'in_progress' || t.status === 'waiting').length,
+    resolved: closed.length,
+  };
+  const want = String(status || 'all');
+  let rows = live;
+  if (want === 'new') rows = live.filter((t) => t.status === 'new' || t.status === 'open');
+  else if (want === 'in_progress') rows = live.filter((t) => t.status === 'in_progress' || t.status === 'waiting');
+  else if (want === 'resolved' || want === 'closed') rows = closed;
+  return { rows: rows, counts: counts };
 }
 
 export function supportPublicMessages(thread) {
