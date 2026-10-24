@@ -71,6 +71,28 @@ function similar(a, b) {
   return hit / ta.length >= 0.72;
 }
 
+const CLOSED_CHAT = /agent session closed|agent closed this chat|rated this agent|AI Help is ready|AI Help continues/i;
+
+/** After an agent session closes, only messages after that marker count as the new AI chat. */
+export function freshAiHistory(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  let start = 0;
+  list.forEach((m, i) => {
+    const t = String((m && (m.content || m.text)) || '');
+    if (CLOSED_CHAT.test(t)) start = i + 1;
+  });
+  return list.slice(start).filter((m) => {
+    if (!m) return false;
+    const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
+    if (role === 'system' || role === 'agent') return false;
+    const content = String(m.content || m.text || '').trim();
+    return !!content;
+  }).map((m) => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: String(m.content || m.text || '').trim(),
+  }));
+}
+
 export function shouldEscalate(messages, latest) {
   const text = String(latest || '');
   if (ASK_HUMAN.test(text) || NOT_RESOLVED.test(text)) {

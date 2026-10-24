@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19at"></script>
+  <script src="/js/api.js?v=19au"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1581,8 +1581,22 @@
       }
       apply();
     }
+    function supportEpoch(s) {
+      s = s || API.support || {};
+      return Math.max(Number(s.agentClosedAt) || 0, Number(s.ratedAt) || 0);
+    }
     function supportThread() {
-      return (API.support && API.support.messages) || [];
+      const s = API.support || {};
+      const msgs = s.messages || [];
+      const phase = supportPhase(s);
+      if (phase === 'rate') {
+        const sessions = s.sessions || [];
+        const prev = sessions.length >= 2 ? Number(sessions[sessions.length - 2].closedAt) || 0 : 0;
+        return prev ? msgs.filter((m) => (Number(m.ts) || 0) > prev) : msgs;
+      }
+      const epoch = supportEpoch(s);
+      if (!epoch) return msgs;
+      return msgs.filter((m) => (Number(m.ts) || 0) > epoch);
     }
     function supportPhase(s) {
       s = s || API.support || {};
@@ -1607,7 +1621,7 @@
           <button class="back-fab" type="button" data-close-support>←</button>
           <div class="grow">
             <b>${agent ? 'QuickBite agent' : (phase === 'rate' ? 'Rate this agent' : 'Help & Support')}</b>
-            <div class="sub">${agent ? ('Live agent · ticket ' + esc(s.ticket || '')) : (phase === 'rate' ? 'Agent closed · rate this session' : 'AI help first · real agent if not resolved')}</div>
+            <div class="sub">${agent ? ('Live agent · ticket ' + esc(s.ticket || '')) : (phase === 'rate' ? 'Agent closed · rate this session' : (supportEpoch(s) ? 'New AI chat · previous agent session is closed' : 'AI help first · real agent if not resolved'))}</div>
           </div>
           <span class="qb-sup-pill ${agent ? 'on' : ''}">${agent ? 'Agent' : (phase === 'rate' ? 'Rate' : 'AI')}</span>
         </div>

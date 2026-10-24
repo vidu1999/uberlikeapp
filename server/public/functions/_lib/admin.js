@@ -670,6 +670,7 @@ export function normalizeSupport(raw, id) {
     sessions: [],
     agentClosedAt: 0,
     closeReason: '',
+    ratedAt: 0,
   };
   if (!p || typeof p !== 'object') return s;
   s.mode = p.mode === 'agent' ? 'agent' : 'ai';
@@ -685,6 +686,7 @@ export function normalizeSupport(raw, id) {
   s.rating = Math.max(0, Math.min(5, Math.round(Number(p.rating) || 0)));
   s.agentClosedAt = Number(p.agentClosedAt) || 0;
   s.closeReason = String(p.closeReason || '');
+  s.ratedAt = Number(p.ratedAt) || 0;
   s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
   s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
   s.internal = Array.isArray(p.internal) ? p.internal : [];

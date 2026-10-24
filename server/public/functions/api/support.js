@@ -1,4 +1,4 @@
-import { aiReply, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
+import { aiReply, freshAiHistory, json, openRouterKey, optionsResponse, shouldEscalate } from '../_lib/support.js';
 
 export async function onRequest(context) {
   const request = context.request;
@@ -16,10 +16,7 @@ export async function onRequest(context) {
   const latest = String(body.text || (incoming[incoming.length - 1] && (incoming[incoming.length - 1].content || incoming[incoming.length - 1].text)) || '').trim();
   if (!latest) return json(400, { ok: false, message: 'Type a message.' });
 
-  const history = incoming.map((m) => ({
-    role: m && m.role === 'assistant' ? 'assistant' : 'user',
-    content: String((m && (m.content || m.text)) || ''),
-  })).filter((m) => m.content);
+  const history = freshAiHistory(incoming);
   if (!history.length || history[history.length - 1].content !== latest) {
     history.push({ role: 'user', content: latest });
   }

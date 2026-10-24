@@ -2444,7 +2444,7 @@
   function emptySupport() {
     return {
       mode: 'ai', ticket: '', status: 'open', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
-      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '',
+      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '', ratedAt: 0,
     };
   }
   var AGENT_IDLE_MS = 3 * 60 * 1000;
@@ -2507,6 +2507,7 @@
     s.rating = Math.max(0, Math.min(5, Math.round(Number(p.rating) || 0)));
     s.agentClosedAt = Number(p.agentClosedAt) || 0;
     s.closeReason = String(p.closeReason || '');
+    s.ratedAt = Number(p.ratedAt) || 0;
     s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
     s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
     s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
@@ -2574,6 +2575,7 @@
     const ts = Date.now();
     API.support.awaitingRating = false;
     API.support.rating = n;
+    API.support.ratedAt = ts;
     API.support.mode = 'ai';
     API.support.status = 'closed';
     const sessions = (API.support.sessions || []).slice();
@@ -2601,10 +2603,16 @@
     if (API.support.awaitingRating) throw new Error('Rate the agent first.');
     if (!API.support.ticket) API.support.ticket = 'HS-' + Date.now().toString(36).toUpperCase().slice(-7);
     API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now() }]);
+    const epoch = Math.max(Number(API.support.agentClosedAt) || 0, Number(API.support.ratedAt) || 0);
+    const aiMsgs = (API.support.messages || []).filter(function (m) {
+      if (!m) return false;
+      if (epoch && (Number(m.ts) || 0) <= epoch) return false;
+      return m.role === 'user' || m.role === 'assistant';
+    });
     const payload = {
       mode: API.support.mode || 'ai',
       text: body,
-      messages: (API.support.messages || []).map(function (m) {
+      messages: aiMsgs.map(function (m) {
         return { role: m.role === 'user' ? 'user' : 'assistant', content: m.text };
       }),
     };
