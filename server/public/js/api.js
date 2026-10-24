@@ -2295,15 +2295,22 @@
       if (!r) return null;
       const amount = Math.max(0, Math.round(Number(r.amount) || 0));
       if (!amount) return null;
-      const status = String(r.status || 'pending') === 'transferred' ? 'transferred' : 'pending';
+      const st = String(r.status || 'pending');
+      const status = st === 'transferred' ? 'transferred'
+        : (st === 'rejected' || st === 'cancelled' ? st : 'pending');
       return {
         id: String(r.id || ('WD-' + Date.now().toString(36))),
         amount: amount,
         ts: Number(r.ts) || Date.now(),
         status: status,
         transferredAt: Number(r.transferredAt) || 0,
+        rejectedAt: Number(r.rejectedAt) || 0,
         bankName: String(r.bankName || '').trim(),
         accountNo: String(r.accountNo || '').trim(),
+        paymentRef: String(r.paymentRef || '').trim(),
+        reason: String(r.reason || '').trim(),
+        decidedBy: String(r.decidedBy || '').trim(),
+        note: String(r.note || ''),
       };
     }).filter(Boolean);
     return w;
@@ -2347,7 +2354,7 @@
   };
   API.walletHeld = function () {
     return (API.wallet && API.wallet.requests || []).reduce(function (n, r) {
-      if (!r || r.status === 'cancelled') return n;
+      if (!r || r.status === 'cancelled' || r.status === 'rejected') return n;
       return n + Math.max(0, Number(r.amount) || 0);
     }, 0);
   };
@@ -2428,6 +2435,336 @@
     return req;
   };
 
+  function supportKey(user) {
+    const u = user || API.user;
+    if (!u || !u.id) return '';
+    const id = String(u.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+    return 'qb_support_customer_' + id;
+  }
+  function emptySupport() {
+    return {
+      mode: 'ai', ticket: '', status: 'open', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
+      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '', ratedAt: 0, chatGen: 0,
+    };
+  }
+  var AGENT_IDLE_MS = 3 * 60 * 1000;
+  function supportLastTs(messages, roles) {
+    let t = 0;
+    (messages || []).forEach(function (m) {
+      if (!m) return;
+      if (roles && roles.indexOf(m.role) < 0) return;
+      t = Math.max(t, Number(m.ts) || 0);
+    });
+    return t;
+  }
+  function shouldIdleCloseSupport(s, now) {
+    if (!s || s.mode !== 'agent') return false;
+    const nowMs = Number(now) || Date.now();
+    const lastUser = supportLastTs(s.messages, ['user']);
+    const lastAgent = Math.max(Number(s.escalatedAt) || 0, supportLastTs(s.messages, ['agent', 'assistant', 'system']));
+    if (lastUser > lastAgent) return false;
+    const anchor = lastAgent || Number(s.escalatedAt) || 0;
+    if (!anchor) return false;
+    return (nowMs - anchor) >= AGENT_IDLE_MS;
+  }
+  function closeAgentSessionLocal(s, reason, now) {
+    const t = s || emptySupport();
+    const ts = Number(now) || Date.now();
+    const why = String(reason || 'closed');
+    t.mode = 'ai';
+    t.status = 'closed';
+    t.queuedNote = false;
+    t.awaitingRating = true;
+    t.agentClosedAt = ts;
+    t.closeReason = why;
+    t.escalatedAt = 0;
+    const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
+    t.sessions = (t.sessions || []).concat([{ closedAt: ts, reason: why, rating: 0, gen: gen }]);
+    t.messages = (t.messages || []).concat([{
+      role: 'system',
+      text: why === 'idle'
+        ? 'The agent session closed after 3 minutes with no reply. Rate this agent, then AI Help continues.'
+        : 'The agent closed this chat. Rate this agent session. AI Help continues after you rate.',
+      ts: ts,
+      gen: gen,
+    }]);
+    t.chatGen = gen + 1;
+    return t;
+  }
+  function normalizeSupport(raw) {
+    const s = emptySupport();
+    let p = raw;
+    if (typeof p === 'string') {
+      try { p = JSON.parse(p); } catch (_) { p = null; }
+    }
+    if (!p || typeof p !== 'object') return s;
+    s.mode = p.mode === 'agent' ? 'agent' : 'ai';
+    s.status = p.status === 'closed' || p.status === 'resolved' || p.status === 'in_progress' || p.status === 'waiting' || p.status === 'new' || p.status === 'open'
+      ? String(p.status)
+      : (s.mode === 'agent' ? 'in_progress' : 'open');
+    s.ticket = String(p.ticket || '').trim();
+    s.escalatedAt = Number(p.escalatedAt) || 0;
+    s.reason = String(p.reason || '');
+    s.queuedNote = !!p.queuedNote;
+    s.awaitingRating = p.awaitingRating === true;
+    s.rating = Math.max(0, Math.min(5, Math.round(Number(p.rating) || 0)));
+    s.agentClosedAt = Number(p.agentClosedAt) || 0;
+    s.closeReason = String(p.closeReason || '');
+    s.ratedAt = Number(p.ratedAt) || 0;
+    s.chatGen = Math.max(0, Math.round(Number(p.chatGen) || 0));
+    s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
+    s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
+    s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
+      if (!m) return null;
+      const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
+      const text = String(m.text || m.content || '').trim();
+      if (!text) return null;
+      return { role: role, text: text, ts: Number(m.ts) || Date.now(), gen: Math.max(0, Math.round(Number(m.gen) || 0)) };
+    }).filter(Boolean).slice(-80);
+    return s;
+  }
+  API.support = emptySupport();
+  function supportMsgKey(m) {
+    return String(m.role || '') + '|' + String(m.text || '').slice(0, 120) + '|' + String(Math.round((Number(m.ts) || 0) / 1500));
+  }
+  function isConnectingNote(text) {
+    return /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(text || ''));
+  }
+  function hasConnectingNote(messages, gen) {
+    const g = Math.max(0, Math.round(Number(gen) || 0));
+    return (messages || []).some(function (m) {
+      return m && m.role === 'system' && (Number(m.gen) || 0) === g && isConnectingNote(m.text);
+    });
+  }
+  function compactConnectingNotes(messages) {
+    const seen = {};
+    return (messages || []).filter(function (m) {
+      if (!m || m.role !== 'system' || !isConnectingNote(m.text)) return true;
+      const g = String(Math.max(0, Math.round(Number(m.gen) || 0)));
+      if (seen[g]) return false;
+      seen[g] = true;
+      return true;
+    });
+  }
+  function mergeSupportMessages(a, b) {
+    const seen = {};
+    const out = [];
+    (a || []).concat(b || []).forEach(function (m) {
+      if (!m || !String(m.text || '').trim()) return;
+      const k = supportMsgKey(m);
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(m);
+    });
+    out.sort(function (x, y) { return (Number(x.ts) || 0) - (Number(y.ts) || 0); });
+    return compactConnectingNotes(out).slice(-80);
+  }
+  function mergeSupportState(remote, local) {
+    const r = remote || emptySupport();
+    const l = local || emptySupport();
+    const rLast = supportLastTs(r.messages);
+    const lLast = supportLastTs(l.messages);
+    const src = rLast >= lLast ? r : l;
+    const next = Object.assign(emptySupport(), src);
+    next.messages = mergeSupportMessages(r.messages, l.messages);
+    next.chatGen = Math.max(Number(r.chatGen) || 0, Number(l.chatGen) || 0);
+    next.ticket = r.ticket || l.ticket || next.ticket;
+    next.rating = Math.max(Number(r.rating) || 0, Number(l.rating) || 0);
+    next.ratedAt = Math.max(Number(r.ratedAt) || 0, Number(l.ratedAt) || 0);
+    if ((l.sessions || []).length > (r.sessions || []).length) next.sessions = l.sessions;
+    else if ((r.sessions || []).length) next.sessions = r.sessions;
+    const localLive = l.mode === 'agent' && l.status !== 'closed' && l.status !== 'resolved' && !l.awaitingRating;
+    const remoteLive = r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved' && !r.awaitingRating;
+    const rated = (!l.awaitingRating && (Number(l.ratedAt) > 0 || Number(l.rating) > 0))
+      || (!r.awaitingRating && (Number(r.ratedAt) > 0 || Number(r.rating) > 0));
+    const localClosedAt = Math.max(Number(l.agentClosedAt) || 0, Number(l.ratedAt) || 0);
+    const remoteEscalated = Number(r.escalatedAt) || 0;
+    if (localLive) {
+      next.mode = 'agent';
+      next.awaitingRating = false;
+      next.escalatedAt = Number(l.escalatedAt) || Date.now();
+      if (remoteLive && r.status === 'waiting') next.status = 'waiting';
+      else if (l.status === 'waiting') next.status = r.status || 'open';
+      else next.status = l.status || 'open';
+    } else if (remoteLive && localClosedAt < remoteEscalated) {
+      next.mode = 'agent';
+      next.status = r.status || 'in_progress';
+      next.awaitingRating = false;
+      next.escalatedAt = remoteEscalated;
+    } else if (rated) {
+      next.awaitingRating = false;
+      next.mode = 'ai';
+    } else if ((r.awaitingRating || l.awaitingRating) && !remoteLive) {
+      next.awaitingRating = true;
+      next.mode = 'ai';
+    }
+    return next;
+  }
+  async function persistSupport() {
+    const key = supportKey();
+    if (!key) return;
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        const remote = normalizeSupport(rows[0] && rows[0].payload);
+        API.support = mergeSupportState(remote, API.support || emptySupport());
+      } catch (_) {}
+      await sbPutRow('app_state', { id: key, payload: API.support || emptySupport() });
+      return;
+    }
+    try { storeSet(key, JSON.stringify(API.support || emptySupport())); } catch (_) {}
+  }
+  API.loadSupport = async function () {
+    const key = supportKey();
+    if (!key) {
+      API.support = emptySupport();
+      return API.support;
+    }
+    if (sbConfigured()) {
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        const remote = normalizeSupport(rows[0] && rows[0].payload);
+        API.support = mergeSupportState(remote, API.support || emptySupport());
+      } catch (_) {}
+    }
+    if (!API.support || !API.support.messages || !API.support.messages.length) {
+      try {
+        const raw = storeGet(key);
+        if (raw) API.support = mergeSupportState(normalizeSupport(JSON.parse(raw)), API.support || emptySupport());
+        else if (!API.support) API.support = emptySupport();
+      } catch (_) {
+        if (!API.support) API.support = emptySupport();
+      }
+    }
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+      await persistSupport();
+      notify(true);
+    }
+    return API.support;
+  };
+  API.closeAgentIfIdle = async function () {
+    if (!API.support) return API.support;
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+      await persistSupport();
+      notify(true);
+    }
+    return API.support;
+  };
+  API.rateSupportAgent = async function (stars) {
+    const n = Math.max(1, Math.min(5, Math.round(Number(stars) || 0)));
+    if (!n) throw new Error('Pick 1 to 5 stars.');
+    if (!API.support) API.support = emptySupport();
+    if (!API.support.awaitingRating) return API.support;
+    const ts = Date.now();
+    API.support.awaitingRating = false;
+    API.support.rating = n;
+    API.support.ratedAt = ts;
+    API.support.mode = 'ai';
+    API.support.status = 'closed';
+    const sessions = (API.support.sessions || []).slice();
+    if (sessions.length) sessions[sessions.length - 1] = Object.assign({}, sessions[sessions.length - 1], { rating: n, ratedAt: ts });
+    API.support.sessions = sessions;
+    API.support.ratings = (API.support.ratings || []).concat([{ stars: n, ts: ts }]);
+    API.support.messages = (API.support.messages || []).concat([{
+      role: 'system',
+      text: 'Thanks. You rated this agent ' + n + ' star' + (n === 1 ? '' : 's') + '. AI Help is ready.',
+      ts: ts,
+      gen: Math.max(0, Math.round(Number(API.support.chatGen) || 1) - 1),
+    }]);
+    await persistSupport();
+    if (API.support) {
+      API.support.awaitingRating = false;
+      API.support.mode = 'ai';
+    }
+    notify(true);
+    return API.support;
+  };
+  API.askSupport = async function (text) {
+    const u = API.user;
+    if (!u || !u.id) throw new Error('Sign in first');
+    const body = String(text || '').trim();
+    if (!body) throw new Error('Type a message.');
+    if (!API.support) API.support = emptySupport();
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+    }
+    if (API.support.awaitingRating) throw new Error('Rate the agent first.');
+    if (!API.support.ticket) API.support.ticket = 'HS-' + Date.now().toString(36).toUpperCase().slice(-7);
+    const gen = Math.max(0, Math.round(Number(API.support.chatGen) || 0));
+    const liveAgent = API.support.mode === 'agent' && API.support.status !== 'closed' && API.support.status !== 'resolved';
+    API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now(), gen: gen }]);
+    if (liveAgent) {
+      await persistSupport();
+      notify(true);
+      return API.support;
+    }
+    const aiMsgs = (API.support.messages || []).filter(function (m) {
+      if (!m) return false;
+      if ((Number(m.gen) || 0) !== gen) return false;
+      return m.role === 'user' || m.role === 'assistant';
+    });
+    const payload = {
+      mode: 'ai',
+      text: body,
+      messages: aiMsgs.map(function (m) {
+        return { role: m.role === 'user' ? 'user' : 'assistant', content: m.text };
+      }),
+    };
+    let data = {};
+    try {
+      const res = await fetch('/api/support', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      data = await res.json().catch(function () { return {}; });
+      if (!res.ok && !data.reply && !data.escalate) throw new Error(data.message || 'Could not reach support');
+    } catch (e) {
+      data = { escalate: false, reason: 'offline', reply: 'I could not reach Help just now. Try again — you are still with AI Help.' };
+    }
+    const rawReply = String(data.reply || '');
+    const handoff = isConnectingNote(rawReply) || /^waiting$/i.test(rawReply);
+    const wantAgent = !!(data.escalate || handoff);
+    const alreadyNoted = hasConnectingNote(API.support.messages, gen);
+    if (rawReply && !(wantAgent && isConnectingNote(rawReply) && alreadyNoted)) {
+      API.support.messages.push({
+        role: wantAgent ? 'system' : 'assistant',
+        text: rawReply,
+        ts: Date.now(),
+        gen: gen,
+      });
+    }
+    if (wantAgent) {
+      API.support.status = 'open';
+      API.support.mode = 'agent';
+      API.support.awaitingRating = false;
+      API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
+      API.support.escalatedAt = Date.now();
+      if (!alreadyNoted && !hasConnectingNote(API.support.messages, gen)) {
+        API.support.messages.push({
+          role: 'system',
+          text: 'Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.',
+          ts: Date.now(),
+          gen: gen,
+        });
+      }
+      API.support.queuedNote = true;
+    }
+    await persistSupport();
+    if (wantAgent && API.support) {
+      API.support.mode = 'agent';
+      const hasAgentMsg = (API.support.messages || []).some(function (m) { return m && m.role === 'agent'; });
+      if (API.support.status !== 'waiting') {
+        API.support.status = hasAgentMsg ? 'in_progress' : 'open';
+      }
+      API.support.awaitingRating = false;
+    }
+    notify(true);
+    return API.support;
+  };
+
   function nextOrderId() {
     return 'ORD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   }
@@ -2435,6 +2772,12 @@
   async function hydrateUser() {
     const u = API.user;
     if (!u || !u.id || !sbConfigured()) return;
+    await refreshAdminMeta();
+    if (adminStatusOf(u.id) === 'suspended') {
+      API.logout();
+      return;
+    }
+    if (API.user) API.user.adminStatus = adminStatusOf(u.id);
     try {
       let rows = asRows(await sbGet('accounts?id=eq.' + encodeURIComponent(u.id) + '&select=*'));
       if (!rows[0] && u.email) {
@@ -2626,6 +2969,7 @@
 
   API.login = async function (role, phone, pin) {
     pin = pin || '1234';
+    await refreshAdminMeta();
     if (phone) {
       const taken = await lookupPhone(phone, role);
       if (taken) {
@@ -3384,12 +3728,42 @@
       API.orders = [];
       API.messages = {};
     }
+    next.adminStatus = adminStatusOf(next.id);
+    if (next.adminStatus === 'suspended') {
+      const reason = adminReasonOf(next.id);
+      const err = new Error('This account is suspended' + (reason ? ': ' + reason : '.'));
+      err.code = 'SUSPENDED';
+      throw err;
+    }
     API.user = next;
     if (sameRole(next.role, 'shop')) API.user = attachShopIdentity(API.user);
     API.token = 'sb_' + row.id;
     saveSession();
     notify(true);
     return API.user;
+  }
+
+  function adminStatusOf(id) {
+    const bag = API._adminAccounts || {};
+    const m = bag[id];
+    return (m && m.status) || 'active';
+  }
+  function adminReasonOf(id) {
+    const bag = API._adminAccounts || {};
+    return (bag[id] && bag[id].reason) || '';
+  }
+  async function refreshAdminMeta() {
+    if (!sbConfigured()) return;
+    try {
+      const rows = asRows(await sbGet('app_state?id=eq.qb_admin_accounts&select=payload'));
+      let p = rows[0] && rows[0].payload;
+      if (typeof p === 'string') {
+        try { p = JSON.parse(p); } catch (_) { p = null; }
+      }
+      API._adminAccounts = p && typeof p === 'object' ? p : {};
+    } catch (_) {
+      API._adminAccounts = API._adminAccounts || {};
+    }
   }
 
   function isPasswordOnlyUnverified(row) {
@@ -3425,6 +3799,7 @@
       throw new Error('This account uses WhatsApp. Tap Continue with WhatsApp.');
     }
     if (secret !== password) throw new Error('Wrong email or password.');
+    await refreshAdminMeta();
     return enterMapped(row);
   };
 
@@ -4064,6 +4439,9 @@
   }
 
   API.placeOrder = async function (payload) {
+    if (API.user && API.user.adminStatus === 'restricted') {
+      throw new Error('This account is restricted from placing orders.');
+    }
     if (!API.isWhatsAppVerified()) {
       const err = new Error('Verify WhatsApp before placing an order.');
       err.code = 'WHATSAPP_REQUIRED';
@@ -4431,6 +4809,9 @@
 
   API.claimOrder = async function (id) {
     const u = API.user || {};
+    if (u.adminStatus === 'restricted' || u.adminStatus === 'suspended') {
+      throw new Error('This account cannot accept jobs.');
+    }
     return API.patch(id, {
       riderId: u.id,
       riderName: u.name,
@@ -4670,6 +5051,27 @@
       return shop.name && !isOwnerLikeShopName(shop.name, API.user) ? shop.name : 'Shop';
     }
     return order.customerName || 'Customer';
+  };
+  function supportReadKey() {
+    const u = API.user;
+    const id = (u && (u.id || u.email)) || 'guest';
+    return 'qb_support_read_' + String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+  }
+  API.supportUnread = function () {
+    const s = API.support || {};
+    let readAt = 0;
+    try { readAt = Number(localStorage.getItem(supportReadKey()) || 0); } catch (_) {}
+    const msgs = s.messages || [];
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (!m) continue;
+      if (m.role !== 'agent' && m.role !== 'assistant') continue;
+      if (Number(m.ts || 0) > readAt) return true;
+    }
+    return false;
+  };
+  API.markSupportRead = function () {
+    try { localStorage.setItem(supportReadKey(), String(Date.now())); } catch (_) {}
   };
   API.unreadCount = function (orderId, myRole) {
     const order = (API.orders || []).find((o) => o.id === orderId);
