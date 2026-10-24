@@ -818,7 +818,7 @@ function currentLaneMessages(thread) {
   return lane.length ? lane : msgs;
 }
 
-/** Live agent lane: queue (waiting) until the agent sends, then in_progress. Open stays New. */
+/** Live agent: open (New) until the agent sends a first message, then in_progress. */
 export function deriveSupportStatus(thread) {
   const t = thread || {};
   const st = String(t.status || '');
@@ -826,7 +826,7 @@ export function deriveSupportStatus(thread) {
   if (t.mode !== 'agent') return st || 'open';
   const lane = currentLaneMessages(t);
   const hasAgent = lane.some((m) => m.role === 'agent');
-  if (!hasAgent) return st === 'new' || st === 'open' ? st : 'waiting';
+  if (!hasAgent) return 'open';
   return 'in_progress';
 }
 

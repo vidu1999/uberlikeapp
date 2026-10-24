@@ -560,7 +560,7 @@
       : st === 'waiting' ? 'No customers waiting in queue.'
       : st === 'in_progress' ? 'No in-progress agent chats.'
       : 'No customers in New, Waiting, In Progress, or Closed yet. They appear here live.';
-    return listChrome('Questions & Support', 'Open is New. Waiting is the queue before an agent replies. After the agent sends a message the chat is In Progress.',
+    return listChrome('Questions & Support', 'Open chats sit under New until the agent sends a first message, then they move to In Progress.',
       '<span class="ad-live"><i></i>Live</span>', `
       <div class="ad-tabs">
         ${tabBtn('status','all','All ('+(c.all||0)+')')}

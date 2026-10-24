@@ -2709,7 +2709,7 @@
       });
     }
     if (wantAgent) {
-      API.support.status = 'waiting';
+      API.support.status = 'open';
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
@@ -2727,7 +2727,7 @@
     await persistSupport();
     if (wantAgent && API.support) {
       API.support.mode = 'agent';
-      API.support.status = (API.support.status === 'closed' || API.support.status === 'resolved') ? 'waiting' : (API.support.status || 'waiting');
+      API.support.status = (API.support.status === 'closed' || API.support.status === 'resolved') ? 'open' : (API.support.status === 'in_progress' ? 'in_progress' : 'open');
       API.support.awaitingRating = false;
     }
     notify(true);
