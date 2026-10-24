@@ -200,8 +200,17 @@ body > #root > .track-screen {
   will-change: transform;
 }
 .rd-screen.is-nav .km-tip { display: none !important; }
-.rd-screen.is-nav .pin-lab > span {
+.rd-screen.is-nav .leaflet-marker-icon > *,
+.rd-screen.is-nav .leaflet-tooltip {
   transform: rotate(var(--nav-rot, 0deg));
-  transform-origin: center center;
-  display: inline-block;
+}
+.rd-screen.is-nav .pin-shop-wrap > *,
+.rd-screen.is-nav .pin-dest-wrap > *,
+.rd-screen.is-nav .drop-pin-wrap > * {
+  transform-origin: 50% 100%;
+}
+.rd-screen.is-nav .pin-bike-wrap > *,
+.rd-screen.is-nav .live-dot-wrap > *,
+.rd-screen.is-nav .nav-chip-wrap > * {
+  transform-origin: 50% 50%;
 }
