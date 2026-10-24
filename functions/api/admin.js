@@ -2,7 +2,7 @@ import {
   STATE_KEYS, PERMS, can, json, optionsResponse, corsHeaders, cookieHeader, readSessionToken,
   bootstrapAdmin, signSession, verifySession, hashPassword, safeEq, sha256b64, envVal, adminConfigHint,
   parseOrder, isDemoAccount, isDemoShop, isDemoOrder, maskPhone, maskEmail, maskBank,
-  shouldIdleClose, closeAgentSession, appendAgentReply, filterSupportQueue, hadAgentSession, isLiveAgentThread,
+  shouldIdleClose, closeAgentSession, appendAgentReply, filterSupportQueue, hadAgentSession, isLiveAgentThread, applySupportLane,
   normalizeWallet, applyWithdrawDecision, walletHeld, defaultConfig, normalizeConfig,
   metricsFrom, parseRiderDocs, riderVerified, normalizeSupport, parseSupportKey,
   supportPublicMessages, ordersToCsv, paginate, searchHay, applyOrderCancel, canCancelOrder,
@@ -145,6 +145,7 @@ async function loadSupport(env, accounts) {
     t.accountId = parsed.accountId;
     t.userName = acc.name || parsed.accountId;
     t.userPhoneMasked = maskPhone(acc.phone);
+    t = applySupportLane(t);
     t.unread = isLiveAgentThread(t);
     list.push(t);
   }
@@ -777,7 +778,6 @@ async function dispatch(env, actor, body, request) {
     } else {
       t = appendAgentReply(t, text);
     }
-    if (t.status === 'new' || t.status === 'open') t.status = 'in_progress';
     await putState(env, id, t);
     await appendAudit(env, actor, internal ? 'support.note' : 'support.reply', id, text.slice(0, 80));
     return { ok: true, ticket: t };

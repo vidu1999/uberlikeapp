@@ -811,6 +811,32 @@ export function isLiveAgentThread(thread) {
   return st !== 'resolved' && st !== 'closed';
 }
 
+function currentLaneMessages(thread) {
+  const msgs = (thread && Array.isArray(thread.messages) ? thread.messages : []).filter((m) => m && !m.internal);
+  const gen = Math.max(0, Math.round(Number(thread && thread.chatGen) || 0));
+  const lane = msgs.filter((m) => (Number(m.gen) || 0) === gen);
+  return lane.length ? lane : msgs;
+}
+
+/** Live agent lane: queue (waiting) until the agent sends, then in_progress. Open stays New. */
+export function deriveSupportStatus(thread) {
+  const t = thread || {};
+  const st = String(t.status || '');
+  if (st === 'closed' || st === 'resolved') return 'closed';
+  if (t.mode !== 'agent') return st || 'open';
+  const lane = currentLaneMessages(t);
+  const hasAgent = lane.some((m) => m.role === 'agent');
+  if (!hasAgent) return st === 'new' || st === 'open' ? st : 'waiting';
+  return 'in_progress';
+}
+
+export function applySupportLane(thread) {
+  const t = thread && typeof thread === 'object' ? thread : {};
+  if (!isLiveAgentThread(t)) return t;
+  t.status = deriveSupportStatus(t);
+  return t;
+}
+
 export function hadAgentSession(thread) {
   if (!thread) return false;
   if (thread.mode === 'agent') return true;
@@ -818,21 +844,23 @@ export function hadAgentSession(thread) {
   return Array.isArray(thread.sessions) && thread.sessions.length > 0;
 }
 
-/** Admin queue: All = New + In Progress + Closed agent sessions. AI-only Help never appears. */
+/** Admin queue: New = open; Waiting = queue / waiting on customer; In Progress = agent has replied and user spoke. */
 export function filterSupportQueue(tickets, status) {
-  const pool = (tickets || []).filter(hadAgentSession);
+  const pool = (tickets || []).filter(hadAgentSession).map((t) => applySupportLane(Object.assign({}, t)));
   const live = pool.filter(isLiveAgentThread);
   const closed = pool.filter((t) => !isLiveAgentThread(t));
   const counts = {
     all: pool.length,
     new: live.filter((t) => t.status === 'new' || t.status === 'open').length,
-    in_progress: live.filter((t) => t.status === 'in_progress' || t.status === 'waiting').length,
+    waiting: live.filter((t) => t.status === 'waiting').length,
+    in_progress: live.filter((t) => t.status === 'in_progress').length,
     resolved: closed.length,
   };
   const want = String(status || 'all');
   let rows = pool;
   if (want === 'new') rows = live.filter((t) => t.status === 'new' || t.status === 'open');
-  else if (want === 'in_progress') rows = live.filter((t) => t.status === 'in_progress' || t.status === 'waiting');
+  else if (want === 'waiting') rows = live.filter((t) => t.status === 'waiting');
+  else if (want === 'in_progress') rows = live.filter((t) => t.status === 'in_progress');
   else if (want === 'resolved' || want === 'closed') rows = closed;
   return { rows: rows, counts: counts };
 }

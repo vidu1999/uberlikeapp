@@ -557,13 +557,15 @@
     const st = state.filters.status;
     const empty = st === 'resolved' ? 'No closed sessions yet.'
       : st === 'new' ? 'No new agent chats.'
+      : st === 'waiting' ? 'No customers waiting in queue.'
       : st === 'in_progress' ? 'No in-progress agent chats.'
-      : 'No customers in New, In Progress, or Closed yet. They appear here live.';
-    return listChrome('Questions & Support', 'Live queue — New, In Progress, and Closed customers update here without refresh.',
+      : 'No customers in New, Waiting, In Progress, or Closed yet. They appear here live.';
+    return listChrome('Questions & Support', 'Open is New. Waiting is the queue before an agent replies. After the agent sends a message the chat is In Progress.',
       '<span class="ad-live"><i></i>Live</span>', `
       <div class="ad-tabs">
         ${tabBtn('status','all','All ('+(c.all||0)+')')}
         ${tabBtn('status','new','New ('+(c.new||0)+')')}
+        ${tabBtn('status','waiting','Waiting ('+(c.waiting||0)+')')}
         ${tabBtn('status','in_progress','In Progress ('+(c.in_progress||0)+')')}
         ${tabBtn('status','resolved','Closed ('+(c.resolved||0)+')')}
       </div>
@@ -580,12 +582,23 @@
         </tr>`).join('')}</tbody></table>${pager(d)}</div>` : `<div class="ad-empty">${empty}</div>`}`);
   }
 
+  function supportWaitLabel(t) {
+    if (!t || t.mode !== 'agent' || t.status === 'closed' || t.status === 'resolved') return '';
+    const msgs = (t.messages || []).filter((m) => m && !m.internal);
+    const hasAgent = msgs.some((m) => m.role === 'agent');
+    const last = msgs[msgs.length - 1];
+    if (!hasAgent) return 'Waiting in queue';
+    if (last && last.role === 'agent') return 'Waiting';
+    return '';
+  }
+
   function supportChatView() {
     const t = state.data.ticket;
     if (!t) return '<div class="ad-empty">Ticket not found.</div>';
     const live = t.mode === 'agent' && t.status !== 'closed' && t.status !== 'resolved';
     const msgs = (t.messages || []).filter((m) => !m.internal);
-    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(live ? 'agent' : (t.status || 'closed'))}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''} · <span class="ad-live"><i></i>Live</span></p></div>
+    const wait = supportWaitLabel(t);
+    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(t.status || (live ? 'agent' : 'closed'))}${wait ? ' · ' + badge(wait) : ''}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''} · <span class="ad-live"><i></i>Live</span></p></div>
       <div>${live ? '<button class="ad-btn ghost" type="button" id="adCloseAgent">Close agent</button>' : ''}<a class="ad-btn ghost" href="#/support">Back</a></div></div>
       <div class="ad-card ad-chat">
         <div class="ad-bubbles" id="adBubbles">${msgs.map((m)=>`<div class="ad-bubble ${m.role==='user'?'them':(m.role==='system'?'sys':'me')}">${esc(m.text)}</div>`).join('') || '<div class="ad-empty">No messages.</div>'}</div>
