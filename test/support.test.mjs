@@ -54,6 +54,7 @@ describe('fresh AI chat after agent close', () => {
 
   it('treats connecting-to-agent copy as a real handoff', () => {
     assert.equal(isAgentHandoffText('Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.'), true);
+    assert.equal(isAgentHandoffText('Waiting'), true);
     assert.equal(isAgentHandoffText('I can connect a real agent if this is not resolved.'), false);
   });
 });

@@ -587,7 +587,7 @@
     const msgs = (t.messages || []).filter((m) => m && !m.internal);
     const hasAgent = msgs.some((m) => m.role === 'agent');
     const last = msgs[msgs.length - 1];
-    if (!hasAgent) return 'Waiting in queue';
+    if (!hasAgent) return 'Waiting';
     if (last && last.role === 'agent') return 'Waiting';
     return '';
   }

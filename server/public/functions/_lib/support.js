@@ -94,7 +94,7 @@ export function freshAiHistory(messages) {
 }
 
 export function isAgentHandoffText(text) {
-  return /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(text || ''));
+  return /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent|^waiting$/i.test(String(text || ''));
 }
 
 export function shouldEscalate(messages, latest) {

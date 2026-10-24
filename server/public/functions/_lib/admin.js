@@ -796,7 +796,10 @@ export function appendAgentReply(thread, text, now) {
   const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
   const msg = { role: 'agent', text: String(text || '').trim(), ts: ts, internal: false, gen: gen };
   if (!msg.text) return t;
-  t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([msg]);
+  t.messages = (Array.isArray(t.messages) ? t.messages : []).map((m) => {
+    if (m && m.role === 'system' && isQueueNote(m.text)) return Object.assign({}, m, { text: waitingCopy() });
+    return m;
+  }).concat([msg]);
   t.mode = 'agent';
   t.awaitingRating = false;
   t.status = 'in_progress';
@@ -818,7 +821,15 @@ function currentLaneMessages(thread) {
   return lane.length ? lane : msgs;
 }
 
-/** Live agent: open (New) until the agent sends a first message, then in_progress. */
+function isQueueNote(text) {
+  return /queued for the agent|you are in real agent mode|connecting you to a real/i.test(String(text || ''));
+}
+
+export function waitingCopy() {
+  return 'Waiting';
+}
+
+/** Queued (no agent reply) = waiting. After the first agent message = in_progress. Open stays New. */
 export function deriveSupportStatus(thread) {
   const t = thread || {};
   const st = String(t.status || '');
@@ -826,7 +837,7 @@ export function deriveSupportStatus(thread) {
   if (t.mode !== 'agent') return st || 'open';
   const lane = currentLaneMessages(t);
   const hasAgent = lane.some((m) => m.role === 'agent');
-  if (!hasAgent) return 'open';
+  if (!hasAgent) return (st === 'open' || st === 'new') ? st : 'waiting';
   return 'in_progress';
 }
 

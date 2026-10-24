@@ -38,9 +38,7 @@ export async function onRequest(context) {
       escalate: true,
       queued: false,
       reason: gate.reason,
-      reply: gate.reason === 'asked_agent'
-        ? 'Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.'
-        : 'This still is not resolved, so I am connecting you to a real QuickBite agent. Stay here — they will pick up this chat.',
+      reply: 'Waiting',
     });
   }
 

@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ba"></script>
+  <script src="/js/api.js?v=19bb"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1607,6 +1607,11 @@
       if (s.mode === 'agent') return 'agent';
       return 'ai';
     }
+    function supportMsgText(m) {
+      const t = String((m && m.text) || '');
+      if (/queued for the agent|you are in real agent mode|connecting you to a real/i.test(t)) return 'Waiting';
+      return t;
+    }
     function supportStarsHtml() {
       return `<div class="qb-rate-agent" data-rate-agent>
         <div class="qb-rate-label">How was this agent?</div>
@@ -1623,12 +1628,12 @@
         <div class="chat-head">
           <button class="back-fab" type="button" data-close-support>←</button>
           <div class="grow">
-            <b>${agent ? 'QuickBite agent' : (phase === 'rate' ? 'Rate this agent' : 'Help & Support')}</b>
-            <div class="sub">${agent ? ((msgs.some((m) => m.role === 'agent') ? ((msgs[msgs.length-1] && msgs[msgs.length-1].role === 'agent') ? 'Waiting for you · ticket ' : 'Live agent · ticket ') : 'Waiting in queue · ticket ') + esc(s.ticket || '')) : (phase === 'rate' ? 'Agent closed · rate this session' : (supportEpoch(s) ? 'New AI chat · previous agent session is closed' : 'AI help first · real agent if not resolved'))}</div>
+            <b>${agent ? (msgs.some((m) => m.role === 'agent') ? 'QuickBite agent' : 'Waiting') : (phase === 'rate' ? 'Rate this agent' : 'Help & Support')}</b>
+            <div class="sub">${agent ? ((msgs.some((m) => m.role === 'agent') ? ((msgs[msgs.length-1] && msgs[msgs.length-1].role === 'agent') ? 'Waiting · ticket ' : 'Live agent · ticket ') : 'Waiting · ticket ') + esc(s.ticket || '')) : (phase === 'rate' ? 'Agent closed · rate this session' : (supportEpoch(s) ? 'New AI chat · previous agent session is closed' : 'AI help first · real agent if not resolved'))}</div>
           </div>
-          <span class="qb-sup-pill ${agent ? 'on' : ''}">${agent ? 'Agent' : (phase === 'rate' ? 'Rate' : 'AI')}</span>
+          <span class="qb-sup-pill ${agent && msgs.some((m) => m.role === 'agent') ? 'on' : ''}">${agent ? (msgs.some((m) => m.role === 'agent') ? ((msgs[msgs.length-1] && msgs[msgs.length-1].role === 'agent') ? 'Waiting' : 'Agent') : 'Waiting') : (phase === 'rate' ? 'Rate' : 'AI')}</span>
         </div>
-        <div class="bubbles" id="supportBubbles">${hello}${msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(m.text)}</div>`).join('')}</div>
+        <div class="bubbles" id="supportBubbles">${hello}${msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(supportMsgText(m))}</div>`).join('')}</div>
         ${phase === 'ai' ? `<div class="quick-replies">
           <button type="button" data-sup-quick="Where is my order?">Where is my order?</button>
           <button type="button" data-sup-quick="Payment or wallet">Payment or wallet</button>
@@ -1647,15 +1652,17 @@
       const s = API.support || { mode: 'ai', messages: [] };
       const msgs = supportThread();
       const hello = msgs.length ? '' : `<div class="bubble them">Hi, I am QuickBite Help. Ask about an order, payment, tracking, or your account. If we cannot fix it, this chat becomes a real agent.</div>`;
-      const html = hello + msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(m.text)}</div>`).join('');
+      const html = hello + msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(supportMsgText(m))}</div>`).join('');
       const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
       b.innerHTML = html;
       if (atBottom) b.scrollTop = b.scrollHeight;
       const pill = document.querySelector('[data-support-root] .qb-sup-pill');
       if (pill) {
         const phase = supportPhase(s);
-        pill.classList.toggle('on', phase === 'agent');
-        pill.textContent = phase === 'agent' ? 'Agent' : (phase === 'rate' ? 'Rate' : 'AI');
+        const hasAgentMsg = msgs.some((m) => m.role === 'agent');
+        const lastAgent = !!(msgs[msgs.length - 1] && msgs[msgs.length - 1].role === 'agent');
+        pill.classList.toggle('on', phase === 'agent' && hasAgentMsg && !lastAgent);
+        pill.textContent = phase === 'agent' ? (hasAgentMsg && !lastAgent ? 'Agent' : 'Waiting') : (phase === 'rate' ? 'Rate' : 'AI');
       }
     }
     function chatView() {

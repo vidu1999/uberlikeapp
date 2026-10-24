@@ -2698,36 +2698,36 @@
     } catch (e) {
       data = { escalate: false, reason: 'offline', reply: 'I could not reach Help just now. Try again — you are still with AI Help.' };
     }
-    const handoff = /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(data.reply || ''));
+    const rawReply = String(data.reply || '');
+    const handoff = /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent|^waiting$/i.test(rawReply);
     const wantAgent = !!(data.escalate || handoff);
-    if (data.reply) {
+    const replyText = wantAgent && /queued for the agent|you are in real agent mode|connecting you to a real|^waiting$/i.test(rawReply)
+      ? 'Waiting'
+      : rawReply;
+    if (replyText) {
       API.support.messages.push({
         role: wantAgent ? 'system' : 'assistant',
-        text: String(data.reply),
+        text: replyText,
         ts: Date.now(),
         gen: gen,
       });
     }
     if (wantAgent) {
-      API.support.status = 'open';
+      API.support.status = 'waiting';
       API.support.mode = 'agent';
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
       API.support.escalatedAt = Date.now();
-      if (!data.reply) {
-        const note = API.support.queuedNote
-          ? ('Queued for the agent. Ticket ' + API.support.ticket + '.')
-          : ('You are in real agent mode. Ticket ' + API.support.ticket + '. An agent will reply in this chat.');
-        API.support.queuedNote = true;
-        API.support.messages.push({ role: 'system', text: note, ts: Date.now(), gen: gen });
-      } else {
-        API.support.queuedNote = true;
+      if (!replyText) {
+        API.support.messages.push({ role: 'system', text: 'Waiting', ts: Date.now(), gen: gen });
       }
+      API.support.queuedNote = true;
     }
     await persistSupport();
     if (wantAgent && API.support) {
       API.support.mode = 'agent';
-      API.support.status = (API.support.status === 'closed' || API.support.status === 'resolved') ? 'open' : (API.support.status === 'in_progress' ? 'in_progress' : 'open');
+      const hasAgentMsg = (API.support.messages || []).some(function (m) { return m && m.role === 'agent'; });
+      API.support.status = hasAgentMsg ? 'in_progress' : 'waiting';
       API.support.awaitingRating = false;
     }
     notify(true);
