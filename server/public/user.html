@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19av"></script>
+  <script src="/js/api.js?v=19aw"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1587,18 +1587,19 @@
     }
     function supportThread() {
       const s = API.support || {};
-      const msgs = s.messages || [];
+      const msgs = (s.messages || []).filter((m) => !m.internal);
       const phase = supportPhase(s);
       const gen = Math.max(0, Math.round(Number(s.chatGen) || 0));
       if (phase === 'rate') {
         const want = Math.max(0, gen - 1);
         return msgs.filter((m) => (Number(m.gen) || 0) === want);
       }
-      const current = msgs.filter((m) => (Number(m.gen) || 0) === gen);
-      if (current.length || gen > 0) return current;
       const epoch = supportEpoch(s);
-      if (!epoch) return msgs;
-      return msgs.filter((m) => (Number(m.ts) || 0) > epoch);
+      return msgs.filter((m) => {
+        if ((Number(m.gen) || 0) === gen) return true;
+        if (phase === 'agent' && (m.role === 'agent' || m.role === 'assistant') && (!epoch || (Number(m.ts) || 0) > epoch)) return true;
+        return false;
+      });
     }
     function supportPhase(s) {
       s = s || API.support || {};
@@ -2886,7 +2887,7 @@
             if (API.closeAgentIfIdle) await API.closeAgentIfIdle();
           } catch (_) {}
           if (state.screen === 'support') render({ keepScroll: true });
-        }, 8000);
+        }, 3000);
       }
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
         state.locFrom = state.screen === 'checkout' ? 'checkout' : (state.screen === 'addresses' ? 'addresses' : 'home');

@@ -2524,15 +2524,56 @@
     return s;
   }
   API.support = emptySupport();
+  function supportMsgKey(m) {
+    return String(m.role || '') + '|' + String(m.text || '').slice(0, 120) + '|' + String(Math.round((Number(m.ts) || 0) / 1500));
+  }
+  function mergeSupportMessages(a, b) {
+    const seen = {};
+    const out = [];
+    (a || []).concat(b || []).forEach(function (m) {
+      if (!m || !String(m.text || '').trim()) return;
+      const k = supportMsgKey(m);
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(m);
+    });
+    out.sort(function (x, y) { return (Number(x.ts) || 0) - (Number(y.ts) || 0); });
+    return out.slice(-80);
+  }
+  function mergeSupportState(remote, local) {
+    const r = remote || emptySupport();
+    const l = local || emptySupport();
+    const rLast = supportLastTs(r.messages);
+    const lLast = supportLastTs(l.messages);
+    const src = rLast >= lLast ? r : l;
+    const next = Object.assign(emptySupport(), src);
+    next.messages = mergeSupportMessages(r.messages, l.messages);
+    next.chatGen = Math.max(Number(r.chatGen) || 0, Number(l.chatGen) || 0);
+    next.ticket = r.ticket || l.ticket || next.ticket;
+    if (r.mode === 'agent' && r.status !== 'closed' && r.status !== 'resolved') {
+      next.mode = 'agent';
+      next.status = r.status || 'in_progress';
+      next.awaitingRating = false;
+      next.escalatedAt = Number(r.escalatedAt) || next.escalatedAt || Date.now();
+    } else if (r.awaitingRating && r.mode !== 'agent') {
+      next.awaitingRating = true;
+      next.mode = 'ai';
+    }
+    return next;
+  }
   async function persistSupport() {
     const key = supportKey();
     if (!key) return;
-    const payload = API.support || emptySupport();
     if (sbConfigured()) {
-      await sbPutRow('app_state', { id: key, payload: payload });
+      try {
+        const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
+        const remote = normalizeSupport(rows[0] && rows[0].payload);
+        API.support = mergeSupportState(remote, API.support || emptySupport());
+      } catch (_) {}
+      await sbPutRow('app_state', { id: key, payload: API.support || emptySupport() });
       return;
     }
-    try { storeSet(key, JSON.stringify(payload)); } catch (_) {}
+    try { storeSet(key, JSON.stringify(API.support || emptySupport())); } catch (_) {}
   }
   API.loadSupport = async function () {
     const key = supportKey();
@@ -2543,13 +2584,14 @@
     if (sbConfigured()) {
       try {
         const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
-        API.support = normalizeSupport(rows[0] && rows[0].payload);
+        const remote = normalizeSupport(rows[0] && rows[0].payload);
+        API.support = mergeSupportState(remote, API.support || emptySupport());
       } catch (_) {}
     }
     if (!API.support || !API.support.messages || !API.support.messages.length) {
       try {
         const raw = storeGet(key);
-        if (raw) API.support = normalizeSupport(JSON.parse(raw));
+        if (raw) API.support = mergeSupportState(normalizeSupport(JSON.parse(raw)), API.support || emptySupport());
         else if (!API.support) API.support = emptySupport();
       } catch (_) {
         if (!API.support) API.support = emptySupport();

@@ -790,6 +790,21 @@ export function rateAgentSession(thread, stars, now) {
   return t;
 }
 
+export function appendAgentReply(thread, text, now) {
+  const t = thread && typeof thread === 'object' ? thread : {};
+  const ts = Number(now) || Date.now();
+  const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
+  const msg = { role: 'agent', text: String(text || '').trim(), ts: ts, internal: false, gen: gen };
+  if (!msg.text) return t;
+  t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([msg]);
+  t.mode = 'agent';
+  t.awaitingRating = false;
+  t.status = 'in_progress';
+  t.escalatedAt = ts;
+  t.chatGen = gen;
+  return t;
+}
+
 export function isLiveAgentThread(thread) {
   if (!thread || thread.mode !== 'agent') return false;
   const st = String(thread.status || '');

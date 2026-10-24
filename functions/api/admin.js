@@ -2,7 +2,7 @@ import {
   STATE_KEYS, PERMS, can, json, optionsResponse, corsHeaders, cookieHeader, readSessionToken,
   bootstrapAdmin, signSession, verifySession, hashPassword, safeEq, sha256b64, envVal, adminConfigHint,
   parseOrder, isDemoAccount, isDemoShop, isDemoOrder, maskPhone, maskEmail, maskBank,
-  shouldIdleClose, closeAgentSession, filterSupportQueue, hadAgentSession, isLiveAgentThread,
+  shouldIdleClose, closeAgentSession, appendAgentReply, filterSupportQueue, hadAgentSession, isLiveAgentThread,
   normalizeWallet, applyWithdrawDecision, walletHeld, defaultConfig, normalizeConfig,
   metricsFrom, parseRiderDocs, riderVerified, normalizeSupport, parseSupportKey,
   supportPublicMessages, ordersToCsv, paginate, searchHay, applyOrderCancel, canCancelOrder,
@@ -771,14 +771,11 @@ async function dispatch(env, actor, body, request) {
     if (!raw && id.indexOf('qb_support_') !== 0) return { ok: false, message: 'Ticket not found.' };
     let t = normalizeSupport(raw, id);
     if (shouldIdleClose(t)) t = closeAgentSession(t, 'idle');
-    const msg = { role: internal ? 'system' : 'agent', text: text, ts: Date.now(), internal: internal };
-    if (internal) t.internal = (t.internal || []).concat([{ text: text, ts: msg.ts, actor: actor.email }]);
-    else {
-      t.messages = (t.messages || []).concat([msg]);
-      t.mode = 'agent';
-      t.awaitingRating = false;
-      t.status = 'in_progress';
-      t.escalatedAt = t.escalatedAt || Date.now();
+    if (internal) {
+      const gen = Math.max(0, Math.round(Number(t.chatGen) || 0));
+      t.internal = (t.internal || []).concat([{ text: text, ts: Date.now(), actor: actor.email, gen: gen }]);
+    } else {
+      t = appendAgentReply(t, text);
     }
     if (t.status === 'new' || t.status === 'open') t.status = 'in_progress';
     await putState(env, id, t);

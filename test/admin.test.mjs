@@ -5,7 +5,7 @@ import {
   metricsFrom, applyOrderCancel, canCancelOrder, applyAccountStatus, accountMeta,
   signSession, verifySession, hashPassword, safeEq, paginate, ordersToCsv,
   parseOrder, normalizeSupport, supportPublicMessages, bootstrapAdmin, envConfigured,
-  envVal, adminConfigHint, shouldIdleClose, closeAgentSession, rateAgentSession, AGENT_IDLE_MS,
+  envVal, adminConfigHint, shouldIdleClose, closeAgentSession, rateAgentSession, appendAgentReply, AGENT_IDLE_MS,
   filterSupportQueue, isLiveAgentThread, hadAgentSession,
 } from '../functions/_lib/admin.js';
 
@@ -187,6 +187,15 @@ describe('agent session close and rating', () => {
     assert.equal(filterSupportQueue([ai, fresh, live, closed], 'new').rows[0].subject, 'Need a human');
     const done = filterSupportQueue([ai, fresh, live, closed], 'resolved');
     assert.equal(done.rows[0].status, 'closed');
+  });
+  it('agent reply is tagged with the live chat generation so the user can see it', () => {
+    const closed = closeAgentSession({ mode: 'agent', messages: [{ role: 'user', text: 'hi', ts: 1, gen: 0 }], chatGen: 0 }, 'admin', 50);
+    const live = appendAgentReply(closed, 'We are looking at your order', 80);
+    assert.equal(live.mode, 'agent');
+    const last = live.messages[live.messages.length - 1];
+    assert.equal(last.role, 'agent');
+    assert.equal(last.gen, live.chatGen);
+    assert.equal(last.text, 'We are looking at your order');
   });
 });
 
