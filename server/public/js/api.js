@@ -5052,6 +5052,27 @@
     }
     return order.customerName || 'Customer';
   };
+  function supportReadKey() {
+    const u = API.user;
+    const id = (u && (u.id || u.email)) || 'guest';
+    return 'qb_support_read_' + String(id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+  }
+  API.supportUnread = function () {
+    const s = API.support || {};
+    let readAt = 0;
+    try { readAt = Number(localStorage.getItem(supportReadKey()) || 0); } catch (_) {}
+    const msgs = s.messages || [];
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (!m) continue;
+      if (m.role !== 'agent' && m.role !== 'assistant') continue;
+      if (Number(m.ts || 0) > readAt) return true;
+    }
+    return false;
+  };
+  API.markSupportRead = function () {
+    try { localStorage.setItem(supportReadKey(), String(Date.now())); } catch (_) {}
+  };
   API.unreadCount = function (orderId, myRole) {
     const order = (API.orders || []).find((o) => o.id === orderId);
     const r = normChatRole(myRole);

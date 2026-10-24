@@ -326,8 +326,18 @@
 .prof-list button {
   width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 16px;
   border: 0; background: 0; border-bottom: 1px solid #F3F4F6; font-weight: 650; cursor: pointer; text-align: left;
+  position: relative;
 }
 .prof-list svg { width: 22px; height: 22px; flex: none; color: #00C853; }
+.qb-help-dot {
+  margin-left: auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #E11D48;
+  flex: none;
+  box-shadow: 0 0 0 2px #fff;
+}
 
 .err { color: #b91c1c; font-size: 13px; min-height: 18px; }
 .u-hi p.hungry { color: #6B7280; font-size: 13px; margin-top: 4px; }

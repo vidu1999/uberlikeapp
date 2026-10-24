@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="/css/app.css?v=19a2" />
   <link rel="stylesheet" href="/css/ui.css?v=19a2" />
   <link rel="stylesheet" href="/css/track.css?v=19zw" />
-  <link rel="stylesheet" href="/css/qb.css?v=19aa" />
+  <link rel="stylesheet" href="/css/qb.css?v=19ab" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19bd"></script>
+  <script src="/js/api.js?v=19be"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1814,7 +1814,7 @@
           <button type="button" data-go="addresses">${SVG.pin} <span class="grow">Addresses<div class="muted">${esc(state.address || state.loc.label || 'Live GPS or drop a pin')}</div></span></button>
           <button data-go="paymethods">${SVG.lock} Payment Methods</button>
           <button type="button" data-notes data-notes-from="account">${SVG.bell} Notifications${unreadN ? ' · ' + unreadN : ''}</button>
-          <button type="button" data-open-support>${SVG.mail} Help & Support</button>
+          <button type="button" data-open-support>${SVG.mail} Help & Support${(API.supportUnread && API.supportUnread()) ? '<i class="qb-help-dot" aria-label="New message"></i>' : ''}</button>
           <button id="logout">Settings · Sign out</button>
         </div>
       </div>${nav()}`;
@@ -2821,6 +2821,7 @@
       root.querySelectorAll('[data-open-support]').forEach((b) => b.onclick = async () => {
         state.screen = 'support';
         if (API.loadSupport) { try { await API.loadSupport(); } catch (_) {} }
+        if (API.markSupportRead) API.markSupportRead();
         render();
       });
       root.querySelectorAll('[data-close-support]').forEach((b) => b.onclick = () => {
@@ -2850,6 +2851,7 @@
         } finally {
           state.supportBusy = false;
           if (sendBtn) sendBtn.disabled = false;
+          if (API.markSupportRead) API.markSupportRead();
         }
         const nextPhase = supportPhase();
         const rootEl = document.querySelector('[data-support-root]');
@@ -2900,16 +2902,31 @@
           };
         });
       }
-      if (state.screen === 'support' && !state._supTick) {
-        state._supTick = setInterval(async () => {
-          if (state.screen !== 'support' || state.supportBusy) return;
+      function ensureSupportPoll() {
+        if (state._supTick) return;
+        const tick = async () => {
+          if (!API.user) return;
+          const onSupport = state.screen === 'support';
+          const onAccount = state.screen === 'home' && state.tab === 'account';
+          if (!onSupport && !onAccount) return;
+          if (state.supportBusy) return;
+          const had = !!(API.supportUnread && API.supportUnread());
           try {
             if (API.loadSupport) await API.loadSupport();
-            if (API.closeAgentIfIdle) await API.closeAgentIfIdle();
+            if (onSupport && API.closeAgentIfIdle) await API.closeAgentIfIdle();
           } catch (_) {}
-          if (state.screen === 'support') render({ keepScroll: true });
-        }, 3000);
+          if (onSupport) {
+            if (API.markSupportRead) API.markSupportRead();
+            if (state.screen === 'support') render({ keepScroll: true });
+            return;
+          }
+          const now = !!(API.supportUnread && API.supportUnread());
+          if (onAccount && now !== had) render({ keepScroll: true });
+        };
+        state._supTick = setInterval(tick, 3000);
+        tick();
       }
+      if (state.screen === 'support' || (state.screen === 'home' && state.tab === 'account')) ensureSupportPoll();
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
         state.locFrom = state.screen === 'checkout' ? 'checkout' : (state.screen === 'addresses' ? 'addresses' : 'home');
         state.screen = 'locate';
@@ -3262,6 +3279,7 @@
         localUserId = '';
         state.gate = 'login';
         state.loc._gps = false;
+        if (state._supTick) { clearInterval(state._supTick); state._supTick = null; }
         render();
       };
     }
