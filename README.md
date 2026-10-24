@@ -13,6 +13,7 @@ Live site: [https://quickbite-2ao.pages.dev](https://quickbite-2ao.pages.dev)
 | Customer | [/user.html](https://quickbite-2ao.pages.dev/user.html) | Browse, basket, pay, track |
 | Shop Partner | [/shop.html](https://quickbite-2ao.pages.dev/shop.html) | Kitchen, stock, card wallet |
 | Rider | [/rider.html](https://quickbite-2ao.pages.dev/rider.html) | Jobs, live map, earnings |
+| Admin | [/admin.html](https://quickbite-2ao.pages.dev/admin.html) | Ops, finance, support — dark navy panel |
 
 Web and Android load the **same UI**. Maps are **OpenStreetMap** in-app (not Google Maps, not Carto).
 
@@ -26,6 +27,8 @@ Web and Android load the **same UI**. Maps are **OpenStreetMap** in-app (not Goo
 Production Pages must track branch **`main`**. Preview hosts are not the live app.
 
 Do not commit `.env`. Keep `.env.example`. Secrets stay in Cloudflare / Supabase, not in the client.
+
+Admin sign-in uses `ADMIN_EMAIL` + `ADMIN_PASSWORD` (min 8) on **Cloudflare Pages Production**. Session is an HttpOnly cookie. Approving a withdrawal marks the **in-app** request transferred — it does not pay a bank. Coupons / commission in Settings are stored; they do not reprice existing orders.
 
 ## Sign-in
 

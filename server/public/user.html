@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="/css/app.css?v=19a2" />
   <link rel="stylesheet" href="/css/ui.css?v=19a2" />
   <link rel="stylesheet" href="/css/track.css?v=19zw" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a7" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a8" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ap"></script>
+  <script src="/js/api.js?v=19ar"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -104,6 +104,7 @@
       reg: { name: '', phone: '', email: '', password: '' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'order' },
       rateDraft: null,
+      supportBusy: false,
     };
     if (state.gate === 'splash') {
       setTimeout(() => {
@@ -1580,6 +1581,53 @@
       }
       apply();
     }
+    function supportThread() {
+      return (API.support && API.support.messages) || [];
+    }
+    function supportView() {
+      const s = API.support || { mode: 'ai', messages: [], ticket: '' };
+      const agent = s.mode === 'agent';
+      const msgs = supportThread();
+      const hello = msgs.length ? '' : `<div class="bubble them">Hi, I am QuickBite Help. Ask about an order, payment, tracking, or your account. If we cannot fix it, this chat becomes a real agent.</div>`;
+      return `<div class="chat-page qb-support" data-support-root="${esc(agent ? 'agent' : 'ai')}">
+        <div class="chat-head">
+          <button class="back-fab" type="button" data-close-support>←</button>
+          <div class="grow">
+            <b>${agent ? 'QuickBite agent' : 'Help & Support'}</b>
+            <div class="sub">${agent ? ('Live agent · ticket ' + esc(s.ticket || '')) : 'AI help first · real agent if not resolved'}</div>
+          </div>
+          <span class="qb-sup-pill ${agent ? 'on' : ''}">${agent ? 'Agent' : 'AI'}</span>
+        </div>
+        <div class="bubbles" id="supportBubbles">${hello}${msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(m.text)}</div>`).join('')}</div>
+        ${agent ? '' : `<div class="quick-replies">
+          <button type="button" data-sup-quick="Where is my order?">Where is my order?</button>
+          <button type="button" data-sup-quick="Payment or wallet">Payment or wallet</button>
+          <button type="button" data-sup-quick="WhatsApp OTP">WhatsApp OTP</button>
+          <button type="button" data-sup-quick="Talk to a real agent">Talk to a real agent</button>
+        </div>`}
+        <form class="composer" id="supportForm">
+          <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="${agent ? 'Message the agent…' : 'Describe the problem…'}" />
+          <button class="btn sm green" type="submit"${state.supportBusy ? ' disabled' : ''}>Send</button>
+        </form>
+      </div>`;
+    }
+    function paintSupport() {
+      const b = document.getElementById('supportBubbles');
+      if (!b) return;
+      const s = API.support || { mode: 'ai', messages: [] };
+      const msgs = supportThread();
+      const hello = msgs.length ? '' : `<div class="bubble them">Hi, I am QuickBite Help. Ask about an order, payment, tracking, or your account. If we cannot fix it, this chat becomes a real agent.</div>`;
+      const html = hello + msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(m.text)}</div>`).join('');
+      const atBottom = b.scrollHeight - b.scrollTop - b.clientHeight < 90;
+      b.innerHTML = html;
+      if (atBottom) b.scrollTop = b.scrollHeight;
+      const pill = document.querySelector('[data-support-root] .qb-sup-pill');
+      if (pill) {
+        const agent = s.mode === 'agent';
+        pill.classList.toggle('on', agent);
+        pill.textContent = agent ? 'Agent' : 'AI';
+      }
+    }
     function chatView() {
       const o = API.orders.find((x) => x.id === state.trackId);
       const quick = (API.quickReplies && API.quickReplies('customer', o)) || [];
@@ -1719,7 +1767,7 @@
           <button type="button" data-go="addresses">${SVG.pin} <span class="grow">Addresses<div class="muted">${esc(state.address || state.loc.label || 'Live GPS or drop a pin')}</div></span></button>
           <button data-go="paymethods">${SVG.lock} Payment Methods</button>
           <button type="button" data-notes data-notes-from="account">${SVG.bell} Notifications${unreadN ? ' · ' + unreadN : ''}</button>
-          <button>${SVG.mail} Help & Support</button>
+          <button type="button" data-open-support>${SVG.mail} Help & Support</button>
           <button id="logout">Settings · Sign out</button>
         </div>
       </div>${nav()}`;
@@ -2194,6 +2242,18 @@
         return;
       }
       if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
+      if (state.screen === 'support') {
+        const keep = root.querySelector('[data-support-root]');
+        if (keep) {
+          if (!(state.supportBusy)) paintSupport();
+          return;
+        }
+        root.innerHTML = supportView();
+        bindApp();
+        const b = document.getElementById('supportBubbles');
+        if (b) b.scrollTop = b.scrollHeight;
+        return;
+      }
       if (state.screen === 'checkout') { root.innerHTML = checkoutView(); bindApp(); return; }
       if (state.screen === 'paymethods') { root.innerHTML = payMethodsView(); bindApp(); return; }
       if (state.screen === 'addresses') {
@@ -2710,6 +2770,58 @@
         setQty(b.dataset.qty, Number(b.dataset.d));
       });
       root.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => { state.screen = b.dataset.go; render(); });
+      root.querySelectorAll('[data-open-support]').forEach((b) => b.onclick = async () => {
+        state.screen = 'support';
+        if (API.loadSupport) { try { await API.loadSupport(); } catch (_) {} }
+        render();
+      });
+      root.querySelectorAll('[data-close-support]').forEach((b) => b.onclick = () => {
+        state.screen = 'home';
+        state.tab = 'account';
+        render();
+      });
+      async function sendSupport(text) {
+        const body = String(text || '').trim();
+        if (!body || state.supportBusy) return;
+        const form = document.getElementById('supportForm');
+        if (form && form.text) form.text.value = '';
+        state.supportBusy = true;
+        const bubbles = document.getElementById('supportBubbles');
+        if (bubbles) {
+          bubbles.insertAdjacentHTML('beforeend', `<div class="bubble me">${esc(body)}</div><div class="bubble sys" data-sup-wait>…</div>`);
+          bubbles.scrollTop = bubbles.scrollHeight;
+        }
+        try {
+          await API.askSupport(body);
+        } catch (e) {
+          if (API.support) {
+            API.support.messages = (API.support.messages || []).concat([{ role: 'system', text: (e && e.message) || 'Could not send.', ts: Date.now() }]);
+          }
+        }
+        state.supportBusy = false;
+        const rootEl = document.querySelector('[data-support-root]');
+        const wasAgent = !!(rootEl && rootEl.getAttribute('data-support-root') === 'agent');
+        const nowAgent = API.support && API.support.mode === 'agent';
+        if (nowAgent && !wasAgent) {
+          render();
+        } else {
+          paintSupport();
+        }
+        const input = document.querySelector('#supportForm input[name="text"]');
+        if (input) input.focus();
+      }
+      const supForm = document.getElementById('supportForm');
+      if (supForm) {
+        supForm.onsubmit = async (e) => {
+          e.preventDefault();
+          await sendSupport(supForm.text && supForm.text.value);
+        };
+        const input = supForm.querySelector('input[name="text"]');
+        if (input) input.addEventListener('focus', bindChatKeyboard);
+      }
+      root.querySelectorAll('[data-sup-quick]').forEach((b) => {
+        b.onclick = () => sendSupport(b.getAttribute('data-sup-quick'));
+      });
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
         state.locFrom = state.screen === 'checkout' ? 'checkout' : (state.screen === 'addresses' ? 'addresses' : 'home');
         state.screen = 'locate';
