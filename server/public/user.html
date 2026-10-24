@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19bc"></script>
+  <script src="/js/api.js?v=19bd"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1595,10 +1595,18 @@
         return msgs.filter((m) => (Number(m.gen) || 0) === want);
       }
       const epoch = supportEpoch(s);
-      return msgs.filter((m) => {
+      const lane = msgs.filter((m) => {
         if ((Number(m.gen) || 0) === gen) return true;
         if (phase === 'agent' && (m.role === 'agent' || m.role === 'assistant') && (!epoch || (Number(m.ts) || 0) > epoch)) return true;
         return false;
+      });
+      let sawConnect = false;
+      return lane.filter((m) => {
+        const connect = m.role === 'system' && /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(m.text || ''));
+        if (!connect) return true;
+        if (sawConnect) return false;
+        sawConnect = true;
+        return true;
       });
     }
     function supportPhase(s) {

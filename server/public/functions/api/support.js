@@ -24,7 +24,7 @@ export async function onRequest(context) {
   if (mode === 'agent') {
     return json(200, {
       ok: true,
-      escalate: true,
+      escalate: false,
       queued: true,
       reason: 'agent',
       reply: '',

@@ -2527,6 +2527,25 @@
   function supportMsgKey(m) {
     return String(m.role || '') + '|' + String(m.text || '').slice(0, 120) + '|' + String(Math.round((Number(m.ts) || 0) / 1500));
   }
+  function isConnectingNote(text) {
+    return /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent/i.test(String(text || ''));
+  }
+  function hasConnectingNote(messages, gen) {
+    const g = Math.max(0, Math.round(Number(gen) || 0));
+    return (messages || []).some(function (m) {
+      return m && m.role === 'system' && (Number(m.gen) || 0) === g && isConnectingNote(m.text);
+    });
+  }
+  function compactConnectingNotes(messages) {
+    const seen = {};
+    return (messages || []).filter(function (m) {
+      if (!m || m.role !== 'system' || !isConnectingNote(m.text)) return true;
+      const g = String(Math.max(0, Math.round(Number(m.gen) || 0)));
+      if (seen[g]) return false;
+      seen[g] = true;
+      return true;
+    });
+  }
   function mergeSupportMessages(a, b) {
     const seen = {};
     const out = [];
@@ -2538,7 +2557,7 @@
       out.push(m);
     });
     out.sort(function (x, y) { return (Number(x.ts) || 0) - (Number(y.ts) || 0); });
-    return out.slice(-80);
+    return compactConnectingNotes(out).slice(-80);
   }
   function mergeSupportState(remote, local) {
     const r = remote || emptySupport();
@@ -2676,15 +2695,20 @@
     const gen = Math.max(0, Math.round(Number(API.support.chatGen) || 0));
     const liveAgent = API.support.mode === 'agent' && API.support.status !== 'closed' && API.support.status !== 'resolved';
     API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now(), gen: gen }]);
+    if (liveAgent) {
+      await persistSupport();
+      notify(true);
+      return API.support;
+    }
     const aiMsgs = (API.support.messages || []).filter(function (m) {
       if (!m) return false;
       if ((Number(m.gen) || 0) !== gen) return false;
       return m.role === 'user' || m.role === 'assistant';
     });
     const payload = {
-      mode: liveAgent ? 'agent' : 'ai',
+      mode: 'ai',
       text: body,
-      messages: liveAgent ? [] : aiMsgs.map(function (m) {
+      messages: aiMsgs.map(function (m) {
         return { role: m.role === 'user' ? 'user' : 'assistant', content: m.text };
       }),
     };
@@ -2701,9 +2725,10 @@
       data = { escalate: false, reason: 'offline', reply: 'I could not reach Help just now. Try again — you are still with AI Help.' };
     }
     const rawReply = String(data.reply || '');
-    const handoff = /connect(ing)? you to a real|real QuickBite agent now|you are in real agent mode|queued for the agent|^waiting$/i.test(rawReply);
+    const handoff = isConnectingNote(rawReply) || /^waiting$/i.test(rawReply);
     const wantAgent = !!(data.escalate || handoff);
-    if (rawReply) {
+    const alreadyNoted = hasConnectingNote(API.support.messages, gen);
+    if (rawReply && !(wantAgent && isConnectingNote(rawReply) && alreadyNoted)) {
       API.support.messages.push({
         role: wantAgent ? 'system' : 'assistant',
         text: rawReply,
@@ -2717,7 +2742,7 @@
       API.support.awaitingRating = false;
       API.support.reason = String(data.reason || (handoff ? 'ai_handoff' : 'escalate'));
       API.support.escalatedAt = Date.now();
-      if (!rawReply) {
+      if (!alreadyNoted && !hasConnectingNote(API.support.messages, gen)) {
         API.support.messages.push({
           role: 'system',
           text: 'Connecting you to a real QuickBite agent now. Keep this chat open and type the details — they will see this thread.',
