@@ -15,6 +15,11 @@ function json(status, body) {
   });
 }
 
+function isDiditPath(path) {
+  const p = String(path || '').replace(/\/$/, '') || '/';
+  return p === '/webhooks/didit' || p === '/api/webhooks/didit';
+}
+
 function isWebhookPath(path) {
   const p = String(path || '').replace(/\/$/, '') || '/';
   return p === '/webhook' || p === '/webhooks/payments-lk' || p.indexOf('/webhooks/') === 0;
@@ -22,6 +27,7 @@ function isWebhookPath(path) {
 
 export async function onRequest(context) {
   const url = new URL(context.request.url);
+  if (isDiditPath(url.pathname)) return context.next();
   if (!isWebhookPath(url.pathname)) return context.next();
   const method = String(context.request.method || 'GET').toUpperCase();
   if (method === 'OPTIONS') {

@@ -61,6 +61,8 @@
 
   const ICO_SHOP_SIDE =
     '<div class="rd-shop-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10V20h16V10"/><path d="M3 10l9-7 9 7"/><path d="M9 20v-6h6v6"/></svg></div>';
+  const ICO_CUST_SIDE =
+    '<div class="rd-cust-side"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><circle cx="12" cy="8" r="3"/><path d="M5 20c1.5-4 12.5-4 14 0"/></svg></div>';
 
   const CLOSE_M = 25;
 
@@ -217,6 +219,15 @@
     return typeof API !== 'undefined' && API.shopOf ? API.shopOf(order && order.shopId) : {};
   }
 
+  function shopPhoneOf(order) {
+    const shop = shopOf(order) || {};
+    const direct = String(shop.phone || (order && order.shopPhone) || '').trim();
+    if (direct) return direct;
+    const id = String((order && order.shopId) || shop.id || '');
+    const m = id.match(/SHOP_(\d{9})$/i);
+    return m ? ('0' + m[1]) : '';
+  }
+
   function realRate(rating, reviews) {
     const r = Number(rating);
     const n = Number(String(reviews == null ? '' : reviews).replace(/[^\d]/g, ''));
@@ -232,18 +243,40 @@
     return '/img/avatar-rider.jpg';
   }
 
+  function riderFaceOf(order) {
+    const p = String((order && (order.riderPhoto || order.riderImage)) || '');
+    if (/^https?:\/\//i.test(p) || p.indexOf('data:image/') === 0 || p.indexOf('/img/') === 0) return p;
+    return '/img/avatar-rider.jpg';
+  }
+
   function person(order, viewer) {
     if (viewer === 'rider') {
-      const name = order.riderName || (typeof API !== 'undefined' && API.user && API.user.name) || 'Rider';
+      if (goingToShop(order)) {
+        const shop = shopOf(order) || {};
+        const name = (typeof API !== 'undefined' && API.shopTitle && API.shopTitle(shop)) || shop.name || order.shopName || 'Shop';
+        const bits = [shop.category, shop.address].filter(Boolean);
+        const rate = realRate(shop.rating, shop.reviews);
+        return {
+          name,
+          role: bits.length ? bits.join(' · ') : 'Pickup',
+          phone: shopPhoneOf(order),
+          photo: shop.image || '/img/shop-bakery.jpg',
+          rating: rate.rating,
+          reviews: rate.reviews,
+          initials: initials(name),
+          side: 'shop',
+        };
+      }
+      const name = order.customerName || 'Customer';
       return {
         name,
-        role: 'Delivery Partner',
-        phone: order.customerPhone,
-        photo: riderPhoto(),
+        role: order.address || 'Delivery',
+        phone: order.customerPhone || '',
+        photo: '/img/avatar-user.jpg',
         rating: '',
         reviews: '',
         initials: initials(name),
-        side: 'bike',
+        side: 'cust',
       };
     }
     if (viewer !== 'rider' && !riderOnJob(order)) {
@@ -268,7 +301,7 @@
         name,
         role: goingToShop(order) ? 'Heading to the shop' : (order.status === 'picked_up' || order.status === 'on_the_way' ? 'On the way to you' : 'Delivery Partner'),
         phone: order.riderPhone,
-        photo: '/img/avatar-rider.jpg',
+        photo: riderFaceOf(order),
         rating: '',
         reviews: '',
         initials: initials(name),
@@ -288,7 +321,9 @@
   }
 
   function sideHtml(p) {
-    return p && p.side === 'shop' ? ICO_SHOP_SIDE : '🛵';
+    if (p && p.side === 'shop') return ICO_SHOP_SIDE;
+    if (p && p.side === 'cust') return ICO_CUST_SIDE;
+    return '🛵';
   }
 
   function trackTitle(order, viewer) {
@@ -346,7 +381,10 @@
             <div class="role" data-sub>${esc(p.role)}</div>
             <div class="rate ${p.rating ? '' : 'hidden'}" data-rate><span class="star">★</span> ${esc(p.rating || '')} <span style="color:#9CA3AF;font-weight:600">${p.reviews ? '(' + esc(p.reviews) + ')' : ''}</span></div>
           </div>
-          <div class="rd-scooter" data-side-ico>${sideHtml(p)}</div>
+          <div class="rd-who-acts">
+            <a class="rd-who-call" data-call href="${href || '#'}" aria-label="Call">${ICO_PHONE}</a>
+            <button class="rd-who-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
+          </div>
         </div>
         <div class="rd-metrics">
           <div class="rd-metric">
@@ -357,10 +395,6 @@
             <div class="mi">${ICO_PIN}</div>
             <div><small>Distance</small><b data-km>${esc(fmtKm(km))}</b></div>
           </div>
-        </div>
-          <div class="rd-btns">
-          <a class="btn-call ${p.phone ? '' : 'hidden'}" data-call href="${href || '#'}">${ICO_PHONE} Call</a>
-          <button class="btn-chat ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}">${ICO_CHAT} Chat${unreadDot(order.id, viewer)}</button>
         </div>
         <p class="rd-near ${close ? 'ok' : ''} ${nearTxt ? '' : 'hidden'}" data-near>${esc(nearTxt)}</p>
         <button class="btn-drop ${showPickup ? '' : 'hidden'}" data-pickup="${esc(order.id)}" type="button" ${close ? '' : 'disabled'}>Confirm pickup</button>
@@ -396,7 +430,7 @@
     if (side) side.innerHTML = sideHtml(p);
     const call = root.querySelector('[data-call]');
     if (call) {
-      call.classList.toggle('hidden', !p.phone);
+      call.classList.remove('hidden');
       if (p.phone) call.href = telHref(p.phone);
     }
     const eta = root.querySelector('[data-eta]');
@@ -482,20 +516,20 @@
     const st = String((order && order.status) || '');
     const placed = st !== 'cancelled';
     const shopOk = placed && st !== 'pending' && st !== '';
-    const prepOk = shopOk && st !== '';
+    const prepNow = st === 'preparing';
     const readyOk = st === 'ready' || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered';
     const riderOk = !!(order && (order.riderName || st === 'accepted' || st === 'picked_up' || st === 'on_the_way' || st === 'delivered'));
     let now = 'placed';
     if (riderOk) now = 'rider';
     else if (readyOk) now = 'ready';
-    else if (st === 'preparing') now = 'prepared';
+    else if (prepNow) now = 'prepared';
     else if (shopOk) now = 'shop';
     return {
       now: now,
       items: [
         { id: 'placed', label: 'Order placed', on: placed },
         { id: 'shop', label: 'Shop accepted', on: shopOk },
-        { id: 'prepared', label: 'Prepared', on: prepOk },
+        { id: 'prepared', label: readyOk ? 'Prepared' : 'Preparing', on: readyOk || prepNow, live: prepNow },
         { id: 'ready', label: 'Ready', on: readyOk },
         { id: 'rider', label: 'Rider accepted', on: riderOk },
       ],
@@ -506,8 +540,8 @@
     const s = orderSteps(order);
     let html = '<div class="rd-steps" data-steps>';
     s.items.forEach(function (it, i) {
-      html += '<div class="rd-step' + (it.on ? ' on' : '') + (s.now === it.id ? ' now' : '') + '" data-step="' + it.id + '"><i></i><span>' + it.label + '</span></div>';
-      if (i < s.items.length - 1) html += '<em class="' + (it.on ? 'on' : '') + '"></em>';
+      html += '<div class="rd-step' + (it.on ? ' on' : '') + (s.now === it.id ? ' now' : '') + (it.live ? ' live' : '') + '" data-step="' + it.id + '"><i></i><span>' + it.label + '</span></div>';
+      if (i < s.items.length - 1) html += '<em class="' + (it.on && !it.live ? 'on' : '') + '"></em>';
     });
     return html + '</div>';
   }
@@ -516,8 +550,8 @@
     const s = orderSteps(order);
     if (s.now === 'placed') return 'Waiting for shop to accept';
     if (s.now === 'shop') return 'Shop accepted';
-    if (s.now === 'prepared') return 'Order prepared';
-    if (s.now === 'ready') return 'Order ready · waiting for rider';
+    if (s.now === 'prepared') return 'Preparing';
+    if (s.now === 'ready') return 'Prepared · waiting for rider';
     return 'Rider accepted';
   }
 

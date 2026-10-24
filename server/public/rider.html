@@ -9,16 +9,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
-  <link rel="stylesheet" href="/css/ui.css?v=19zg" />
-  <link rel="stylesheet" href="/css/track.css?v=19zv" />
+  <link rel="stylesheet" href="/css/ui.css?v=19zs" />
+  <link rel="stylesheet" href="/css/track.css?v=19zw" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ab"></script>
-  <script src="/js/maps.js?v=19zu"></script>
-  <script src="/js/track-ui.js?v=19zv"></script>
+  <script src="/js/api.js?v=19ap"></script>
+  <script src="/js/maps.js?v=19zx"></script>
+  <script src="/js/track-ui.js?v=19aae"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -50,6 +50,9 @@
       loginId: '', loginPw: '',
       pendingAcceptId: null,
       needDocs: false,
+      needBank: false,
+      wdOpen: false,
+      vehDraft: { type: '', plate: null, registered: null },
       reg: { name: '', phone: '', email: '', password: '', role: 'rider' },
       wa: { open: false, step: 'phone', phone: '', err: '', mode: 'login' },
       deliverPin: { open: false, orderId: '', err: '', sending: false, sent: false },
@@ -57,6 +60,7 @@
     const WA_LOGO = '<svg class="wa-logo" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#25D366" d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23-1.48 0-2.93-.39-4.19-1.15l-.3-.17-3.12.82.83-3.04-.2-.32a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24z"/><path fill="#fff" d="M8.68 7.51c-.16 0-.43.06-.66.31-.22.25-.87.85-.87 2.07 0 1.22.89 2.39 1.01 2.56.12.17 1.75 2.67 4.23 3.74 2.05.9 2.47.72 2.92.67.45-.05 1.45-.59 1.65-1.16.2-.57.2-1.05.14-1.16-.06-.1-.22-.16-.43-.28-.22-.12-1.45-.71-1.67-.79-.22-.08-.38-.12-.54.12-.16.25-.62.79-.76.95-.14.17-.27.19-.5.06-.22-.12-.96-.35-1.83-1.13-.68-.6-1.13-1.35-1.27-1.57-.13-.22-.01-.34.1-.46.11-.11.22-.28.34-.42.11-.14.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.54-1.3-.74-1.78-.2-.48-.39-.4-.54-.4z"/></svg>';
     let gpsWatch = null;
     let gpsStarted = false;
+    const docFiles = { nic: null, nicBack: null, license: null, licenseBack: null, face: null };
     const SVG = {
       home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11.5 12 5l8 6.5V20h-6v-6H10v6H4z"/></svg>',
       orders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8l1 3H7z"/><path d="M6 7h12v13H6z"/></svg>',
@@ -181,6 +185,14 @@
       if (d.startsWith('+')) return 'tel:' + d;
       if (d.startsWith('0')) return 'tel:+94' + d.slice(1);
       return 'tel:' + d;
+    }
+    function shopPhoneOf(o) {
+      const shop = API.shopOf ? API.shopOf(o && o.shopId) : {};
+      const direct = String((shop && shop.phone) || (o && o.shopPhone) || '').trim();
+      if (direct) return direct;
+      const id = String((o && o.shopId) || (shop && shop.id) || '');
+      const m = id.match(/SHOP_(\d{9})$/i);
+      return m ? ('0' + m[1]) : '';
     }
     function riderPhoto() {
       const u = me();
@@ -458,12 +470,12 @@
       const items = o.items || [];
       const claimed = isMine(o) || !!o.riderId;
       const shop = API.shopOf ? API.shopOf(o.shopId) : {};
-      const canNav = isMine(o) && o.status !== 'delivered';
+      const canNav = isMine(o) && o.status !== 'delivered' && o.status !== 'cancelled';
       const navLabel = headingToCustomer(o) ? 'Navigate to customer' : 'Navigate to shop';
       const lane = API.chatLane && API.chatLane(o);
       const peerShop = lane === 'shop';
       const peerName = peerShop ? ((API.shopTitle && API.shopTitle(shop)) || shop.name || o.shopName || 'Shop') : (o.customerName || 'Customer');
-      const peerPhone = peerShop ? (shop.phone || '') : phone;
+      const peerPhone = peerShop ? shopPhoneOf(o) : phone;
       const peerPhoto = peerShop ? (shop.image || '/img/shop-bakery.jpg') : '/img/avatar-user.jpg';
       const peerSub = peerShop ? 'Shop · chat until pickup' : (phone || 'WhatsApp customer');
       const showChat = API.canChat && API.canChat(o, 'rider');
@@ -482,8 +494,8 @@
           <img src="${esc(peerPhoto)}" alt="" />
           <div class="grow"><b>${esc(peerName)}</b><div class="sub">${esc(peerSub)}</div></div>
           <div class="acts">
-            ${peerPhone ? `<a class="ico" href="${telHref(peerPhone)}">${SVG.phone}</a>` : ''}
-            ${showChat ? `<button class="ico" type="button" data-chat="${esc(o.id)}">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
+            <a class="ico ico-call" href="${telHref(peerPhone) || '#'}" aria-label="Call">${SVG.phone}</a>
+            ${showChat ? `<button class="ico ico-chat" type="button" data-chat="${esc(o.id)}" aria-label="Chat">${SVG.chat}${(API.unreadCount && API.unreadCount(o.id, 'rider')) ? '<i class="unread-dot"></i>' : ''}</button>` : ''}
           </div>
         </div>
         <div class="rd-block">
@@ -508,8 +520,8 @@
         </div>
         ${!claimed && o.status === 'ready' && !riderBusy() ? `<button class="rd-navbtn" data-pick="${esc(o.id)}">${riderVerified() ? 'Accept' : 'Verify to accept'}</button>` : ''}
         ${!claimed && o.status === 'ready' && riderBusy() ? '<p class="pad muted">Finish your current order before accepting another.</p>' : ''}
-        ${canNav && liveJob(o) ? `<button class="rd-navbtn" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
-        ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
+        ${canNav && liveJob(o) ? `<button class="rd-navbtn" type="button" data-open-live="${esc(o.id)}">${esc(navLabel)}</button>` : ''}
+        ${canNav && !liveJob(o) && isMine(o) ? `<button class="rd-navbtn" type="button" data-nav="${esc(o.id)}">Navigate to shop</button>` : ''}
       </div>`;
     }
 
@@ -601,57 +613,159 @@
       </div>${nav()}`;
     }
 
+    function grossEarn() {
+      return done().reduce((n, o) => n + earnOf(o), 0);
+    }
+    function availEarn() {
+      return API.walletAvailable ? API.walletAvailable(grossEarn()) : grossEarn();
+    }
+    function bankOf() {
+      return (API.wallet && API.wallet.bank) || { bankName: '', accountName: '', accountNo: '', branch: '' };
+    }
+    function maskAcct(n) {
+      const s = String(n || '').replace(/\D/g, '');
+      if (s.length < 4) return s || '—';
+      return '••••' + s.slice(-4);
+    }
+    function whenOf(ts) {
+      const d = new Date(Number(ts) || Date.now());
+      return d.toLocaleString('en-LK', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+    function wdRequests() {
+      return ((API.wallet && API.wallet.requests) || []).slice();
+    }
     function walletView() {
       const list = done();
-      const pay = list.reduce((n, o) => n + earnOf(o), 0);
-      return `<div class="scroll rd-earn rd-wallet">
+      const avail = availEarn();
+      const bank = bankOf();
+      const ready = !!(API.bankReady && API.bankReady());
+      const reqs = wdRequests();
+      return `<div class="scroll rd-earn rd-wallet" data-wallet-root>
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Wallet</h1></div>
-        <div class="bal"><div><span>Available Balance</span><b>${rs(pay)}</b></div><button class="wd" data-withdraw type="button">Withdraw</button></div>
+        <div class="bal"><div><span>Available Balance</span><b>${rs(avail)}</b></div>${ready
+          ? '<button class="wd" data-withdraw type="button">Withdraw</button>'
+          : '<button class="wd" data-go="bank" type="button">Add bank</button>'}</div>
+        ${ready ? `<div class="rd-bank-line">Payout to ${esc(bank.bankName)} · ${esc(maskAcct(bank.accountNo))} <button type="button" data-go="bank">Edit</button></div>` : '<p class="rd-docs-note">Add bank details to apply for a withdraw.</p>'}
+        ${state.wdOpen && ready ? `<div class="rd-block rd-wd-form">
+          <p class="rd-wd-kicker">Withdraw amount</p>
+          <label class="rd-wd-amt" for="wdAmt">
+            <span class="rd-wd-cur">Rs.</span>
+            <input id="wdAmt" inputmode="numeric" autocomplete="off" enterkeyhint="done" value="${esc(String(Math.round(avail)))}" />
+          </label>
+          <div class="rd-wd-meta">
+            <span>Available <b>${rs(avail)}</b></span>
+            <span class="rd-wd-to">${esc(bank.bankName || 'Your bank')} · ${esc(maskAcct(bank.accountNo))}</span>
+          </div>
+          <div class="rd-wd-chips">
+            <button type="button" data-wd-chip="${esc(String(Math.floor(avail / 2)))}">Half</button>
+            <button type="button" data-wd-chip="${esc(String(Math.round(avail)))}">All</button>
+          </div>
+          <p class="err" data-wd-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-apply-wd style="position:static;width:100%;margin:4px 0 0">Apply withdraw</button>
+        </div>` : ''}
+        ${reqs.length ? `<div class="rd-sec"><h2>Withdraw requests</h2></div>` : ''}
+        ${reqs.map((r) => {
+          const pending = r.status !== 'transferred';
+          return `<div class="rd-tx rd-wd-row">
+            <div class="grow"><b>Withdraw ${rs(r.amount)}</b>
+              <div class="sub">Requested ${esc(whenOf(r.ts))}${r.bankName ? ' · ' + esc(r.bankName) : ''}</div>
+            </div>
+            <div class="${pending ? 'rd-wd-pending' : 'amt'}">${pending ? 'Pending' : 'Transferred'}</div>
+          </div><p class="rd-wd-hint">${pending ? 'Pending until the system transfers to your bank.' : 'Transferred ' + esc(whenOf(r.transferredAt || r.ts))}</p>`;
+        }).join('')}
         <div class="rd-sec"><h2>Transaction</h2></div>
         ${list.map((o) => `<div class="rd-tx"><img src="${esc(thumb(o))}" alt="" /><div class="grow"><b>Order ${esc(oid(o.id))}</b><div class="sub">${esc(timeOf(o))}</div></div><div class="amt">+ ${rs(earnOf(o))}</div></div>`).join('') || '<div class="pad muted">No payouts yet.</div>'}
       </div>${nav()}`;
     }
+    function bankOptions(current) {
+      const list = (API.sriLankaBanks || []).slice();
+      const cur = String(current || '').trim();
+      if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+      return `<option value="">Select bank</option>` + list.map((n) =>
+        `<option value="${esc(n)}" ${n === cur ? 'selected' : ''}>${esc(n)}</option>`
+      ).join('');
+    }
+    function bankView() {
+      const b = bankOf();
+      return `<div class="scroll rd-list-page" data-bank-root>
+        <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Bank account</h1></div>
+        <div class="rd-block" style="text-align:left">
+          <h3>Bank details</h3>
+          <p class="rd-docs-note" style="margin:0 0 10px">${state.needBank ? 'Add your bank to apply for a withdraw.' : 'Payouts go to this account after you apply.'}</p>
+          <label class="fld" for="bankName">Bank name</label>
+          <select class="fld" id="bankName">${bankOptions(b.bankName)}</select>
+          <label class="fld" for="accName">Account holder name</label>
+          <input class="fld" id="accName" autocomplete="name" placeholder="Name on the account" value="${esc(b.accountName)}" />
+          <label class="fld" for="accNo">Account number</label>
+          <input class="fld" id="accNo" inputmode="numeric" autocomplete="off" placeholder="Account number" value="${esc(b.accountNo)}" />
+          <label class="fld" for="accBranch">Branch</label>
+          <input class="fld" id="accBranch" autocomplete="off" placeholder="Branch" value="${esc(b.branch)}" />
+          <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
+          <button class="rd-navbtn" type="button" data-save-bank style="position:static;width:100%;margin:12px 0 0">Save bank details</button>
+        </div>
+      </div>`;
+    }
 
+    function docPic(src, empty) {
+      const s = String(src || '');
+      if (/^https?:|^data:/i.test(s)) return `<img src="${esc(s)}" alt="" /><em class="rd-up-change">Change</em>`;
+      if (s) return '<span>Photo uploaded</span><em class="rd-up-change">Change</em>';
+      return `<span>${empty}</span>`;
+    }
+    function docBox(kind, src, empty, capture) {
+      const has = !!(src && src !== '');
+      const cap = capture ? ` capture="${esc(capture)}"` : '';
+      return `<label class="rd-up${has ? ' has' : ''}">
+                <input type="file" accept="image/*"${cap} data-doc-file="${esc(kind)}" />
+                ${docPic(src, empty)}
+              </label>`;
+    }
+    function sideStatus(front, back) {
+      if (front && back) return 'Front and back uploaded  ✓';
+      if (front && !back) return 'Front uploaded · add the back';
+      if (!front && back) return 'Back uploaded · add the front';
+      return 'Upload front and back';
+    }
+    function kycStatus(kind, d) {
+      const kyc = kind === 'nic' ? d.nicKyc : d.licenseKyc;
+      const num = kind === 'nic' ? d.nic : d.licenseId;
+      const label = kind === 'nic' ? 'NIC' : 'Licence';
+      if (kyc === 'approved') return { cls: 'ok', text: label + (num ? ' ' + num : '') + ' · Verified  ✓' };
+      if (kyc === 'declined') return { cls: 'wait', text: label + ' not accepted · tap Verify live with Didit and try again' };
+      return { cls: 'wait', text: label + ' · verify on Didit (not saved here)' };
+    }
     function docStatus(photo, num, ready) {
-      if (ready) return 'Verified  ✓';
-      if (photo && !num) return 'Photo uploaded · enter the number';
-      if (num && !photo) return 'Number saved · upload photo';
+      if (ready) return 'Read from photo  ✓';
+      if (photo && !num) return 'Photo saved · could not read number. Use a clearer photo.';
+      if (num && !photo) return 'Number saved · upload front and back';
       if (photo) return 'Uploaded';
-      return 'Tap to upload';
+      return 'Tap to upload a clear photo';
     }
     function verifyFormHtml() {
       const d = riderDocs();
-      const nicOk = !!(d.nic && d.nicPhoto);
-      const licOk = !!(d.licenseId && d.licensePhoto);
+      const nicOk = d.nicKyc === 'approved';
+      const licOk = d.licenseKyc === 'approved';
+      const liveOk = d.livenessKyc === 'approved';
       const vehOk = !!(d.plate && d.registered);
-      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
-      const type = d.vehicleType || 'Motorcycle';
+      const nicLine = kycStatus('nic', d);
+      const licLine = kycStatus('license', d);
+      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Van', 'Lorry', 'Bicycle'];
+      const type = state.vehDraft.type || d.vehicleType || 'Motorcycle';
+      const plate = state.vehDraft.plate != null ? state.vehDraft.plate : (d.plate || '');
+      const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="rd-block rd-verify-card" style="text-align:left">
           <h3>Driver verification</h3>
-          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Upload NIC, licence, and vehicle number. Then tap Save.'}</p>
-          <label class="fld" for="docNic">NIC number</label>
-          <input class="fld" id="docNic" inputmode="text" autocomplete="off" placeholder="123456789V or 12 digits" value="${esc(d.nic)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="nic" />
-            ${/^https?:|^data:/i.test(String(d.nicPhoto || '')) ? `<img src="${esc(d.nicPhoto)}" alt="NIC" />` : (d.nicPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload NIC photo</span>')}
-          </label>
-          <div class="${nicOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.nicPhoto, d.nic, nicOk))}</div>
-          <label class="fld" for="docLic">Licence ID</label>
-          <input class="fld" id="docLic" inputmode="text" autocomplete="off" placeholder="Licence number" value="${esc(d.licenseId)}" />
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="license" />
-            ${/^https?:|^data:/i.test(String(d.licensePhoto || '')) ? `<img src="${esc(d.licensePhoto)}" alt="Licence" />` : (d.licensePhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload licence photo</span>')}
-          </label>
-          <div class="${licOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(docStatus(d.licensePhoto, d.licenseId, licOk))}</div>
+          <p class="rd-docs-note" style="margin:0 0 10px">${riderVerified() ? 'You can accept orders.' : 'Tap Verify live with Didit. NIC, licence, and selfie stay on Didit — we only keep Verified marks here.'}</p>
+          <button class="rd-navbtn" type="button" data-didit-kyc style="position:static;width:100%;margin:0 0 14px">${esc((nicOk && licOk && liveOk) ? 'Verified live  ✓ · run again' : 'Verify live with Didit')}</button>
+          <div class="${nicLine.cls}" style="margin-bottom:10px">${esc(nicLine.text)}</div>
+          <div class="${licLine.cls}" style="margin-bottom:10px">${esc(licLine.text)}</div>
+          <div class="${liveOk ? 'ok' : 'wait'}" style="margin-bottom:10px">${esc(liveOk ? 'Selfie verified  ✓' : (d.livenessKyc === 'declined' ? 'Face not accepted · tap Verify live with Didit' : 'Selfie · verify on Didit (not saved here)'))}</div>
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
-          <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
-          <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="reg" />
-            ${/^https?:|^data:/i.test(String(d.regPhoto || '')) ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : (d.regPhoto ? '<span>Photo uploaded</span>' : '<span>Tap to upload registration book (optional)</span>')}
-          </label>
+          <input class="fld" id="vehPlate" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="CAA-1234 or WP CAA-1234" value="${esc(plate)}" />
+          <label class="rd-check"><input type="checkbox" id="vehReg" ${registered ? 'checked' : ''} /> This vehicle is registered</label>
+          ${docBox('reg', d.regPhoto, 'Tap to upload registration book (optional)')}
           <div class="${vehOk ? 'ok' : 'wait'}">${vehOk ? 'Vehicle registered  ✓' : (d.plate ? 'Number saved · tick registered' : 'Enter vehicle number')}</div>
           <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
           <button class="rd-navbtn" type="button" data-save-verify style="position:static;width:100%;margin:12px 0 0">Save verification</button>
@@ -672,11 +786,11 @@
           <div><b>${ongoing().length}</b><span>On Going</span></div>
           <div><b>0</b><span>Cancelled</span></div>
         </div>
-        ${verifyFormHtml()}
         <div class="rd-menu-list">
           <button type="button" data-go="docs"><span class="mi">${ICO.id}</span> Driver verification <span>›</span></button>
           <button type="button" data-go="vehicle"><span class="mi">${ICO.car}</span> Vehicle Information <span>›</span></button>
-          <button type="button" data-go="wallet"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
+          <button type="button" data-go="bank"><span class="mi">${ICO.bank}</span> Bank Account <span>›</span></button>
+          <button type="button" data-go="wallet"><span class="mi">${SVG.wallet}</span> Wallet <span>›</span></button>
           <button type="button"><span class="mi">${ICO.gear}</span> Settings <span>›</span></button>
           <button type="button" data-go="help"><span class="mi">${ICO.faq}</span> Help & Support <span>›</span></button>
         </div>
@@ -704,14 +818,16 @@
     function docsView() {
       return `<div class="scroll rd-list-page rd-docs">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Driver verification</h1></div>
-        ${state.needDocs ? '<p class="rd-docs-note">Add NIC, driving licence, and a registered vehicle before you can Accept orders.</p>' : ''}
+        ${state.needDocs ? '<p class="rd-docs-note">Complete the free ID check and add a registered vehicle before you can Accept orders.</p>' : ''}
         ${verifyFormHtml()}
       </div>`;
     }
     function vehicleView() {
       const d = riderDocs();
-      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Bicycle'];
-      const type = d.vehicleType || 'Motorcycle';
+      const types = ['Motorcycle', 'Three-wheeler', 'Car', 'Van', 'Lorry', 'Bicycle'];
+      const type = state.vehDraft.type || d.vehicleType || 'Motorcycle';
+      const plate = state.vehDraft.plate != null ? state.vehDraft.plate : (d.plate || '');
+      const registered = state.vehDraft.registered != null ? state.vehDraft.registered : d.registered;
       return `<div class="scroll rd-list-page rd-veh">
         <div class="rd-head"><button class="back" data-close type="button">←</button><h1>Vehicle Information</h1></div>
         <div class="rd-block">
@@ -719,13 +835,10 @@
           <label class="fld" for="vehType">Vehicle type</label>
           <select class="fld" id="vehType">${types.map((t) => `<option value="${esc(t)}" ${t === type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           <label class="fld" for="vehPlate">Vehicle number</label>
-          <input class="fld" id="vehPlate" inputmode="text" autocomplete="off" placeholder="CAA-1234 or WP CAA-1234" value="${esc(d.plate)}" />
-          <label class="rd-check"><input type="checkbox" id="vehReg" ${d.registered ? 'checked' : ''} /> This vehicle is registered</label>
+          <input class="fld" id="vehPlate" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" placeholder="CAA-1234 or WP CAA-1234" value="${esc(plate)}" />
+          <label class="rd-check"><input type="checkbox" id="vehReg" ${registered ? 'checked' : ''} /> This vehicle is registered</label>
           <label class="fld">Vehicle registration photo</label>
-          <label class="rd-up">
-            <input type="file" accept="image/*" data-doc-file="reg" />
-            ${d.regPhoto ? `<img src="${esc(d.regPhoto)}" alt="Registration" />` : '<span>Tap to upload registration book</span>'}
-          </label>
+          ${docBox('reg', d.regPhoto, 'Tap to upload registration book')}
           <div class="kv"><span>License plate</span><b>${esc(d.plate || '—')}</b></div>
           <div class="kv"><span>Registered</span><b>${d.registered ? 'Yes' : 'No'}</b></div>
           <p class="err" data-err style="color:#FCA5A5;min-height:18px"></p>
@@ -870,12 +983,7 @@
       const job = activeJob();
       if (job && job.shopId === shopId) {
         state.orderId = job.id;
-        if (liveJob(job)) {
-          state.screen = 'live';
-          startLiveGps(job.id);
-        } else {
-          state.screen = 'details';
-        }
+        state.screen = 'details';
         render(true);
         return;
       }
@@ -887,11 +995,14 @@
       render(true);
     }
     function mapIdleView() {
-      return `<div class="rd-map-empty" data-rider-map style="position:relative;height:100%">
+      const job = activeJob();
+      const navLabel = job && headingToCustomer(job) ? 'Navigate to customer' : 'Navigate to shop';
+      return `<div class="rd-map-empty${job ? ' has-start' : ''}" data-rider-map style="position:relative;height:100%">
         <div id="map" class="map" style="position:absolute;inset:0"></div>
         <div class="rd-map-note">
           ${mapNoteHtml()}
         </div>
+        ${job && job.status !== 'delivered' && job.status !== 'cancelled' ? `<button class="rd-map-start" type="button" data-open-live="${esc(job.id)}">${esc(navLabel)}</button>` : ''}
       </div>${nav()}`;
     }
 
@@ -961,8 +1072,7 @@
           return;
         }
       }
-      state.tab = 'home';
-      state.auth = 'home';
+      goRiderHome();
       state.fromReg = false;
       startRiderGps();
       render(true);
@@ -1122,6 +1232,19 @@
         };
       });
     }
+    function goRiderHome() {
+      state.auth = 'home';
+      state.tab = 'home';
+      state.screen = '';
+    }
+    function goLiveNav(id) {
+      const o = (API.orders || []).find((x) => x.id === id) || activeJob();
+      if (!o || o.status === 'delivered' || o.status === 'cancelled') return;
+      state.orderId = o.id;
+      state.screen = 'live';
+      startLiveGps(o.id);
+      render(true);
+    }
     function goRiderDocs() {
       state.needDocs = true;
       state.tab = 'profile';
@@ -1271,7 +1394,7 @@
             goRiderRegister();
             return;
           }
-          state.auth = 'home';
+          goRiderHome();
           startRiderGps();
           render(true);
         } catch (ex) {
@@ -1321,7 +1444,7 @@
                 goRiderRegister();
                 return;
               }
-              state.auth = 'home';
+              goRiderHome();
               startRiderGps();
               render(true);
               return;
@@ -1402,11 +1525,9 @@
         state.screen = 'details';
         render(true);
       });
-      root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = () => {
-        state.orderId = b.dataset.openLive;
-        state.screen = 'live';
-        startLiveGps(state.orderId);
-        render(true);
+      root.querySelectorAll('[data-open-live]').forEach((b) => b.onclick = (e) => {
+        e.stopPropagation();
+        goLiveNav(b.dataset.openLive);
       });
       const online = root.querySelector('[data-online]');
       if (online) online.onclick = () => { state.online = !state.online; render(true); };
@@ -1480,8 +1601,19 @@
         render(true);
       });
       root.querySelectorAll('[data-close]').forEach((b) => b.onclick = () => {
-        if (state.screen === 'chat' || state.screen === 'live') { state.screen = 'details'; }
-        else { state.screen = ''; }
+        if (state.screen === 'chat') {
+          const oChat = (API.orders || []).find((x) => x.id === state.orderId);
+          if (oChat && liveJob(oChat)) {
+            state.screen = 'live';
+            startLiveGps(oChat.id);
+          } else {
+            state.screen = 'details';
+          }
+        } else if (state.screen === 'live') {
+          state.screen = 'details';
+        } else {
+          state.screen = '';
+        }
         killMap();
         render(true);
       });
@@ -1525,7 +1657,70 @@
         render(true);
       };
       const wd = root.querySelector('[data-withdraw]');
-      if (wd) wd.onclick = () => { wd.textContent = 'Requested'; };
+      if (wd) wd.onclick = () => {
+        if (API.bankReady && !API.bankReady()) {
+          state.needBank = true;
+          state.screen = 'bank';
+          render(true);
+          return;
+        }
+        if (availEarn() < 1) {
+          const err = root.querySelector('[data-wd-err]');
+          if (err) err.textContent = 'No available balance.';
+          return;
+        }
+        state.wdOpen = true;
+        render(true);
+      };
+      const saveBank = root.querySelector('[data-save-bank]');
+      if (saveBank) saveBank.onclick = async () => {
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = '';
+        saveBank.disabled = true;
+        try {
+          await API.saveBankDetails({
+            bankName: ((document.getElementById('bankName') || {}).value || ''),
+            accountName: ((document.getElementById('accName') || {}).value || ''),
+            accountNo: ((document.getElementById('accNo') || {}).value || ''),
+            branch: ((document.getElementById('accBranch') || {}).value || ''),
+          });
+          state.needBank = false;
+          state.screen = 'wallet';
+          state.wdOpen = true;
+          render(true);
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not save';
+          saveBank.disabled = false;
+        }
+      };
+      const wdAmt = document.getElementById('wdAmt');
+      if (wdAmt) {
+        wdAmt.oninput = () => {
+          const n = String(wdAmt.value || '').replace(/[^\d]/g, '');
+          if (wdAmt.value !== n) wdAmt.value = n;
+        };
+      }
+      root.querySelectorAll('[data-wd-chip]').forEach((b) => {
+        b.onclick = () => {
+          if (wdAmt) wdAmt.value = String(b.getAttribute('data-wd-chip') || '').replace(/[^\d]/g, '');
+          wdAmt && wdAmt.focus();
+        };
+      });
+      const applyWd = root.querySelector('[data-apply-wd]');
+      if (applyWd) applyWd.onclick = async () => {
+        const err = root.querySelector('[data-wd-err]');
+        if (err) err.textContent = '';
+        applyWd.disabled = true;
+        try {
+          const amt = ((document.getElementById('wdAmt') || {}).value || '').replace(/[^\d]/g, '');
+          await API.applyWithdraw(amt, grossEarn());
+          state.wdOpen = false;
+          render(true);
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not apply';
+          applyWd.disabled = false;
+        }
+      };
       function collectDocs() {
         const nicEl = document.getElementById('docNic');
         const licEl = document.getElementById('docLic');
@@ -1540,23 +1735,66 @@
         if (regEl) out.registered = !!regEl.checked;
         return out;
       }
+      const plateLive = document.getElementById('vehPlate');
+      const typeLive = document.getElementById('vehType');
+      const regLive = document.getElementById('vehReg');
+      if (plateLive) {
+        plateLive.oninput = () => { state.vehDraft.plate = plateLive.value; };
+        plateLive.onfocus = () => { state.vehDraft.plate = plateLive.value; };
+      }
+      if (typeLive) typeLive.onchange = () => { state.vehDraft.type = typeLive.value; };
+      if (regLive) regLive.onchange = () => { state.vehDraft.registered = !!regLive.checked; };
       root.querySelectorAll('[data-doc-file]').forEach((inp) => {
+        inp.onclick = () => { try { inp.value = ''; } catch (_) {} };
         inp.onchange = async () => {
           const file = inp.files && inp.files[0];
-          if (!file || !API.storeImage) return;
+          if (!file) return;
+          if (!API.storeImage) {
+            const err0 = root.querySelector('[data-err]');
+            if (err0) err0.textContent = 'Could not upload this photo.';
+            return;
+          }
           const kind = inp.getAttribute('data-doc-file');
           const err = root.querySelector('[data-err]');
-          if (err) err.textContent = '';
+          const box = inp.closest('.rd-up');
+          if (kind === 'nic' || kind === 'nicBack' || kind === 'license' || kind === 'licenseBack' || kind === 'face') {
+            if (err) err.textContent = 'NIC, licence, and selfie stay on Didit. Tap Verify live with Didit.';
+            return;
+          }
+          if (docFiles[kind] !== undefined) docFiles[kind] = file;
+          if (box) box.classList.add('busy', 'has');
+          try {
+            const preview = URL.createObjectURL(file);
+            if (box) {
+              let img = box.querySelector('img');
+              if (!img) {
+                img = document.createElement('img');
+                img.alt = '';
+                box.appendChild(img);
+              }
+              img.src = preview;
+              const sp = box.querySelector('span');
+              if (sp) sp.remove();
+              if (!box.querySelector('.rd-up-change')) {
+                const em = document.createElement('em');
+                em.className = 'rd-up-change';
+                em.textContent = 'Change';
+                box.appendChild(em);
+              }
+            }
+          } catch (_) {}
+          if (err) err.textContent = 'Saving this photo…';
           try {
             const url = await API.storeImage(file, 'rider' + kind);
             const fields = collectDocs();
-            if (kind === 'nic') fields.nicPhoto = url;
-            if (kind === 'license') fields.licensePhoto = url;
             if (kind === 'reg') fields.regPhoto = url;
             await API.saveRiderDocs(fields);
+            if (err) err.textContent = '';
+            if (box) box.classList.remove('busy');
             render(true);
           } catch (e) {
-            if (err) err.textContent = (e && e.message) || 'Could not upload';
+            if (box) box.classList.remove('busy');
+            if (err) err.textContent = (e && e.message) || 'Could not upload. Try another photo.';
           }
         };
       });
@@ -1566,14 +1804,14 @@
         if (btn) btn.disabled = true;
         try {
           const fields = collectDocs();
-          if (!fields.nic) throw new Error('Enter your NIC number.');
-          if (!fields.licenseId) throw new Error('Enter your driving licence ID.');
           if (!fields.plate) throw new Error('Enter your vehicle number.');
           if (!fields.registered) throw new Error('Tick This vehicle is registered.');
           await API.saveRiderDocs(fields);
-          const d = riderDocs();
-          if (!d.nicPhoto) throw new Error('Upload your NIC photo.');
-          if (!d.licensePhoto) throw new Error('Upload your driving licence photo.');
+          const after = riderDocs();
+          if (after.nicKyc !== 'approved' || after.licenseKyc !== 'approved' || after.livenessKyc !== 'approved') {
+            throw new Error('Tap Verify live with Didit and finish NIC, licence, and selfie.');
+          }
+          state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = '';
           state.tab = 'profile';
@@ -1587,6 +1825,26 @@
       if (saveDocs) saveDocs.onclick = () => saveVerify(saveDocs);
       const saveVerifyBtn = root.querySelector('[data-save-verify]');
       if (saveVerifyBtn) saveVerifyBtn.onclick = () => saveVerify(saveVerifyBtn);
+      const diditBtn = root.querySelector('[data-didit-kyc]');
+      if (diditBtn) diditBtn.onclick = async () => {
+        const err = root.querySelector('[data-err]');
+        if (err) err.textContent = '';
+        diditBtn.disabled = true;
+        try {
+          if (!API.user || !API.user.id) throw new Error('Sign in first.');
+          if (err) err.textContent = 'Opening Didit…';
+          const out = await API.startRiderKyc();
+          if (out.sessionId) {
+            try { sessionStorage.setItem('qb_didit_session', out.sessionId); } catch (_) {}
+            try { localStorage.setItem('qb_didit_session', out.sessionId); } catch (_) {}
+          }
+          if (!out.url) throw new Error('Could not open the ID check.');
+          window.location.href = out.url;
+        } catch (e) {
+          if (err) err.textContent = (e && e.message) || 'Could not open Didit.';
+          diditBtn.disabled = false;
+        }
+      };
       const saveVeh = root.querySelector('[data-save-vehicle]');
       if (saveVeh) saveVeh.onclick = async () => {
         const err = root.querySelector('[data-err]');
@@ -1597,6 +1855,7 @@
           if (!fields.plate) throw new Error('Enter your vehicle number.');
           if (!fields.registered) throw new Error('Confirm this vehicle is registered.');
           await API.saveRiderDocs(fields);
+          state.vehDraft = { type: '', plate: null, registered: null };
           state.needDocs = !riderVerified();
           state.screen = riderVerified() ? '' : 'docs';
           state.tab = 'profile';
@@ -1657,10 +1916,14 @@
           return;
         }
         startRiderGps();
+        if (keep) {
+          const ae = document.activeElement;
+          if (ae && root.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+        }
         if (state.screen === 'chat' && state.orderId) {
           const oChat = (API.orders || []).find((x) => x.id === state.orderId);
           if (!oChat || oChat.status === 'cancelled' || (API.canChat && !API.canChat(oChat, 'rider'))) {
-            state.screen = 'details';
+            state.screen = (oChat && liveJob(oChat)) ? 'live' : 'details';
           } else {
           const keep = root.querySelector('[data-chat-root="' + state.orderId + '"]');
           const typing = document.activeElement && document.activeElement.closest('[data-chat-root]');
@@ -1701,6 +1964,7 @@
             bindMapChrome(o);
             const el = document.getElementById('map');
             if (el) state.mapHandle = mountTrackingMap(el, o);
+            if (state.mapHandle && state.mapHandle.followTo) state.mapHandle.followTo(o);
             return;
           }
         }
@@ -1732,6 +1996,7 @@
         if (state.screen === 'details') root.innerHTML = detailsView();
         else if (state.screen === 'delivered') root.innerHTML = deliveredView();
         else if (state.screen === 'wallet') root.innerHTML = walletView();
+        else if (state.screen === 'bank') root.innerHTML = bankView();
         else if (state.screen === 'docs') root.innerHTML = docsView();
         else if (state.screen === 'vehicle') root.innerHTML = vehicleView();
         else if (state.screen === 'help') root.innerHTML = helpView();
@@ -1751,7 +2016,7 @@
     }
 
     if (API.user) {
-      state.auth = 'home';
+      goRiderHome();
     } else if (API.verifiedPhone && API.verifiedPhone('rider')) {
       state.auth = 'register';
       state.reg.phone = API.verifiedPhone('rider');
@@ -1776,7 +2041,7 @@
           goRiderRegister();
           return true;
         }
-        state.auth = 'home';
+        goRiderHome();
         startRiderGps();
         render(true);
         return true;
@@ -1788,7 +2053,75 @@
         return true;
       }
     }
-    consumeGoogleRedirect().then((ok) => { if (!ok) render(); });
+    async function applyDiditDecision(out) {
+      if (!out || !API.saveRiderDocs) return out;
+      const fields = {};
+      if (out.nic) fields.nic = out.nic;
+      if (out.licenseId) fields.licenseId = out.licenseId;
+      if (out.name) {
+        fields.nicName = out.name;
+        fields.licenseName = out.name;
+      }
+      if (out.approved || String(out.status || '') === 'Approved') {
+        fields.nicKyc = 'approved';
+        fields.licenseKyc = 'approved';
+        fields.livenessKyc = 'approved';
+      } else {
+        if (out.nicKyc) fields.nicKyc = out.nicKyc;
+        if (out.licenseKyc) fields.licenseKyc = out.licenseKyc;
+        if (out.livenessKyc) fields.livenessKyc = out.livenessKyc;
+      }
+      if (out.sessionId) fields.kycSession = out.sessionId;
+      if ((out.approved || String(out.status || '') === 'Approved') && out.facePhoto && API.storeRiderAvatar) {
+        try {
+          const av = await API.storeRiderAvatar(out.facePhoto);
+          if (av) fields.avatar = av;
+        } catch (_) {
+          if (/^https?:\/\//i.test(String(out.facePhoto || ''))) fields.avatar = out.facePhoto;
+        }
+      }
+      if (Object.keys(fields).length) await API.saveRiderDocs(fields);
+      return out;
+    }
+    async function consumeDiditReturn() {
+      let sid = '';
+      let fromDidit = false;
+      try {
+        const q = new URLSearchParams(location.search || '');
+        sid = q.get('verificationSessionId') || q.get('session_id') || q.get('id') || '';
+        fromDidit = q.get('didit') === 'done' || !!(q.get('verificationSessionId') || q.get('session_id') || q.get('status'));
+        if (!fromDidit) return false;
+        if (!sid) sid = sessionStorage.getItem('qb_didit_session') || localStorage.getItem('qb_didit_session') || '';
+      } catch (_) { return false; }
+      if (!API.user) return false;
+      goRiderHome();
+      try {
+        if (API.riderKycDecision && sid) {
+          let out = null;
+          for (let i = 0; i < 10; i++) {
+            try { out = await API.riderKycDecision(sid); } catch (_) { out = null; }
+            if (out && (out.approved || /Approved|Declined|Expired/.test(String(out.status || '')))) break;
+            await new Promise(function (ok) { setTimeout(ok, 1200); });
+          }
+          if (out) await applyDiditDecision(out);
+        }
+      } catch (_) {}
+      try {
+        sessionStorage.removeItem('qb_didit_session');
+        localStorage.removeItem('qb_didit_session');
+      } catch (_) {}
+      try {
+        if (location.search && /didit=|session_id=|verificationSessionId=|status=/.test(location.search)) {
+          history.replaceState({}, '', location.pathname);
+        }
+      } catch (_) {}
+      goRiderHome();
+      return false;
+    }
+    consumeGoogleRedirect().then(async (ok) => {
+      if (!ok) await consumeDiditReturn();
+      if (!ok) render();
+    });
   </script>
 </body>
 </html>

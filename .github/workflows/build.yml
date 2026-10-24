@@ -1,7 +1,7 @@
 name: Build APKs
 on:
   push:
-    branches: [arena/72bd113d-uberlikeapp]
+    branches: [arena/47b8b2b8-uberlikeapp]
     paths:
       - 'lib/**'
       - 'pubspec.yaml'
@@ -99,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG=swiftdrop-1.1.0
-          NOTES='QuickBite 1.1.0 User, Shop, and Rider APKs. Same live site as https://quickbite-2ao.pages.dev. Grocery tiles, View basket, Google Sign-In, WhatsApp OTP. Uninstall old APKs first, then install these three.'
+          NOTES='QuickBite 1.1.0 User, Shop, and Rider APKs. Same live site as https://quickbite-2ao.pages.dev. Shop card wallet withdraw, rider live tracking, WhatsApp OTP, Google Sign-In. Uninstall old APKs first, then install these three.'
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/user.apk dist/shop.apk dist/rider.apk --clobber
             gh release edit "$TAG" --title "QuickBite 1.1.0 User Shop Rider APKs" --notes "$NOTES"
