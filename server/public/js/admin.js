@@ -562,7 +562,7 @@
           <td>${esc(t.role)}</td>
           <td>${esc(t.subject)}</td>
           <td>${badge(t.status)}</td>
-          <td>${esc(when((t.messages[t.messages.length-1]&&t.messages[t.messages.length-1].ts)||t.escalatedAt))}</td>
+          <td><span class="ad-date-cell">${t.rating ? `<span class="ad-rate-mark">★ ${esc(t.rating)}</span>` : ''}<span>${esc(when((t.messages[t.messages.length-1]&&t.messages[t.messages.length-1].ts)||t.escalatedAt||t.agentClosedAt))}</span></span></td>
         </tr>`).join('')}</tbody></table>${pager(d)}</div>` : '<div class="ad-empty">No support threads yet. They appear when a user opens Help & Support.</div>'}`);
   }
 
@@ -570,8 +570,8 @@
     const t = state.data.ticket;
     if (!t) return '<div class="ad-empty">Ticket not found.</div>';
     const msgs = (t.messages || []).filter((m) => !m.internal);
-    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(t.mode)}</p></div>
-      <a class="ad-btn ghost" href="#/support">Back</a></div>
+    return `<div class="ad-head"><div><h1>Support Chat</h1><p>${esc(t.userName)} · ${esc(t.ticket || t.id)} · ${badge(t.mode)}${t.rating ? ' · ★ ' + esc(t.rating) : ''}${t.awaitingRating ? ' · waiting for rating' : ''}</p></div>
+      <div>${t.mode === 'agent' ? '<button class="ad-btn ghost" type="button" id="adCloseAgent">Close agent</button>' : ''}<a class="ad-btn ghost" href="#/support">Back</a></div></div>
       <div class="ad-card ad-chat">
         <div class="ad-bubbles" id="adBubbles">${msgs.map((m)=>`<div class="ad-bubble ${m.role==='user'?'them':(m.role==='system'?'sys':'me')}">${esc(m.text)}</div>`).join('') || '<div class="ad-empty">No messages.</div>'}</div>
         <form id="adReply" class="ad-filters" style="margin:0">
@@ -584,7 +584,7 @@
             ${['open','in_progress','waiting','resolved','closed'].map((s)=>`<option ${t.status===s?'selected':''} value="${s}">${s}</option>`).join('')}
           </select>
         </div>
-        <p class="ad-delta">Internal notes are not sent to the customer.</p>
+        <p class="ad-delta">Close agent returns the user to AI Help and asks them to rate this session. Idle 3 minutes with no user reply does the same. Internal notes are not sent to the customer.</p>
       </div>`;
   }
 
@@ -1012,6 +1012,14 @@
     const tStatus = document.getElementById('tStatus');
     if (tStatus) tStatus.onchange = async () => {
       try { await api('support.patch', { id: state.id, status: tStatus.value }); load(); } catch (e) { toast(e.message); }
+    };
+    const closeAg = document.getElementById('adCloseAgent');
+    if (closeAg) closeAg.onclick = async () => {
+      try {
+        await api('support.close', { id: state.id });
+        toast('Agent closed. User is back on AI Help and will be asked to rate.');
+        load();
+      } catch (e) { toast(e.message); }
     };
     $$('[data-read]').forEach((b) => b.onclick = async () => {
       try { await api('notifications.read', { id: b.getAttribute('data-read') }); load(); } catch (e) { toast(e.message); }

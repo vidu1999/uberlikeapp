@@ -10,14 +10,14 @@
   <link rel="stylesheet" href="/css/app.css?v=19a2" />
   <link rel="stylesheet" href="/css/ui.css?v=19a2" />
   <link rel="stylesheet" href="/css/track.css?v=19zw" />
-  <link rel="stylesheet" href="/css/qb.css?v=19a8" />
+  <link rel="stylesheet" href="/css/qb.css?v=19a9" />
 </head>
 <body>
   <div class="app" id="root"><div class="qb-splash"><div class="qb-logo"><div class="qb-name">QuickBite</div><div class="qb-tag">Good Food, Fast Delivery</div></div></div></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>window.QB_GOOGLE_CLIENT_ID='118084532686-6qb8plju6ed79pt32t9m9av0f4f6nad4.apps.googleusercontent.com';</script>
   <script src="/js/live.js?v=19zj"></script>
-  <script src="/js/api.js?v=19ar"></script>
+  <script src="/js/api.js?v=19as"></script>
   <script src="/js/maps.js?v=19zu"></script>
   <script src="/js/track-ui.js?v=19aae"></script>
   <script src="https://payments.lk/js/pay.js" defer></script>
@@ -1584,31 +1584,44 @@
     function supportThread() {
       return (API.support && API.support.messages) || [];
     }
+    function supportPhase(s) {
+      s = s || API.support || {};
+      if (s.awaitingRating) return 'rate';
+      if (s.mode === 'agent') return 'agent';
+      return 'ai';
+    }
+    function supportStarsHtml() {
+      return `<div class="qb-rate-agent" data-rate-agent>
+        <div class="qb-rate-label">How was this agent?</div>
+        <div class="qb-stars">${[1,2,3,4,5].map((n) => `<button type="button" data-star="${n}" aria-label="${n} star">★</button>`).join('')}</div>
+      </div>`;
+    }
     function supportView() {
       const s = API.support || { mode: 'ai', messages: [], ticket: '' };
-      const agent = s.mode === 'agent';
+      const phase = supportPhase(s);
+      const agent = phase === 'agent';
       const msgs = supportThread();
       const hello = msgs.length ? '' : `<div class="bubble them">Hi, I am QuickBite Help. Ask about an order, payment, tracking, or your account. If we cannot fix it, this chat becomes a real agent.</div>`;
-      return `<div class="chat-page qb-support" data-support-root="${esc(agent ? 'agent' : 'ai')}">
+      return `<div class="chat-page qb-support" data-support-root="${esc(phase)}">
         <div class="chat-head">
           <button class="back-fab" type="button" data-close-support>←</button>
           <div class="grow">
-            <b>${agent ? 'QuickBite agent' : 'Help & Support'}</b>
-            <div class="sub">${agent ? ('Live agent · ticket ' + esc(s.ticket || '')) : 'AI help first · real agent if not resolved'}</div>
+            <b>${agent ? 'QuickBite agent' : (phase === 'rate' ? 'Rate this agent' : 'Help & Support')}</b>
+            <div class="sub">${agent ? ('Live agent · ticket ' + esc(s.ticket || '')) : (phase === 'rate' ? 'Agent closed · rate this session' : 'AI help first · real agent if not resolved')}</div>
           </div>
-          <span class="qb-sup-pill ${agent ? 'on' : ''}">${agent ? 'Agent' : 'AI'}</span>
+          <span class="qb-sup-pill ${agent ? 'on' : ''}">${agent ? 'Agent' : (phase === 'rate' ? 'Rate' : 'AI')}</span>
         </div>
         <div class="bubbles" id="supportBubbles">${hello}${msgs.map((m) => `<div class="bubble ${m.role==='user'?'me':(m.role==='system'?'sys':'them')}">${esc(m.text)}</div>`).join('')}</div>
-        ${agent ? '' : `<div class="quick-replies">
+        ${phase === 'ai' ? `<div class="quick-replies">
           <button type="button" data-sup-quick="Where is my order?">Where is my order?</button>
           <button type="button" data-sup-quick="Payment or wallet">Payment or wallet</button>
           <button type="button" data-sup-quick="WhatsApp OTP">WhatsApp OTP</button>
           <button type="button" data-sup-quick="Talk to a real agent">Talk to a real agent</button>
-        </div>`}
-        <form class="composer" id="supportForm">
+        </div>` : ''}
+        ${phase === 'rate' ? supportStarsHtml() : `<form class="composer" id="supportForm">
           <input type="text" name="text" inputmode="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="${agent ? 'Message the agent…' : 'Describe the problem…'}" />
           <button class="btn sm green" type="submit"${state.supportBusy ? ' disabled' : ''}>Send</button>
-        </form>
+        </form>`}
       </div>`;
     }
     function paintSupport() {
@@ -1623,9 +1636,9 @@
       if (atBottom) b.scrollTop = b.scrollHeight;
       const pill = document.querySelector('[data-support-root] .qb-sup-pill');
       if (pill) {
-        const agent = s.mode === 'agent';
-        pill.classList.toggle('on', agent);
-        pill.textContent = agent ? 'Agent' : 'AI';
+        const phase = supportPhase(s);
+        pill.classList.toggle('on', phase === 'agent');
+        pill.textContent = phase === 'agent' ? 'Agent' : (phase === 'rate' ? 'Rate' : 'AI');
       }
     }
     function chatView() {
@@ -2244,7 +2257,8 @@
       if (state.locHandle) { try { state.locHandle.destroy(); } catch(_){} state.locHandle = null; }
       if (state.screen === 'support') {
         const keep = root.querySelector('[data-support-root]');
-        if (keep) {
+        const phase = supportPhase();
+        if (keep && keep.getAttribute('data-support-root') === phase) {
           if (!(state.supportBusy)) paintSupport();
           return;
         }
@@ -2822,6 +2836,25 @@
       root.querySelectorAll('[data-sup-quick]').forEach((b) => {
         b.onclick = () => sendSupport(b.getAttribute('data-sup-quick'));
       });
+      root.querySelectorAll('[data-star]').forEach((b) => {
+        b.onclick = async () => {
+          const n = Number(b.getAttribute('data-star'));
+          try {
+            if (API.rateSupportAgent) await API.rateSupportAgent(n);
+          } catch (e) {}
+          render();
+        };
+      });
+      if (state.screen === 'support' && !state._supTick) {
+        state._supTick = setInterval(async () => {
+          if (state.screen !== 'support' || state.supportBusy) return;
+          try {
+            if (API.loadSupport) await API.loadSupport();
+            if (API.closeAgentIfIdle) await API.closeAgentIfIdle();
+          } catch (_) {}
+          if (state.screen === 'support') render({ keepScroll: true });
+        }, 8000);
+      }
       root.querySelectorAll('[data-open-loc]').forEach((b) => b.onclick = () => {
         state.locFrom = state.screen === 'checkout' ? 'checkout' : (state.screen === 'addresses' ? 'addresses' : 'home');
         state.screen = 'locate';

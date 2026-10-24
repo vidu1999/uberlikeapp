@@ -663,6 +663,13 @@ export function normalizeSupport(raw, id) {
     messages: [],
     escalatedAt: 0,
     reason: '',
+    queuedNote: false,
+    awaitingRating: false,
+    rating: 0,
+    ratings: [],
+    sessions: [],
+    agentClosedAt: 0,
+    closeReason: '',
   };
   if (!p || typeof p !== 'object') return s;
   s.mode = p.mode === 'agent' ? 'agent' : 'ai';
@@ -673,6 +680,13 @@ export function normalizeSupport(raw, id) {
   s.subject = String(p.subject || '');
   s.escalatedAt = Number(p.escalatedAt) || 0;
   s.reason = String(p.reason || '');
+  s.queuedNote = !!p.queuedNote;
+  s.awaitingRating = p.awaitingRating === true;
+  s.rating = Math.max(0, Math.min(5, Math.round(Number(p.rating) || 0)));
+  s.agentClosedAt = Number(p.agentClosedAt) || 0;
+  s.closeReason = String(p.closeReason || '');
+  s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
+  s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
   s.internal = Array.isArray(p.internal) ? p.internal : [];
   s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
     if (!m) return null;
@@ -686,6 +700,84 @@ export function normalizeSupport(raw, id) {
     s.subject = first ? String(first.text).slice(0, 80) : (s.ticket || 'Support');
   }
   return s;
+}
+
+export const AGENT_IDLE_MS = 3 * 60 * 1000;
+
+function lastMsgTs(messages, roles) {
+  let t = 0;
+  (messages || []).forEach((m) => {
+    if (!m) return;
+    if (roles && roles.indexOf(m.role) < 0) return;
+    t = Math.max(t, Number(m.ts) || 0);
+  });
+  return t;
+}
+
+/** Close if the user has not replied after the last agent/system activity for 3 minutes. */
+export function shouldIdleClose(thread, now) {
+  if (!thread || thread.mode !== 'agent') return false;
+  const nowMs = Number(now) || Date.now();
+  const lastUser = lastMsgTs(thread.messages, ['user']);
+  const lastAgent = Math.max(
+    Number(thread.escalatedAt) || 0,
+    lastMsgTs(thread.messages, ['agent', 'assistant', 'system'])
+  );
+  if (lastUser > lastAgent) return false;
+  const anchor = lastAgent || Number(thread.escalatedAt) || 0;
+  if (!anchor) return false;
+  return (nowMs - anchor) >= AGENT_IDLE_MS;
+}
+
+export function closeAgentSession(thread, reason, now) {
+  const t = thread && typeof thread === 'object' ? thread : {};
+  const ts = Number(now) || Date.now();
+  const why = String(reason || 'closed');
+  t.mode = 'ai';
+  t.status = 'resolved';
+  t.queuedNote = false;
+  t.awaitingRating = true;
+  t.agentClosedAt = ts;
+  t.closeReason = why;
+  t.escalatedAt = 0;
+  t.sessions = (Array.isArray(t.sessions) ? t.sessions : []).concat([{
+    closedAt: ts,
+    reason: why,
+    rating: 0,
+  }]);
+  t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([{
+    role: 'system',
+    text: why === 'idle'
+      ? 'The agent session closed after 3 minutes with no reply. Rate this agent, then AI Help continues.'
+      : 'The agent closed this chat. Rate this agent session. AI Help continues after you rate.',
+    ts: ts,
+  }]);
+  return t;
+}
+
+export function rateAgentSession(thread, stars, now) {
+  const n = Math.max(1, Math.min(5, Math.round(Number(stars) || 0)));
+  if (!n) {
+    const err = new Error('Pick 1 to 5 stars.');
+    err.code = 'BAD_RATING';
+    throw err;
+  }
+  const t = thread && typeof thread === 'object' ? thread : {};
+  const ts = Number(now) || Date.now();
+  t.awaitingRating = false;
+  t.rating = n;
+  t.ratedAt = ts;
+  t.mode = 'ai';
+  const sessions = Array.isArray(t.sessions) ? t.sessions.slice() : [];
+  if (sessions.length) sessions[sessions.length - 1] = Object.assign({}, sessions[sessions.length - 1], { rating: n, ratedAt: ts });
+  t.sessions = sessions;
+  t.ratings = (Array.isArray(t.ratings) ? t.ratings : []).concat([{ stars: n, ts: ts }]);
+  t.messages = (Array.isArray(t.messages) ? t.messages : []).concat([{
+    role: 'system',
+    text: 'Thanks. You rated this agent ' + n + ' star' + (n === 1 ? '' : 's') + '. AI Help is ready.',
+    ts: ts,
+  }]);
+  return t;
 }
 
 export function supportPublicMessages(thread) {

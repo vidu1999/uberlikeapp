@@ -22,6 +22,17 @@
 .qb-support .bubble.sys {
   align-self: center; background: #F3F4F6; color: #374151; font-size: 13px; font-weight: 600;
 }
+.qb-rate-agent {
+  flex: none; padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  text-align: center; border-top: 1px solid #EEF2F7; background: #fff;
+}
+.qb-rate-label { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
+.qb-stars { display: flex; justify-content: center; gap: 8px; }
+.qb-stars button {
+  border: 0; background: transparent; font-size: 28px; line-height: 1;
+  color: #D1D5DB; cursor: pointer; padding: 4px;
+}
+.qb-stars button:hover, .qb-stars button:focus { color: #F59E0B; }
 
 .qb-splash {
   min-height: 100%;

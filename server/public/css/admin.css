@@ -149,6 +149,11 @@ img { max-width: 100%; }
   background: var(--ad-danger);
 }
 .ad-clock { color: var(--ad-muted); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.ad-date-cell { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.ad-rate-mark {
+  display: inline-flex; align-items: center; gap: 2px;
+  color: #fbbf24; font-weight: 800; font-size: 12px;
+}
 .ad-burger { display: none; }
 
 .ad-page { padding: 22px; flex: 1; }

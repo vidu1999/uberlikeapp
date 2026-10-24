@@ -5,7 +5,7 @@ import {
   metricsFrom, applyOrderCancel, canCancelOrder, applyAccountStatus, accountMeta,
   signSession, verifySession, hashPassword, safeEq, paginate, ordersToCsv,
   parseOrder, normalizeSupport, supportPublicMessages, bootstrapAdmin, envConfigured,
-  envVal, adminConfigHint,
+  envVal, adminConfigHint, shouldIdleClose, closeAgentSession, rateAgentSession, AGENT_IDLE_MS,
 } from '../functions/_lib/admin.js';
 
 describe('permissions', () => {
@@ -129,6 +129,42 @@ describe('session', () => {
     const boot = bootstrapAdmin({ ADMIN_EMAIL: ' Ops@X.lk ', ADMIN_PASSWORD: '"longenough"' });
     assert.equal(boot.email, 'ops@x.lk');
     assert.equal(boot.password, 'longenough');
+  });
+});
+
+describe('agent session close and rating', () => {
+  it('idles closed after 3 minutes with no user reply', () => {
+    const t0 = 1_000_000;
+    const thread = {
+      mode: 'agent',
+      escalatedAt: t0,
+      messages: [{ role: 'agent', text: 'Hello', ts: t0 + 1000 }],
+    };
+    assert.equal(shouldIdleClose(thread, t0 + 1000 + 60_000), false);
+    assert.equal(shouldIdleClose(thread, t0 + 1000 + AGENT_IDLE_MS + 1), true);
+  });
+  it('does not idle-close while waiting on the agent after a user message', () => {
+    const t0 = 1_000_000;
+    const thread = {
+      mode: 'agent',
+      escalatedAt: t0,
+      messages: [
+        { role: 'agent', text: 'Hello', ts: t0 },
+        { role: 'user', text: 'Still broken', ts: t0 + 10_000 },
+      ],
+    };
+    assert.equal(shouldIdleClose(thread, t0 + 10_000 + AGENT_IDLE_MS + 1), false);
+  });
+  it('admin close returns to AI and asks for a rating', () => {
+    const t = closeAgentSession({ mode: 'agent', messages: [], escalatedAt: 1 }, 'admin', 50);
+    assert.equal(t.mode, 'ai');
+    assert.equal(t.awaitingRating, true);
+    assert.equal(t.closeReason, 'admin');
+    const rated = rateAgentSession(t, 4, 60);
+    assert.equal(rated.awaitingRating, false);
+    assert.equal(rated.rating, 4);
+    assert.equal(rated.mode, 'ai');
+    assert.equal(rated.sessions[0].rating, 4);
   });
 });
 

@@ -2,6 +2,7 @@ import {
   STATE_KEYS, PERMS, can, json, optionsResponse, corsHeaders, cookieHeader, readSessionToken,
   bootstrapAdmin, signSession, verifySession, hashPassword, safeEq, sha256b64, envVal, adminConfigHint,
   parseOrder, isDemoAccount, isDemoShop, isDemoOrder, maskPhone, maskEmail, maskBank,
+  shouldIdleClose, closeAgentSession,
   normalizeWallet, applyWithdrawDecision, walletHeld, defaultConfig, normalizeConfig,
   metricsFrom, parseRiderDocs, riderVerified, normalizeSupport, parseSupportKey,
   supportPublicMessages, ordersToCsv, paginate, searchHay, applyOrderCancel, canCancelOrder,
@@ -130,8 +131,14 @@ async function loadSupport(env, accounts) {
   const rows = asRows(await sb(env, 'app_state?id=like.qb_support_*&select=*', 'GET'));
   const accMap = {};
   (accounts || []).forEach((a) => { if (a && a.id) accMap[a.id] = a; });
-  return rows.map((r) => {
-    const t = normalizeSupport(r.payload, r.id);
+  const list = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    let t = normalizeSupport(r.payload, r.id);
+    if (shouldIdleClose(t)) {
+      t = closeAgentSession(t, 'idle');
+      try { await putState(env, r.id, t); } catch (_) {}
+    }
     const parsed = parseSupportKey(r.id);
     const acc = accMap[parsed.accountId] || {};
     t.role = parsed.role;
@@ -139,12 +146,14 @@ async function loadSupport(env, accounts) {
     t.userName = acc.name || parsed.accountId;
     t.userPhoneMasked = maskPhone(acc.phone);
     t.unread = t.mode === 'agent' && t.status !== 'resolved' && t.status !== 'closed';
-    return t;
-  }).sort((a, b) => {
+    list.push(t);
+  }
+  list.sort((a, b) => {
     const ta = (a.messages[a.messages.length - 1] && a.messages[a.messages.length - 1].ts) || a.escalatedAt || 0;
     const tb = (b.messages[b.messages.length - 1] && b.messages[b.messages.length - 1].ts) || b.escalatedAt || 0;
     return tb - ta;
   });
+  return list;
 }
 
 async function staffList(env) {
@@ -767,27 +776,38 @@ async function dispatch(env, actor, body, request) {
     if (!text) return { ok: false, message: 'Type a message.' };
     const raw = await getState(env, id);
     if (!raw && id.indexOf('qb_support_') !== 0) return { ok: false, message: 'Ticket not found.' };
-    const t = normalizeSupport(raw, id);
+    let t = normalizeSupport(raw, id);
+    if (shouldIdleClose(t)) t = closeAgentSession(t, 'idle');
     const msg = { role: internal ? 'system' : 'agent', text: text, ts: Date.now(), internal: internal };
     if (internal) t.internal = (t.internal || []).concat([{ text: text, ts: msg.ts, actor: actor.email }]);
-    else t.messages = (t.messages || []).concat([msg]);
-    t.mode = 'agent';
+    else {
+      t.messages = (t.messages || []).concat([msg]);
+      t.mode = 'agent';
+      t.awaitingRating = false;
+      t.status = 'in_progress';
+      t.escalatedAt = t.escalatedAt || Date.now();
+    }
     if (t.status === 'new' || t.status === 'open') t.status = 'in_progress';
     await putState(env, id, t);
     await appendAudit(env, actor, internal ? 'support.note' : 'support.reply', id, text.slice(0, 80));
     return { ok: true, ticket: t };
   }
 
-  if (action === 'support.patch') {
+  if (action === 'support.patch' || action === 'support.close') {
     requirePerm(actor, 'support');
     const id = String(body.id || '');
     const raw = await getState(env, id);
-    const t = normalizeSupport(raw, id);
-    if (body.status) t.status = String(body.status);
-    if (body.priority) t.priority = String(body.priority);
-    if (body.assignee != null) t.assignee = String(body.assignee);
+    let t = normalizeSupport(raw, id);
+    const closing = action === 'support.close' || body.closeAgent || body.status === 'closed' || body.status === 'resolved';
+    if (closing && t.mode === 'agent') {
+      t = closeAgentSession(t, 'admin');
+    } else {
+      if (body.status) t.status = String(body.status);
+      if (body.priority) t.priority = String(body.priority);
+      if (body.assignee != null) t.assignee = String(body.assignee);
+    }
     await putState(env, id, t);
-    await appendAudit(env, actor, 'support.patch', id, t.status);
+    await appendAudit(env, actor, closing ? 'support.close' : 'support.patch', id, t.status);
     return { ok: true, ticket: t };
   }
 

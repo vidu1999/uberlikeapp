@@ -2442,7 +2442,50 @@
     return 'qb_support_customer_' + id;
   }
   function emptySupport() {
-    return { mode: 'ai', ticket: '', messages: [], escalatedAt: 0, reason: '', queuedNote: false };
+    return {
+      mode: 'ai', ticket: '', messages: [], escalatedAt: 0, reason: '', queuedNote: false,
+      awaitingRating: false, rating: 0, ratings: [], sessions: [], agentClosedAt: 0, closeReason: '',
+    };
+  }
+  var AGENT_IDLE_MS = 3 * 60 * 1000;
+  function supportLastTs(messages, roles) {
+    let t = 0;
+    (messages || []).forEach(function (m) {
+      if (!m) return;
+      if (roles && roles.indexOf(m.role) < 0) return;
+      t = Math.max(t, Number(m.ts) || 0);
+    });
+    return t;
+  }
+  function shouldIdleCloseSupport(s, now) {
+    if (!s || s.mode !== 'agent') return false;
+    const nowMs = Number(now) || Date.now();
+    const lastUser = supportLastTs(s.messages, ['user']);
+    const lastAgent = Math.max(Number(s.escalatedAt) || 0, supportLastTs(s.messages, ['agent', 'assistant', 'system']));
+    if (lastUser > lastAgent) return false;
+    const anchor = lastAgent || Number(s.escalatedAt) || 0;
+    if (!anchor) return false;
+    return (nowMs - anchor) >= AGENT_IDLE_MS;
+  }
+  function closeAgentSessionLocal(s, reason, now) {
+    const t = s || emptySupport();
+    const ts = Number(now) || Date.now();
+    const why = String(reason || 'closed');
+    t.mode = 'ai';
+    t.queuedNote = false;
+    t.awaitingRating = true;
+    t.agentClosedAt = ts;
+    t.closeReason = why;
+    t.escalatedAt = 0;
+    t.sessions = (t.sessions || []).concat([{ closedAt: ts, reason: why, rating: 0 }]);
+    t.messages = (t.messages || []).concat([{
+      role: 'system',
+      text: why === 'idle'
+        ? 'The agent session closed after 3 minutes with no reply. Rate this agent, then AI Help continues.'
+        : 'The agent closed this chat. Rate this agent session. AI Help continues after you rate.',
+      ts: ts,
+    }]);
+    return t;
   }
   function normalizeSupport(raw) {
     const s = emptySupport();
@@ -2456,6 +2499,12 @@
     s.escalatedAt = Number(p.escalatedAt) || 0;
     s.reason = String(p.reason || '');
     s.queuedNote = !!p.queuedNote;
+    s.awaitingRating = p.awaitingRating === true;
+    s.rating = Math.max(0, Math.min(5, Math.round(Number(p.rating) || 0)));
+    s.agentClosedAt = Number(p.agentClosedAt) || 0;
+    s.closeReason = String(p.closeReason || '');
+    s.ratings = Array.isArray(p.ratings) ? p.ratings : [];
+    s.sessions = Array.isArray(p.sessions) ? p.sessions : [];
     s.messages = (Array.isArray(p.messages) ? p.messages : []).map(function (m) {
       if (!m) return null;
       const role = m.role === 'assistant' || m.role === 'agent' || m.role === 'system' ? m.role : 'user';
@@ -2486,15 +2535,53 @@
       try {
         const rows = asRows(await sbGet('app_state?id=eq.' + encodeURIComponent(key) + '&select=*'));
         API.support = normalizeSupport(rows[0] && rows[0].payload);
-        return API.support;
       } catch (_) {}
     }
-    try {
-      const raw = storeGet(key);
-      API.support = raw ? normalizeSupport(JSON.parse(raw)) : emptySupport();
-    } catch (_) {
-      API.support = emptySupport();
+    if (!API.support || !API.support.messages || !API.support.messages.length) {
+      try {
+        const raw = storeGet(key);
+        if (raw) API.support = normalizeSupport(JSON.parse(raw));
+        else if (!API.support) API.support = emptySupport();
+      } catch (_) {
+        if (!API.support) API.support = emptySupport();
+      }
     }
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+      await persistSupport();
+      notify(true);
+    }
+    return API.support;
+  };
+  API.closeAgentIfIdle = async function () {
+    if (!API.support) return API.support;
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+      await persistSupport();
+      notify(true);
+    }
+    return API.support;
+  };
+  API.rateSupportAgent = async function (stars) {
+    const n = Math.max(1, Math.min(5, Math.round(Number(stars) || 0)));
+    if (!n) throw new Error('Pick 1 to 5 stars.');
+    if (!API.support) API.support = emptySupport();
+    if (!API.support.awaitingRating) return API.support;
+    const ts = Date.now();
+    API.support.awaitingRating = false;
+    API.support.rating = n;
+    API.support.mode = 'ai';
+    const sessions = (API.support.sessions || []).slice();
+    if (sessions.length) sessions[sessions.length - 1] = Object.assign({}, sessions[sessions.length - 1], { rating: n, ratedAt: ts });
+    API.support.sessions = sessions;
+    API.support.ratings = (API.support.ratings || []).concat([{ stars: n, ts: ts }]);
+    API.support.messages = (API.support.messages || []).concat([{
+      role: 'system',
+      text: 'Thanks. You rated this agent ' + n + ' star' + (n === 1 ? '' : 's') + '. AI Help is ready.',
+      ts: ts,
+    }]);
+    await persistSupport();
+    notify(true);
     return API.support;
   };
   API.askSupport = async function (text) {
@@ -2503,6 +2590,10 @@
     const body = String(text || '').trim();
     if (!body) throw new Error('Type a message.');
     if (!API.support) API.support = emptySupport();
+    if (shouldIdleCloseSupport(API.support)) {
+      API.support = closeAgentSessionLocal(API.support, 'idle');
+    }
+    if (API.support.awaitingRating) throw new Error('Rate the agent first.');
     if (!API.support.ticket) API.support.ticket = 'HS-' + Date.now().toString(36).toUpperCase().slice(-7);
     API.support.messages = (API.support.messages || []).concat([{ role: 'user', text: body, ts: Date.now() }]);
     const payload = {
@@ -2533,6 +2624,7 @@
     }
     if (data.escalate) {
       API.support.mode = 'agent';
+      API.support.awaitingRating = false;
       API.support.reason = String(data.reason || 'escalate');
       API.support.escalatedAt = API.support.escalatedAt || Date.now();
       if (!data.reply) {
