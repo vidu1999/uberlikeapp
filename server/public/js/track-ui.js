@@ -368,9 +368,16 @@
         <button class="rd-chat-fab ${chatOn ? '' : 'hidden'}" type="button" data-chat="${esc(order.id)}" aria-label="Chat">${ICO_CHAT}${unreadDot(order.id, viewer)}</button>
       </div>
       <div class="rd-zoom">
-        <button type="button" data-locate aria-label="Locate">◎</button>
+        <button type="button" data-locate aria-label="Live">◎</button>
         <button type="button" data-zoom="in">+</button>
         <button type="button" data-zoom="out">−</button>
+      </div>
+      <button class="rd-navfab" type="button" data-nav-live aria-label="Live direction">
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M12 3.2 4.2 20.2l.8.4L12 17.2l7 3.4.8-.4L12 3.2z"/></svg>
+      </button>
+      <div class="rd-navhint hidden" data-nav-hint>
+        <b data-nav-turn>Go to shop</b>
+        <span data-nav-spd></span>
       </div>
       <div class="rd-card">
         ${stepsHtml(order)}

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19zn" />
   <link rel="stylesheet" href="/css/ui.css?v=19zp" />
-  <link rel="stylesheet" href="/css/track.css?v=19zw" />
+  <link rel="stylesheet" href="/css/track.css?v=19zx" />
 </head>
 <body>
   <div class="app" id="root"></div>
@@ -18,8 +18,8 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="/js/live.js?v=19zk"></script>
   <script src="/js/api.js?v=19be"></script>
-  <script src="/js/maps.js?v=19zu"></script>
-  <script src="/js/track-ui.js?v=19aae"></script>
+  <script src="/js/maps.js?v=19zy"></script>
+  <script src="/js/track-ui.js?v=19aaf"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script>
     const state = {
@@ -1083,6 +1083,11 @@
       if (loc) loc.onclick = () => {
         const o = API.orders.find((x) => x.id === state.trackId);
         if (state.mapHandle && o) state.mapHandle.locate(o);
+      };
+      const navLive = root.querySelector('[data-nav-live]');
+      if (navLive) navLive.onclick = () => {
+        const o = API.orders.find((x) => x.id === state.trackId);
+        if (state.mapHandle && state.mapHandle.startNav && o) state.mapHandle.startNav(o);
       };
     }
     function render(opts) {

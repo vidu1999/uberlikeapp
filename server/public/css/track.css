@@ -144,3 +144,54 @@ body > #root > .track-screen {
   margin-top: 2px;
 }
 .live-banner > span { font-size: 22px; color: #00C853; flex: none; align-self: center; }
+
+.rd-navfab {
+  position: absolute;
+  left: 14px;
+  top: 42%;
+  z-index: 21;
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: #1A73E8;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(26, 115, 232, .48);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.rd-navfab svg { display: block; }
+.rd-navfab.on {
+  box-shadow: 0 0 0 7px rgba(26, 115, 232, .28), 0 8px 22px rgba(26, 115, 232, .48);
+}
+.rd-navhint {
+  position: absolute;
+  left: 12px;
+  right: 72px;
+  top: 78px;
+  z-index: 21;
+  background: #fff;
+  color: #111827;
+  border-radius: 16px;
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .22);
+}
+.rd-navhint.hidden { display: none !important; }
+.rd-navhint b { font-size: 16px; font-weight: 800; }
+.rd-navhint span { font-size: 13px; font-weight: 700; color: #1A73E8; white-space: nowrap; }
+.nav-chip-wrap { background: none !important; border: none !important; }
+.nav-chip {
+  background: #fff;
+  color: #111827;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
+  white-space: nowrap;
+}

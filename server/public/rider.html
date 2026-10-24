@@ -10,15 +10,15 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/css/app.css?v=19ze" />
   <link rel="stylesheet" href="/css/ui.css?v=19zs" />
-  <link rel="stylesheet" href="/css/track.css?v=19zw" />
+  <link rel="stylesheet" href="/css/track.css?v=19zx" />
 </head>
 <body>
   <div class="app" id="root"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/js/live.js?v=19zj"></script>
   <script src="/js/api.js?v=19be"></script>
-  <script src="/js/maps.js?v=19zx"></script>
-  <script src="/js/track-ui.js?v=19aae"></script>
+  <script src="/js/maps.js?v=19zy"></script>
+  <script src="/js/track-ui.js?v=19aaf"></script>
   <script src="/js/otp-login.js?v=19zw"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
@@ -1018,6 +1018,10 @@
       });
       const loc = root.querySelector('[data-locate]');
       if (loc) loc.onclick = () => { if (state.mapHandle && order) state.mapHandle.locate(order); };
+      const navLive = root.querySelector('[data-nav-live]');
+      if (navLive) navLive.onclick = () => {
+        if (state.mapHandle && state.mapHandle.startNav && order) state.mapHandle.startNav(order);
+      };
     }
 
     async function goOtp(phone) {

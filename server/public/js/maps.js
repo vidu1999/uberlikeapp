@@ -238,6 +238,77 @@
   global.routeCurve = curvePoints;
   global.haversineKm = haversineKm;
 
+  function parseOsrm(route) {
+    const coords = (route.geometry.coordinates || []).map(function (c) {
+      return [c[1], c[0]];
+    });
+    const steps = [];
+    (route.legs || []).forEach(function (leg) {
+      (leg.steps || []).forEach(function (st) {
+        const m = st.maneuver || {};
+        const loc = m.location;
+        if (!loc) return;
+        steps.push({
+          loc: [loc[1], loc[0]],
+          type: String(m.type || ''),
+          modifier: String(m.modifier || ''),
+          name: String(st.name || ''),
+          dist: Number(st.distance) || 0,
+          idx: nearestIndex(coords, [loc[1], loc[0]]),
+        });
+      });
+    });
+    return { coords: coords, steps: steps, distance: Number(route.distance) || 0, duration: Number(route.duration) || 0 };
+  }
+
+  async function fetchRoad(from, to) {
+    if (!from || !to || !Number.isFinite(from[0]) || !Number.isFinite(to[0])) return null;
+    const path =
+      Number(from[1]).toFixed(6) +
+      ',' +
+      Number(from[0]).toFixed(6) +
+      ';' +
+      Number(to[1]).toFixed(6) +
+      ',' +
+      Number(to[0]).toFixed(6) +
+      '?overview=full&geometries=geojson&steps=true';
+    const urls = [
+      'https://router.project-osrm.org/route/v1/driving/' + path,
+      'https://routing.openstreetmap.de/routed-car/route/v1/driving/' + path,
+    ];
+    for (let i = 0; i < urls.length; i++) {
+      const j = await fetchJson(urls[i], 4500);
+      const route = j && j.routes && j.routes[0];
+      if (route && route.geometry && route.geometry.coordinates && route.geometry.coordinates.length > 1) {
+        return parseOsrm(route);
+      }
+    }
+    return null;
+  }
+
+  function turnLabel(step, fallback) {
+    if (!step) return fallback || 'Go to shop';
+    const t = String(step.type || '');
+    const mod = String(step.modifier || '').replace(/_/g, ' ');
+    if (t === 'arrive') return 'Arrive';
+    if (t === 'depart') return fallback || 'Start';
+    if (t === 'roundabout' || t === 'rotary') return 'Roundabout';
+    if (/left/.test(mod)) return /slight/.test(mod) ? 'Keep Left' : /sharp/.test(mod) ? 'Sharp Left' : 'Turn Left';
+    if (/right/.test(mod)) return /slight/.test(mod) ? 'Keep Right' : /sharp/.test(mod) ? 'Sharp Right' : 'Turn Right';
+    if (/uturn|u-turn/.test(mod) || t === 'uturn') return 'U-turn';
+    if (t === 'continue' || /straight/.test(mod)) return 'Go Straight';
+    return fallback || 'Continue';
+  }
+
+  function navChipIcon(text) {
+    return L.divIcon({
+      className: 'nav-chip-wrap',
+      html: '<div class="nav-chip">' + htmlEsc(text) + '</div>',
+      iconSize: [140, 32],
+      iconAnchor: [70, 36],
+    });
+  }
+
   global.mountTrackingMap = function (el, order) {
     if (!el || !order || typeof L === 'undefined') return null;
     const pos = positions(order);
@@ -262,7 +333,7 @@
       liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
     }
     let riderMarker = null;
-    const layers = { glow: null, solid: null, dash: null };
+    const layers = { glow: null, solid: null, dash: null, chips: [] };
     const ends0 = routeEnds(order, pos);
     drawRoutes(map, layers, ends0.from, ends0.to, pos.rider);
     if (pos.rider && riderOnJob(order)) {
@@ -284,38 +355,217 @@
     setTimeout(() => map.invalidateSize(), 200);
     setTimeout(() => map.invalidateSize(), 600);
 
+    const nav = {
+      on: false,
+      road: null,
+      toKey: '',
+      lastFetch: 0,
+      fetching: false,
+      hint: '',
+      spd: 0,
+      lastFix: null,
+    };
+
+    function isRiderView() {
+      return typeof document !== 'undefined' && document.documentElement.getAttribute('data-role') === 'rider';
+    }
+
+    function navFrom(next, p) {
+      if (isRiderView()) {
+        const live = window.QB_LIVE;
+        if (live && live.lat != null) return [Number(live.lat), Number(live.lng)];
+      }
+      if (p.rider && Number.isFinite(p.rider[0])) return p.rider;
+      const live = window.QB_LIVE;
+      if (live && live.lat != null) return [Number(live.lat), Number(live.lng)];
+      return null;
+    }
+
+    function navTo(next, p) {
+      return goingToShop(next) ? p.shopPos || p.dest : p.dest;
+    }
+
+    function destTitle(next) {
+      return goingToShop(next) ? 'Go to shop' : 'Go to customer';
+    }
+
+    function clearChips() {
+      (layers.chips || []).forEach(function (m) {
+        try { map.removeLayer(m); } catch (_) {}
+      });
+      layers.chips = [];
+    }
+
+    function drawNavRoute(from, road) {
+      if (!road || !road.coords || road.coords.length < 2) return;
+      const idx = nearestIndex(road.coords, from);
+      let rest = road.coords.slice(Math.max(0, idx));
+      if (rest.length < 2) rest = road.coords.slice(-2);
+      if (layers.glow) map.removeLayer(layers.glow);
+      if (layers.solid) map.removeLayer(layers.solid);
+      if (layers.dash) map.removeLayer(layers.dash);
+      layers.dash = null;
+      layers.glow = L.polyline(rest, {
+        color: GLOW,
+        weight: 14,
+        opacity: 0.5,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(map);
+      layers.solid = L.polyline(rest, {
+        color: GREEN,
+        weight: 6,
+        opacity: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(map);
+    }
+
+    function upcomingSteps(from, road) {
+      if (!road || !road.steps) return [];
+      const idx = nearestIndex(road.coords, from);
+      const out = [];
+      for (let i = 0; i < road.steps.length; i++) {
+        const s = road.steps[i];
+        if (s.type === 'depart') continue;
+        if ((s.idx || 0) + 1 < idx) continue;
+        out.push(s);
+        if (out.length >= 2) break;
+      }
+      return out;
+    }
+
+    function speedKmh(from) {
+      const now = Date.now();
+      let kmh = 0;
+      if (nav.lastFix && nav.lastFix.t) {
+        const dt = (now - nav.lastFix.t) / 1000;
+        if (dt >= 1.2 && dt < 40) {
+          const dkm = haversineKm([nav.lastFix.lat, nav.lastFix.lng], from);
+          const raw = (dkm / dt) * 3600;
+          if (raw >= 0 && raw <= 80) kmh = nav.lastFix.kmh ? nav.lastFix.kmh * 0.55 + raw * 0.45 : raw;
+          else kmh = nav.lastFix.kmh || 0;
+        } else kmh = nav.lastFix.kmh || 0;
+      }
+      nav.lastFix = { lat: from[0], lng: from[1], t: now, kmh: kmh };
+      nav.spd = kmh;
+      return kmh;
+    }
+
+    function paintHint(next, from, road) {
+      const root = el.closest && el.closest('[data-track-root]');
+      const box = root && root.querySelector('[data-nav-hint]');
+      const turnEl = root && root.querySelector('[data-nav-turn]');
+      const spdEl = root && root.querySelector('[data-nav-spd]');
+      const fab = root && root.querySelector('[data-nav-live]');
+      if (fab) fab.classList.toggle('on', !!nav.on);
+      if (!box) return;
+      if (!nav.on) {
+        box.classList.add('hidden');
+        return;
+      }
+      box.classList.remove('hidden');
+      const coming = upcomingSteps(from, road);
+      const title = destTitle(next);
+      const label = turnLabel(coming[0], title);
+      nav.hint = label;
+      if (turnEl) turnEl.textContent = label;
+      const kmh = Math.round(speedKmh(from));
+      if (spdEl) {
+        spdEl.textContent = kmh >= 2 ? (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h') : '';
+      }
+      clearChips();
+      coming.forEach(function (s, i) {
+        let txt = turnLabel(s, title);
+        if (i === 0 && kmh >= 2) txt = txt + ' · ' + (kmh < 25 ? 'Slow ' + kmh + '-kmph' : kmh + ' km/h');
+        layers.chips.push(L.marker(s.loc, { icon: navChipIcon(txt), interactive: false, zIndexOffset: 700 }).addTo(map));
+      });
+    }
+
+    function offRoute(from, road) {
+      if (!from || !road || !road.coords || !road.coords.length) return true;
+      const i = nearestIndex(road.coords, from);
+      return haversineKm(from, road.coords[i]) * 1000 > 70;
+    }
+
+    async function refreshRoad(next, force) {
+      const p = positions(next);
+      p.dest = destLocked;
+      const from = navFrom(next, p);
+      const to = navTo(next, p);
+      if (!from || !to) return;
+      const key = goingToShop(next) + ':' + Number(to[0]).toFixed(5) + ',' + Number(to[1]).toFixed(5);
+      const now = Date.now();
+      const stale = now - nav.lastFetch > 18000;
+      const need = force || nav.toKey !== key || !nav.road || (stale && offRoute(from, nav.road));
+      if (need && !nav.fetching) {
+        nav.fetching = true;
+        nav.toKey = key;
+        try {
+          const road = await fetchRoad(from, to);
+          if (road) {
+            nav.road = road;
+            nav.lastFetch = Date.now();
+          }
+        } catch (_) {}
+        nav.fetching = false;
+      }
+      if (nav.road) drawNavRoute(from, nav.road);
+      else {
+        const ends = routeEnds(next, p);
+        drawRoutes(map, layers, ends.from, ends.to, p.rider);
+      }
+      paintHint(next, from, nav.road);
+      try {
+        map.setView(from, Math.max(map.getZoom(), 16), { animate: true });
+      } catch (_) {}
+    }
+
+    function paintLive(p) {
+      const live = window.QB_LIVE;
+      if (live && live.lat != null) {
+        if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
+        else liveMarker.setLatLng([live.lat, live.lng]);
+      }
+      if (p.shopPos) {
+        if (!shopMarker) shopMarker = L.marker(p.shopPos, { icon: shopIcon() }).addTo(map);
+        else shopMarker.setLatLng(p.shopPos);
+      }
+    }
+
+    function paintRider(next, p) {
+      if (p.rider && riderOnJob(next)) {
+        if (!riderMarker) {
+          riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);
+          riderMarker.bindTooltip(tipHtml(next), {
+            permanent: true,
+            direction: 'right',
+            offset: [16, -8],
+            className: 'km-tip',
+            opacity: 1,
+          });
+        } else {
+          riderMarker.setLatLng(p.rider);
+          riderMarker.setTooltipContent(tipHtml(next));
+        }
+      }
+    }
+
     return {
       map,
       update(next) {
         if (!next) return;
         const p = positions(next);
         p.dest = destLocked;
-        if (p.shopPos) {
-          if (!shopMarker) shopMarker = L.marker(p.shopPos, { icon: shopIcon() }).addTo(map);
-          else shopMarker.setLatLng(p.shopPos);
-        }
-        const live = window.QB_LIVE;
-        if (live && live.lat != null) {
-          if (!liveMarker) liveMarker = L.marker([live.lat, live.lng], { icon: liveDotIcon(), interactive: false, zIndexOffset: 600 }).addTo(map);
-          else liveMarker.setLatLng([live.lat, live.lng]);
+        paintLive(p);
+        if (nav.on) {
+          refreshRoad(next, false);
+          paintRider(next, p);
+          return;
         }
         const ends = routeEnds(next, p);
         drawRoutes(map, layers, ends.from, ends.to, p.rider);
-        if (p.rider && riderOnJob(next)) {
-          if (!riderMarker) {
-            riderMarker = L.marker(p.rider, { icon: bikeIcon() }).addTo(map);
-            riderMarker.bindTooltip(tipHtml(next), {
-              permanent: true,
-              direction: 'right',
-              offset: [16, -8],
-              className: 'km-tip',
-              opacity: 1,
-            });
-          } else {
-            riderMarker.setLatLng(p.rider);
-            riderMarker.setTooltipContent(tipHtml(next));
-          }
-        }
+        paintRider(next, p);
       },
       zoomIn() {
         map.zoomIn();
@@ -324,16 +574,17 @@
         map.zoomOut();
       },
       locate(order2) {
-        const p = positions(order2 || order);
-        const c = p.rider || destLocked;
-        map.setView(c, Math.max(map.getZoom(), 14));
+        const next = order2 || order;
+        const p = positions(next);
+        const from = navFrom(next, p);
+        const c = from || p.rider || destLocked;
+        map.setView(c, Math.max(map.getZoom(), 16));
       },
       followTo(order2) {
         const next = order2 || order;
         const p = positions(next);
-        const to = goingToShop(next) ? (p.shopPos || p.dest) : p.dest;
-        const live = window.QB_LIVE;
-        const from = p.rider || (live && live.lat != null ? [live.lat, live.lng] : null);
+        const to = navTo(next, p);
+        const from = navFrom(next, p);
         const pts = [];
         if (to && Number.isFinite(to[0])) pts.push(to);
         if (from && Number.isFinite(from[0])) pts.push(from);
@@ -345,7 +596,14 @@
           map.setView(pts[0], 16);
         }
       },
+      startNav(order2) {
+        const next = order2 || order;
+        nav.on = true;
+        refreshRoad(next, true);
+      },
       destroy() {
+        nav.on = false;
+        clearChips();
         try {
           map.remove();
         } catch (_) {}
